@@ -13,5 +13,10 @@
     "firebase": "^12.12.1",
     "tailwindcss": "^4.2.4",
     "vite": "^8.0.10"
+  },
+  "dependencies": {
+    "@dataconnect/generated": "file:src/dataconnect-generated",
+    "html2pdf.js": "^0.14.0",
+    "qrcode": "^1.5.4"
   }
 }

@@ -1,0 +1,14 @@
+- `[x]` Definir Esquemas en `schema.gql`
+  - Añadir `Configuracion`, `Paquete`, `Descuento`, `Ticket`.
+  - Relacionar `Ticket` con Firebase Auth (`userId`).
+- `[x]` Escribir Queries y Mutations
+  - Crear operaciones en `mutations.gql` (ej. `createTicket`, `updateTicketStatus`).
+  - Crear operaciones en `queries.gql` (ej. `getTicketById`, `listRecentTickets`).
+- `[x]` Generar SDK de Data Connect
+  - Ejecutar `firebase dataconnect:sdk:generate`.
+- `[x]` Refactorizar Frontend
+  - Modificar `Checkout.js` para usar el SDK.
+  - Modificar `Escaner.js` para usar el SDK.
+  - Modificar `AdminDashboard.js` para usar el SDK.
+- `[ ]` Desplegar Data Connect
+  - Instruir al usuario para ejecutar `firebase deploy --only dataconnect`.

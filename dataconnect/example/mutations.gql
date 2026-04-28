@@ -1,0 +1,70 @@
+# Mutations para el Sistema de Reservas y Tickets
+
+# Crea un ticket anónimo (Ej. compra rápida en Landing)
+mutation CreateAnonymousTicket(
+  $clienteNombre: String!, 
+  $clienteEmail: String!, 
+  $metodoPago: String!, 
+  $estadoPago: String!, 
+  $precioTotal: Float!
+) @auth(level: PUBLIC) {
+  ticket_insert(data: {
+    clienteNombre: $clienteNombre,
+    clienteEmail: $clienteEmail,
+    metodoPago: $metodoPago,
+    estadoPago: $estadoPago,
+    estadoTicket: "valido",
+    precioTotal: $precioTotal
+  })
+}
+
+# Crea un ticket vinculado al UID del usuario actual en Firebase Auth
+mutation CreateUserTicket(
+  $clienteNombre: String!, 
+  $clienteEmail: String!, 
+  $metodoPago: String!, 
+  $estadoPago: String!, 
+  $precioTotal: Float!
+) @auth(level: USER) {
+  ticket_insert(data: {
+    userId_expr: "auth.uid",
+    clienteNombre: $clienteNombre,
+    clienteEmail: $clienteEmail,
+    metodoPago: $metodoPago,
+    estadoPago: $estadoPago,
+    estadoTicket: "valido",
+    precioTotal: $precioTotal
+  })
+}
+
+# Actualiza el estado de un ticket al ser escaneado por el personal
+mutation UpdateTicketStatus(
+  $id: UUID!, 
+  $estadoTicket: String!, 
+  $estadoPago: String!
+) @auth(level: PUBLIC) {
+  ticket_update(
+    id: $id,
+    data: {
+      estadoTicket: $estadoTicket,
+      estadoPago: $estadoPago,
+      fechaEscaneo_expr: "request.time"
+    }
+  )
+}
+
+# Crear un Paquete Especial (Desde Admin Dashboard)
+mutation CreatePaquete(
+  $nombre: String!, 
+  $descripcion: String!, 
+  $precioBase: Float!, 
+  $incluyePersonas: Int!
+) @auth(level: PUBLIC) {
+  paquete_insert(data: {
+    nombre: $nombre,
+    descripcion: $descripcion,
+    precioBase: $precioBase,
+    incluyePersonas: $incluyePersonas,
+    activo: true
+  })
+}

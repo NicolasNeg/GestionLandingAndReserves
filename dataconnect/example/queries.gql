@@ -1,0 +1,34 @@
+# Queries para el Sistema de Reservas y Tickets
+
+# Obtener un Ticket específico por su ID (Para el Escáner)
+query GetTicketById($id: UUID!) @auth(level: PUBLIC) {
+  ticket(id: $id) {
+    id
+    clienteNombre
+    clienteEmail
+    metodoPago
+    estadoPago
+    estadoTicket
+    precioTotal
+    fechaCreacion
+    fechaEscaneo
+    user {
+      id
+      nombre
+      email
+    }
+  }
+}
+
+# Obtener los 10 tickets más recientes (Para el Admin Dashboard)
+query ListRecentTickets @auth(level: PUBLIC) {
+  tickets(orderBy: [{fechaCreacion: DESC}], limit: 10) {
+    id
+    clienteNombre
+    clienteEmail
+    estadoPago
+    estadoTicket
+    precioTotal
+    fechaCreacion
+  }
+}

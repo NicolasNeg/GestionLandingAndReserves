@@ -1,0 +1,14 @@
+{
+  "projects": {
+    "default": "mex-mapa-bjx"
+  },
+  "targets": {
+    "mex-mapa-bjx": {
+      "hosting": {
+        "gestion-and-landing": [
+          "gestion-and-landing"
+        ]
+      }
+    }
+  }
+}

@@ -4,15 +4,17 @@ import Reservar from './views/Reservar.js';
 import Checkout from './views/Checkout.js';
 import ClienteDashboard from './views/ClienteDashboard.js';
 import AdminDashboard from './views/AdminDashboard.js';
+import Escaner from './views/Escaner.js';
 
-// Listado de rutas mapeadas a componentes/funciones que retornan un string de HTML
+// Listado de rutas mapeadas a componentes/funciones
 const routes = {
     '/': Landing,
     '/login': Login,
     '/reservar': Reservar,
     '/checkout': Checkout,
     '/cliente/dashboard': ClienteDashboard,
-    '/admin/dashboard': AdminDashboard
+    '/admin/dashboard': AdminDashboard,
+    '/escaner': Escaner
 };
 
 // Componente por defecto para 404
@@ -29,12 +31,15 @@ const router = async () => {
     
     const appElement = document.getElementById('app');
     if(appElement) {
-        // En un framework se manejaría estado y ciclo de vida de componentes.
-        // Aquí pasaremos solo HTML crudo renderizado por una función.
-        appElement.innerHTML = view();
-        
-        // Si las vistas necesitan inyectar escuchadores de eventos al montarse, 
-        // pueden exponer una propiedad 'mount' u otra convención en futuras fases.
+        // Soporte para funciones simples o para objetos con render() y mount()
+        if (typeof view === 'function') {
+            appElement.innerHTML = await view();
+        } else if (typeof view === 'object' && view.render) {
+            appElement.innerHTML = await view.render();
+            if (view.mount) {
+                setTimeout(() => view.mount(), 0); // Ejecutar después del renderizado del DOM
+            }
+        }
     }
 };
 

@@ -1,0 +1,53 @@
+# Tabla de Usuarios (Sincronizada con Firebase Auth)
+type User @table {
+  id: String! @default(expr: "auth.uid")
+  nombre: String
+  email: String
+  rol: String # "admin", "staff", "cliente"
+}
+
+# Configuraciones Globales
+type Configuracion @table {
+  id: String! # ej. "precios_base"
+  precioAdulto: Float!
+  precioNino: Float!
+  precioMayor: Float!
+}
+
+# Paquetes Creados por Admin
+type Paquete @table {
+  id: UUID! @default(expr: "uuidV4()")
+  nombre: String!
+  descripcion: String!
+  precioBase: Float!
+  incluyePersonas: Int!
+  activo: Boolean!
+}
+
+# Códigos de Descuento
+type Descuento @table {
+  id: UUID! @default(expr: "uuidV4()")
+  codigo: String! @unique
+  descuento: Float!
+  tipo: String! # "monto" | "porcentaje"
+  usosRestantes: Int!
+}
+
+# Tickets de Acceso / Reservas
+type Ticket @table {
+  id: UUID! @default(expr: "uuidV4()")
+  
+  # Relación opcional con un usuario registrado (Firebase Auth)
+  user: User
+  
+  clienteNombre: String!
+  clienteEmail: String!
+  
+  metodoPago: String! # "online" | "taquilla"
+  estadoPago: String! # "pagado" | "pendiente"
+  estadoTicket: String! # "valido" | "escaneado" | "cancelado"
+  
+  precioTotal: Float!
+  fechaCreacion: Timestamp! @default(expr: "request.time")
+  fechaEscaneo: Timestamp
+}

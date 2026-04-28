@@ -4,22 +4,22 @@ service cloud.firestore {
     
     // Función auxiliar para determinar si el usuario autenticado tiene rol de admin
     function isAdmin() {
-      // Nota: get() cuenta como una lectura en Firestore.
       return request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.rol == 'admin';
     }
 
+    // Función auxiliar para personal del parque
+    function isStaffOrAdmin() {
+      return request.auth != null && 
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.rol == 'admin' || 
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.rol == 'staff');
+    }
+
     match /users/{userId} {
-      // Un usuario solo puede leer/editar su propio documento.
-      // El administrador lee todos. (y se asume puede escribir para gestionar roles, aunque la regla pide 'admin lee todos', es buena práctica permitirle gestionar).
       allow read, write: if (request.auth != null && request.auth.uid == userId) || isAdmin();
     }
 
     match /mesas/{mesaId} {
-      // Cualquier usuario (incluso no autenticado) puede leer (para ver el mapa).
       allow read: if true;
-      
-      // Solo rol == "admin" puede escribir/modificar capacidades o bloquearlas (estado 3).
-      // (Nota: Para la lógica de soft-lock que el cliente pasa la mesa de 0 a 1, si se debe hacer desde frontend por el cliente, requeriría una condición adicional para la actualización del estado. Se implementa aquí la base que permite cambio de 0 a 1 por usuarios autenticados como soft lock).
       allow update: if isAdmin() || (
         request.auth != null && 
         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['estado']) && 
@@ -28,11 +28,38 @@ service cloud.firestore {
       allow create, delete: if isAdmin();
     }
 
+    // Reservas legacy (si aún se usan)
     match /reservas/{reservaId} {
-      // Un cliente solo puede leer y crear reservas donde su uid coincida.
       allow read: if (request.auth != null && resource.data.uid_cliente == request.auth.uid) || isAdmin();
       allow create: if (request.auth != null && request.resource.data.uid_cliente == request.auth.uid) || isAdmin();
       allow update, delete: if isAdmin();
+    }
+
+    // NUEVAS COLECCIONES - SISTEMA DE TICKETS
+
+    match /configuracion/{docId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /paquetes/{paqueteId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /descuentos/{codigo} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /tickets/{ticketId} {
+      // Cualquiera puede crear su ticket (checkout público o logueado)
+      allow create: if true; 
+      // El cliente dueño, o el staff pueden leerlo
+      allow read: if isStaffOrAdmin() || (request.auth != null && resource.data.cliente_uid == request.auth.uid);
+      // Solo el staff/admin puede actualizar (ej. marcar como 'escaneado' o 'pagado')
+      allow update: if isStaffOrAdmin();
+      allow delete: if isAdmin();
     }
   }
 }
