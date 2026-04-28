@@ -5,6 +5,7 @@ import Checkout from './views/Checkout.js';
 import ClienteDashboard from './views/ClienteDashboard.js';
 import AdminDashboard from './views/AdminDashboard.js';
 import Escaner from './views/Escaner.js';
+import Politicas from './views/Politicas.js';
 
 // Listado de rutas mapeadas a componentes/funciones
 const routes = {
@@ -14,7 +15,8 @@ const routes = {
     '/checkout': Checkout,
     '/cliente/dashboard': ClienteDashboard,
     '/admin/dashboard': AdminDashboard,
-    '/escaner': Escaner
+    '/escaner': Escaner,
+    '/politicas': Politicas
 };
 
 // Componente por defecto para 404
@@ -25,10 +27,63 @@ const NotFound = () => `
 `;
 
 // Lógica de ruteo
+import { auth } from './firebase-config.js';
+import { onAuthStateChanged } from 'firebase/auth';
+import { getUserProfile } from './dataconnect-generated';
+
+// Helper para validar rol de Data Connect
+const requireRole = async (user, allowedRoles) => {
+    try {
+        const profile = await getUserProfile({ id: user.uid });
+        const rol = (profile.data && profile.data.user) ? profile.data.user.rol : 'cliente';
+        return allowedRoles.includes(rol);
+    } catch {
+        return false;
+    }
+};
+
 const router = async () => {
     const path = window.location.pathname;
-    const view = routes[path] || NotFound;
+    let view = routes[path] || NotFound;
     
+    // Auth Guards
+    const isProtected = ['/cliente/dashboard', '/admin/dashboard', '/escaner'].includes(path);
+    
+    if (isProtected) {
+        // Promesa para esperar el estado de auth real (firebase init puede ser asíncrono)
+        const user = await new Promise((resolve) => {
+            const unsubscribe = onAuthStateChanged(auth, (u) => {
+                unsubscribe();
+                resolve(u);
+            });
+        });
+
+        if (!user) {
+            // No autenticado
+            navigateTo('/login');
+            return;
+        }
+
+        // Si va a rutas administrativas, verificar rol
+        if (path === '/admin/dashboard') {
+            const isAllowed = await requireRole(user, ['programador', 'jefe']);
+            if (!isAllowed) {
+                alert("Acceso denegado. Se requiere rol de Jefe o Programador.");
+                navigateTo('/');
+                return;
+            }
+        }
+
+        if (path === '/escaner') {
+            const isAllowed = await requireRole(user, ['programador', 'jefe', 'trabajador']);
+            if (!isAllowed) {
+                alert("Acceso denegado. Área exclusiva para personal del balneario.");
+                navigateTo('/');
+                return;
+            }
+        }
+    }
+
     const appElement = document.getElementById('app');
     if(appElement) {
         // Soporte para funciones simples o para objetos con render() y mount()

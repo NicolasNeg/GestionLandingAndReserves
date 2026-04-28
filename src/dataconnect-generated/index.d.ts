@@ -78,6 +78,19 @@ export interface GetTicketByIdVariables {
   id: UUIDString;
 }
 
+export interface GetUserProfileData {
+  user?: {
+    id: string;
+    email?: string | null;
+    nombre?: string | null;
+    rol?: string | null;
+  } & User_Key;
+}
+
+export interface GetUserProfileVariables {
+  id: string;
+}
+
 export interface ListRecentTicketsData {
   tickets: ({
     id: UUIDString;
@@ -88,6 +101,32 @@ export interface ListRecentTicketsData {
     precioTotal: number;
     fechaCreacion: TimestampString;
   } & Ticket_Key)[];
+}
+
+export interface ListPaquetesData {
+  paquetes: ({
+    id: UUIDString;
+    nombre: string;
+    descripcion: string;
+    precioBase: number;
+    incluyePersonas: number;
+    activo: boolean;
+  } & Paquete_Key)[];
+}
+
+export interface ListUserTicketsData {
+  tickets: ({
+    id: UUIDString;
+    clienteNombre: string;
+    estadoPago: string;
+    estadoTicket: string;
+    precioTotal: number;
+    fechaCreacion: TimestampString;
+  } & Ticket_Key)[];
+}
+
+export interface ListUserTicketsVariables {
+  userId: string;
 }
 
 export interface Paquete_Key {
@@ -108,6 +147,17 @@ export interface UpdateTicketStatusVariables {
   id: UUIDString;
   estadoTicket: string;
   estadoPago: string;
+}
+
+export interface UpsertUserData {
+  user_upsert: User_Key;
+}
+
+export interface UpsertUserVariables {
+  id: string;
+  email: string;
+  nombre: string;
+  rol: string;
 }
 
 export interface User_Key {
@@ -163,6 +213,18 @@ export const createPaqueteRef: CreatePaqueteRef;
 export function createPaquete(vars: CreatePaqueteVariables): MutationPromise<CreatePaqueteData, CreatePaqueteVariables>;
 export function createPaquete(dc: DataConnect, vars: CreatePaqueteVariables): MutationPromise<CreatePaqueteData, CreatePaqueteVariables>;
 
+interface UpsertUserRef {
+  /* Allow users to create refs without passing in DataConnect */
+  (vars: UpsertUserVariables): MutationRef<UpsertUserData, UpsertUserVariables>;
+  /* Allow users to pass in custom DataConnect instances */
+  (dc: DataConnect, vars: UpsertUserVariables): MutationRef<UpsertUserData, UpsertUserVariables>;
+  operationName: string;
+}
+export const upsertUserRef: UpsertUserRef;
+
+export function upsertUser(vars: UpsertUserVariables): MutationPromise<UpsertUserData, UpsertUserVariables>;
+export function upsertUser(dc: DataConnect, vars: UpsertUserVariables): MutationPromise<UpsertUserData, UpsertUserVariables>;
+
 interface GetTicketByIdRef {
   /* Allow users to create refs without passing in DataConnect */
   (vars: GetTicketByIdVariables): QueryRef<GetTicketByIdData, GetTicketByIdVariables>;
@@ -186,4 +248,40 @@ export const listRecentTicketsRef: ListRecentTicketsRef;
 
 export function listRecentTickets(options?: ExecuteQueryOptions): QueryPromise<ListRecentTicketsData, undefined>;
 export function listRecentTickets(dc: DataConnect, options?: ExecuteQueryOptions): QueryPromise<ListRecentTicketsData, undefined>;
+
+interface ListPaquetesRef {
+  /* Allow users to create refs without passing in DataConnect */
+  (): QueryRef<ListPaquetesData, undefined>;
+  /* Allow users to pass in custom DataConnect instances */
+  (dc: DataConnect): QueryRef<ListPaquetesData, undefined>;
+  operationName: string;
+}
+export const listPaquetesRef: ListPaquetesRef;
+
+export function listPaquetes(options?: ExecuteQueryOptions): QueryPromise<ListPaquetesData, undefined>;
+export function listPaquetes(dc: DataConnect, options?: ExecuteQueryOptions): QueryPromise<ListPaquetesData, undefined>;
+
+interface GetUserProfileRef {
+  /* Allow users to create refs without passing in DataConnect */
+  (vars: GetUserProfileVariables): QueryRef<GetUserProfileData, GetUserProfileVariables>;
+  /* Allow users to pass in custom DataConnect instances */
+  (dc: DataConnect, vars: GetUserProfileVariables): QueryRef<GetUserProfileData, GetUserProfileVariables>;
+  operationName: string;
+}
+export const getUserProfileRef: GetUserProfileRef;
+
+export function getUserProfile(vars: GetUserProfileVariables, options?: ExecuteQueryOptions): QueryPromise<GetUserProfileData, GetUserProfileVariables>;
+export function getUserProfile(dc: DataConnect, vars: GetUserProfileVariables, options?: ExecuteQueryOptions): QueryPromise<GetUserProfileData, GetUserProfileVariables>;
+
+interface ListUserTicketsRef {
+  /* Allow users to create refs without passing in DataConnect */
+  (vars: ListUserTicketsVariables): QueryRef<ListUserTicketsData, ListUserTicketsVariables>;
+  /* Allow users to pass in custom DataConnect instances */
+  (dc: DataConnect, vars: ListUserTicketsVariables): QueryRef<ListUserTicketsData, ListUserTicketsVariables>;
+  operationName: string;
+}
+export const listUserTicketsRef: ListUserTicketsRef;
+
+export function listUserTickets(vars: ListUserTicketsVariables, options?: ExecuteQueryOptions): QueryPromise<ListUserTicketsData, ListUserTicketsVariables>;
+export function listUserTickets(dc: DataConnect, vars: ListUserTicketsVariables, options?: ExecuteQueryOptions): QueryPromise<ListUserTicketsData, ListUserTicketsVariables>;
 

@@ -32,3 +32,37 @@ query ListRecentTickets @auth(level: PUBLIC) {
     fechaCreacion
   }
 }
+
+# Obtener el perfil del usuario autenticado y su rol
+query GetUserProfile($id: String!) @auth(level: USER) {
+  user(id: $id) {
+    id
+    email
+    nombre
+    rol
+  }
+}
+
+# Obtener los tickets de un usuario
+query ListUserTickets($userId: String!) @auth(level: USER) {
+  tickets(where: { userId: { eq: $userId } }, orderBy: [{fechaCreacion: DESC}]) {
+    id
+    clienteNombre
+    estadoPago
+    estadoTicket
+    precioTotal
+    fechaCreacion
+  }
+}
+
+# Obtener paquetes activos para la Landing
+query ListPaquetes @auth(level: PUBLIC) {
+  paquetes(where: { activo: { eq: true } }, orderBy: [{ precioBase: ASC }]) {
+    id
+    nombre
+    descripcion
+    precioBase
+    incluyePersonas
+    activo
+  }
+}

@@ -68,3 +68,18 @@ mutation CreatePaquete(
     activo: true
   })
 }
+
+# Crear o actualizar usuario desde Auth
+mutation UpsertUser(
+  $id: String!,
+  $email: String!,
+  $nombre: String!,
+  $rol: String!
+) @auth(level: USER) {
+  user_upsert(data: {
+    id: $id,
+    email: $email,
+    nombre: $nombre,
+    rol: $rol
+  })
+}
