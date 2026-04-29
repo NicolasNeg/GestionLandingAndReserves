@@ -211,3 +211,16 @@ mutation CreateMovimientoInventario(
     nota: $nota
   })
 }
+
+mutation CreateMesaReserva($fechaDia: String!, $mapItemId: String!) @auth(level: USER) {
+  mesaReserva_insert(data: {
+    fechaDia: $fechaDia,
+    mapItemId: $mapItemId,
+    estado: "apartada",
+    userId_expr: "auth.uid"
+  })
+}
+
+mutation CancelarMesaReserva($id: UUID!) @auth(level: USER) {
+  mesaReserva_update(id: $id, data: { estado: "cancelada" })
+}

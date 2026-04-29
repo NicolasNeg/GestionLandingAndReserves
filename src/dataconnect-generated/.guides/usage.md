@@ -14,38 +14,38 @@ If a user is not using a supported framework, they can use the generated SDK dir
 Here's an example of how to use it with the first 5 operations:
 
 ```js
-import { getTicketById, listRecentTickets, getUserProfile, listUserTickets, listPaquetes, getLandingPage, listServiciosLanding, listServiciosAdmin, listProductosAdmin, listProductosPublic } from '@dataconnect/generated';
+import { createAnonymousTicket, createUserTicket, updateTicketStatus, createPaquete, upsertUser, upsertLandingPage, createServicio, updateServicio, createProducto, updateProducto } from '@dataconnect/generated';
 
 
-// Operation GetTicketById:  For variables, look at type GetTicketByIdVars in ../index.d.ts
-const { data } = await GetTicketById(dataConnect, getTicketByIdVars);
+// Operation CreateAnonymousTicket:  For variables, look at type CreateAnonymousTicketVars in ../index.d.ts
+const { data } = await CreateAnonymousTicket(dataConnect, createAnonymousTicketVars);
 
-// Operation ListRecentTickets: 
-const { data } = await ListRecentTickets(dataConnect);
+// Operation CreateUserTicket:  For variables, look at type CreateUserTicketVars in ../index.d.ts
+const { data } = await CreateUserTicket(dataConnect, createUserTicketVars);
 
-// Operation GetUserProfile:  For variables, look at type GetUserProfileVars in ../index.d.ts
-const { data } = await GetUserProfile(dataConnect, getUserProfileVars);
+// Operation UpdateTicketStatus:  For variables, look at type UpdateTicketStatusVars in ../index.d.ts
+const { data } = await UpdateTicketStatus(dataConnect, updateTicketStatusVars);
 
-// Operation ListUserTickets:  For variables, look at type ListUserTicketsVars in ../index.d.ts
-const { data } = await ListUserTickets(dataConnect, listUserTicketsVars);
+// Operation CreatePaquete:  For variables, look at type CreatePaqueteVars in ../index.d.ts
+const { data } = await CreatePaquete(dataConnect, createPaqueteVars);
 
-// Operation ListPaquetes: 
-const { data } = await ListPaquetes(dataConnect);
+// Operation UpsertUser:  For variables, look at type UpsertUserVars in ../index.d.ts
+const { data } = await UpsertUser(dataConnect, upsertUserVars);
 
-// Operation GetLandingPage:  For variables, look at type GetLandingPageVars in ../index.d.ts
-const { data } = await GetLandingPage(dataConnect, getLandingPageVars);
+// Operation UpsertLandingPage:  For variables, look at type UpsertLandingPageVars in ../index.d.ts
+const { data } = await UpsertLandingPage(dataConnect, upsertLandingPageVars);
 
-// Operation ListServiciosLanding: 
-const { data } = await ListServiciosLanding(dataConnect);
+// Operation CreateServicio:  For variables, look at type CreateServicioVars in ../index.d.ts
+const { data } = await CreateServicio(dataConnect, createServicioVars);
 
-// Operation ListServiciosAdmin: 
-const { data } = await ListServiciosAdmin(dataConnect);
+// Operation UpdateServicio:  For variables, look at type UpdateServicioVars in ../index.d.ts
+const { data } = await UpdateServicio(dataConnect, updateServicioVars);
 
-// Operation ListProductosAdmin: 
-const { data } = await ListProductosAdmin(dataConnect);
+// Operation CreateProducto:  For variables, look at type CreateProductoVars in ../index.d.ts
+const { data } = await CreateProducto(dataConnect, createProductoVars);
 
-// Operation ListProductosPublic: 
-const { data } = await ListProductosPublic(dataConnect);
+// Operation UpdateProducto:  For variables, look at type UpdateProductoVars in ../index.d.ts
+const { data } = await UpdateProducto(dataConnect, updateProductoVars);
 
 
 ```

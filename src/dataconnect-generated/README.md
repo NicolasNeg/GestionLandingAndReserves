@@ -19,6 +19,9 @@ This README will guide you through the process of using the generated JavaScript
   - [*ListProductosAdmin*](#listproductosadmin)
   - [*ListProductosPublic*](#listproductospublic)
   - [*ListMovimientosInventario*](#listmovimientosinventario)
+  - [*ListMesaReservasActivasPorFecha*](#listmesareservasactivasporfecha)
+  - [*CheckMesaReservaLibre*](#checkmesareservalibre)
+  - [*ListMisMesaReservas*](#listmismesareservas)
 - [**Mutations**](#mutations)
   - [*CreateAnonymousTicket*](#createanonymousticket)
   - [*CreateUserTicket*](#createuserticket)
@@ -32,6 +35,8 @@ This README will guide you through the process of using the generated JavaScript
   - [*UpdateProducto*](#updateproducto)
   - [*UpdateProductoStock*](#updateproductostock)
   - [*CreateMovimientoInventario*](#createmovimientoinventario)
+  - [*CreateMesaReserva*](#createmesareserva)
+  - [*CancelarMesaReserva*](#cancelarmesareserva)
 
 # Accessing the connector
 A connector is a collection of Queries and Mutations. One SDK is generated for each connector - this SDK is generated for the connector `example`. You can find more information about connectors in the [Data Connect documentation](https://firebase.google.com/docs/data-connect#how-does).
@@ -1265,6 +1270,349 @@ console.log(data.movimientoInventarios);
 executeQuery(ref).then((response) => {
   const data = response.data;
   console.log(data.movimientoInventarios);
+});
+```
+
+## ListMesaReservasActivasPorFecha
+You can execute the `ListMesaReservasActivasPorFecha` query using the following action shortcut function, or by calling `executeQuery()` after calling the following `QueryRef` function, both of which are defined in [dataconnect-generated/index.d.ts](./index.d.ts):
+```typescript
+listMesaReservasActivasPorFecha(vars: ListMesaReservasActivasPorFechaVariables, options?: ExecuteQueryOptions): QueryPromise<ListMesaReservasActivasPorFechaData, ListMesaReservasActivasPorFechaVariables>;
+
+interface ListMesaReservasActivasPorFechaRef {
+  ...
+  /* Allow users to create refs without passing in DataConnect */
+  (vars: ListMesaReservasActivasPorFechaVariables): QueryRef<ListMesaReservasActivasPorFechaData, ListMesaReservasActivasPorFechaVariables>;
+}
+export const listMesaReservasActivasPorFechaRef: ListMesaReservasActivasPorFechaRef;
+```
+You can also pass in a `DataConnect` instance to the action shortcut function or `QueryRef` function.
+```typescript
+listMesaReservasActivasPorFecha(dc: DataConnect, vars: ListMesaReservasActivasPorFechaVariables, options?: ExecuteQueryOptions): QueryPromise<ListMesaReservasActivasPorFechaData, ListMesaReservasActivasPorFechaVariables>;
+
+interface ListMesaReservasActivasPorFechaRef {
+  ...
+  (dc: DataConnect, vars: ListMesaReservasActivasPorFechaVariables): QueryRef<ListMesaReservasActivasPorFechaData, ListMesaReservasActivasPorFechaVariables>;
+}
+export const listMesaReservasActivasPorFechaRef: ListMesaReservasActivasPorFechaRef;
+```
+
+If you need the name of the operation without creating a ref, you can retrieve the operation name by calling the `operationName` property on the listMesaReservasActivasPorFechaRef:
+```typescript
+const name = listMesaReservasActivasPorFechaRef.operationName;
+console.log(name);
+```
+
+### Variables
+The `ListMesaReservasActivasPorFecha` query requires an argument of type `ListMesaReservasActivasPorFechaVariables`, which is defined in [dataconnect-generated/index.d.ts](./index.d.ts). It has the following fields:
+
+```typescript
+export interface ListMesaReservasActivasPorFechaVariables {
+  fechaDia: string;
+}
+```
+### Return Type
+Recall that executing the `ListMesaReservasActivasPorFecha` query returns a `QueryPromise` that resolves to an object with a `data` property.
+
+The `data` property is an object of type `ListMesaReservasActivasPorFechaData`, which is defined in [dataconnect-generated/index.d.ts](./index.d.ts). It has the following fields:
+```typescript
+export interface ListMesaReservasActivasPorFechaData {
+  mesaReservas: ({
+    mapItemId: string;
+  })[];
+}
+```
+### Using `ListMesaReservasActivasPorFecha`'s action shortcut function
+
+```typescript
+import { getDataConnect } from 'firebase/data-connect';
+import { connectorConfig, listMesaReservasActivasPorFecha, ListMesaReservasActivasPorFechaVariables } from '@dataconnect/generated';
+
+// The `ListMesaReservasActivasPorFecha` query requires an argument of type `ListMesaReservasActivasPorFechaVariables`:
+const listMesaReservasActivasPorFechaVars: ListMesaReservasActivasPorFechaVariables = {
+  fechaDia: ..., 
+};
+
+// Call the `listMesaReservasActivasPorFecha()` function to execute the query.
+// You can use the `await` keyword to wait for the promise to resolve.
+const { data } = await listMesaReservasActivasPorFecha(listMesaReservasActivasPorFechaVars);
+// Variables can be defined inline as well.
+const { data } = await listMesaReservasActivasPorFecha({ fechaDia: ..., });
+
+// You can also pass in a `DataConnect` instance to the action shortcut function.
+const dataConnect = getDataConnect(connectorConfig);
+const { data } = await listMesaReservasActivasPorFecha(dataConnect, listMesaReservasActivasPorFechaVars);
+
+console.log(data.mesaReservas);
+
+// Or, you can use the `Promise` API.
+listMesaReservasActivasPorFecha(listMesaReservasActivasPorFechaVars).then((response) => {
+  const data = response.data;
+  console.log(data.mesaReservas);
+});
+```
+
+### Using `ListMesaReservasActivasPorFecha`'s `QueryRef` function
+
+```typescript
+import { getDataConnect, executeQuery } from 'firebase/data-connect';
+import { connectorConfig, listMesaReservasActivasPorFechaRef, ListMesaReservasActivasPorFechaVariables } from '@dataconnect/generated';
+
+// The `ListMesaReservasActivasPorFecha` query requires an argument of type `ListMesaReservasActivasPorFechaVariables`:
+const listMesaReservasActivasPorFechaVars: ListMesaReservasActivasPorFechaVariables = {
+  fechaDia: ..., 
+};
+
+// Call the `listMesaReservasActivasPorFechaRef()` function to get a reference to the query.
+const ref = listMesaReservasActivasPorFechaRef(listMesaReservasActivasPorFechaVars);
+// Variables can be defined inline as well.
+const ref = listMesaReservasActivasPorFechaRef({ fechaDia: ..., });
+
+// You can also pass in a `DataConnect` instance to the `QueryRef` function.
+const dataConnect = getDataConnect(connectorConfig);
+const ref = listMesaReservasActivasPorFechaRef(dataConnect, listMesaReservasActivasPorFechaVars);
+
+// Call `executeQuery()` on the reference to execute the query.
+// You can use the `await` keyword to wait for the promise to resolve.
+const { data } = await executeQuery(ref);
+
+console.log(data.mesaReservas);
+
+// Or, you can use the `Promise` API.
+executeQuery(ref).then((response) => {
+  const data = response.data;
+  console.log(data.mesaReservas);
+});
+```
+
+## CheckMesaReservaLibre
+You can execute the `CheckMesaReservaLibre` query using the following action shortcut function, or by calling `executeQuery()` after calling the following `QueryRef` function, both of which are defined in [dataconnect-generated/index.d.ts](./index.d.ts):
+```typescript
+checkMesaReservaLibre(vars: CheckMesaReservaLibreVariables, options?: ExecuteQueryOptions): QueryPromise<CheckMesaReservaLibreData, CheckMesaReservaLibreVariables>;
+
+interface CheckMesaReservaLibreRef {
+  ...
+  /* Allow users to create refs without passing in DataConnect */
+  (vars: CheckMesaReservaLibreVariables): QueryRef<CheckMesaReservaLibreData, CheckMesaReservaLibreVariables>;
+}
+export const checkMesaReservaLibreRef: CheckMesaReservaLibreRef;
+```
+You can also pass in a `DataConnect` instance to the action shortcut function or `QueryRef` function.
+```typescript
+checkMesaReservaLibre(dc: DataConnect, vars: CheckMesaReservaLibreVariables, options?: ExecuteQueryOptions): QueryPromise<CheckMesaReservaLibreData, CheckMesaReservaLibreVariables>;
+
+interface CheckMesaReservaLibreRef {
+  ...
+  (dc: DataConnect, vars: CheckMesaReservaLibreVariables): QueryRef<CheckMesaReservaLibreData, CheckMesaReservaLibreVariables>;
+}
+export const checkMesaReservaLibreRef: CheckMesaReservaLibreRef;
+```
+
+If you need the name of the operation without creating a ref, you can retrieve the operation name by calling the `operationName` property on the checkMesaReservaLibreRef:
+```typescript
+const name = checkMesaReservaLibreRef.operationName;
+console.log(name);
+```
+
+### Variables
+The `CheckMesaReservaLibre` query requires an argument of type `CheckMesaReservaLibreVariables`, which is defined in [dataconnect-generated/index.d.ts](./index.d.ts). It has the following fields:
+
+```typescript
+export interface CheckMesaReservaLibreVariables {
+  fechaDia: string;
+  mapItemId: string;
+}
+```
+### Return Type
+Recall that executing the `CheckMesaReservaLibre` query returns a `QueryPromise` that resolves to an object with a `data` property.
+
+The `data` property is an object of type `CheckMesaReservaLibreData`, which is defined in [dataconnect-generated/index.d.ts](./index.d.ts). It has the following fields:
+```typescript
+export interface CheckMesaReservaLibreData {
+  mesaReservas: ({
+    id: UUIDString;
+  } & MesaReserva_Key)[];
+}
+```
+### Using `CheckMesaReservaLibre`'s action shortcut function
+
+```typescript
+import { getDataConnect } from 'firebase/data-connect';
+import { connectorConfig, checkMesaReservaLibre, CheckMesaReservaLibreVariables } from '@dataconnect/generated';
+
+// The `CheckMesaReservaLibre` query requires an argument of type `CheckMesaReservaLibreVariables`:
+const checkMesaReservaLibreVars: CheckMesaReservaLibreVariables = {
+  fechaDia: ..., 
+  mapItemId: ..., 
+};
+
+// Call the `checkMesaReservaLibre()` function to execute the query.
+// You can use the `await` keyword to wait for the promise to resolve.
+const { data } = await checkMesaReservaLibre(checkMesaReservaLibreVars);
+// Variables can be defined inline as well.
+const { data } = await checkMesaReservaLibre({ fechaDia: ..., mapItemId: ..., });
+
+// You can also pass in a `DataConnect` instance to the action shortcut function.
+const dataConnect = getDataConnect(connectorConfig);
+const { data } = await checkMesaReservaLibre(dataConnect, checkMesaReservaLibreVars);
+
+console.log(data.mesaReservas);
+
+// Or, you can use the `Promise` API.
+checkMesaReservaLibre(checkMesaReservaLibreVars).then((response) => {
+  const data = response.data;
+  console.log(data.mesaReservas);
+});
+```
+
+### Using `CheckMesaReservaLibre`'s `QueryRef` function
+
+```typescript
+import { getDataConnect, executeQuery } from 'firebase/data-connect';
+import { connectorConfig, checkMesaReservaLibreRef, CheckMesaReservaLibreVariables } from '@dataconnect/generated';
+
+// The `CheckMesaReservaLibre` query requires an argument of type `CheckMesaReservaLibreVariables`:
+const checkMesaReservaLibreVars: CheckMesaReservaLibreVariables = {
+  fechaDia: ..., 
+  mapItemId: ..., 
+};
+
+// Call the `checkMesaReservaLibreRef()` function to get a reference to the query.
+const ref = checkMesaReservaLibreRef(checkMesaReservaLibreVars);
+// Variables can be defined inline as well.
+const ref = checkMesaReservaLibreRef({ fechaDia: ..., mapItemId: ..., });
+
+// You can also pass in a `DataConnect` instance to the `QueryRef` function.
+const dataConnect = getDataConnect(connectorConfig);
+const ref = checkMesaReservaLibreRef(dataConnect, checkMesaReservaLibreVars);
+
+// Call `executeQuery()` on the reference to execute the query.
+// You can use the `await` keyword to wait for the promise to resolve.
+const { data } = await executeQuery(ref);
+
+console.log(data.mesaReservas);
+
+// Or, you can use the `Promise` API.
+executeQuery(ref).then((response) => {
+  const data = response.data;
+  console.log(data.mesaReservas);
+});
+```
+
+## ListMisMesaReservas
+You can execute the `ListMisMesaReservas` query using the following action shortcut function, or by calling `executeQuery()` after calling the following `QueryRef` function, both of which are defined in [dataconnect-generated/index.d.ts](./index.d.ts):
+```typescript
+listMisMesaReservas(vars: ListMisMesaReservasVariables, options?: ExecuteQueryOptions): QueryPromise<ListMisMesaReservasData, ListMisMesaReservasVariables>;
+
+interface ListMisMesaReservasRef {
+  ...
+  /* Allow users to create refs without passing in DataConnect */
+  (vars: ListMisMesaReservasVariables): QueryRef<ListMisMesaReservasData, ListMisMesaReservasVariables>;
+}
+export const listMisMesaReservasRef: ListMisMesaReservasRef;
+```
+You can also pass in a `DataConnect` instance to the action shortcut function or `QueryRef` function.
+```typescript
+listMisMesaReservas(dc: DataConnect, vars: ListMisMesaReservasVariables, options?: ExecuteQueryOptions): QueryPromise<ListMisMesaReservasData, ListMisMesaReservasVariables>;
+
+interface ListMisMesaReservasRef {
+  ...
+  (dc: DataConnect, vars: ListMisMesaReservasVariables): QueryRef<ListMisMesaReservasData, ListMisMesaReservasVariables>;
+}
+export const listMisMesaReservasRef: ListMisMesaReservasRef;
+```
+
+If you need the name of the operation without creating a ref, you can retrieve the operation name by calling the `operationName` property on the listMisMesaReservasRef:
+```typescript
+const name = listMisMesaReservasRef.operationName;
+console.log(name);
+```
+
+### Variables
+The `ListMisMesaReservas` query requires an argument of type `ListMisMesaReservasVariables`, which is defined in [dataconnect-generated/index.d.ts](./index.d.ts). It has the following fields:
+
+```typescript
+export interface ListMisMesaReservasVariables {
+  userId: string;
+}
+```
+### Return Type
+Recall that executing the `ListMisMesaReservas` query returns a `QueryPromise` that resolves to an object with a `data` property.
+
+The `data` property is an object of type `ListMisMesaReservasData`, which is defined in [dataconnect-generated/index.d.ts](./index.d.ts). It has the following fields:
+```typescript
+export interface ListMisMesaReservasData {
+  mesaReservas: ({
+    id: UUIDString;
+    fechaDia: string;
+    mapItemId: string;
+    estado: string;
+    creadoEn: TimestampString;
+    ticket?: {
+      id: UUIDString;
+    } & Ticket_Key;
+  } & MesaReserva_Key)[];
+}
+```
+### Using `ListMisMesaReservas`'s action shortcut function
+
+```typescript
+import { getDataConnect } from 'firebase/data-connect';
+import { connectorConfig, listMisMesaReservas, ListMisMesaReservasVariables } from '@dataconnect/generated';
+
+// The `ListMisMesaReservas` query requires an argument of type `ListMisMesaReservasVariables`:
+const listMisMesaReservasVars: ListMisMesaReservasVariables = {
+  userId: ..., 
+};
+
+// Call the `listMisMesaReservas()` function to execute the query.
+// You can use the `await` keyword to wait for the promise to resolve.
+const { data } = await listMisMesaReservas(listMisMesaReservasVars);
+// Variables can be defined inline as well.
+const { data } = await listMisMesaReservas({ userId: ..., });
+
+// You can also pass in a `DataConnect` instance to the action shortcut function.
+const dataConnect = getDataConnect(connectorConfig);
+const { data } = await listMisMesaReservas(dataConnect, listMisMesaReservasVars);
+
+console.log(data.mesaReservas);
+
+// Or, you can use the `Promise` API.
+listMisMesaReservas(listMisMesaReservasVars).then((response) => {
+  const data = response.data;
+  console.log(data.mesaReservas);
+});
+```
+
+### Using `ListMisMesaReservas`'s `QueryRef` function
+
+```typescript
+import { getDataConnect, executeQuery } from 'firebase/data-connect';
+import { connectorConfig, listMisMesaReservasRef, ListMisMesaReservasVariables } from '@dataconnect/generated';
+
+// The `ListMisMesaReservas` query requires an argument of type `ListMisMesaReservasVariables`:
+const listMisMesaReservasVars: ListMisMesaReservasVariables = {
+  userId: ..., 
+};
+
+// Call the `listMisMesaReservasRef()` function to get a reference to the query.
+const ref = listMisMesaReservasRef(listMisMesaReservasVars);
+// Variables can be defined inline as well.
+const ref = listMisMesaReservasRef({ userId: ..., });
+
+// You can also pass in a `DataConnect` instance to the `QueryRef` function.
+const dataConnect = getDataConnect(connectorConfig);
+const ref = listMisMesaReservasRef(dataConnect, listMisMesaReservasVars);
+
+// Call `executeQuery()` on the reference to execute the query.
+// You can use the `await` keyword to wait for the promise to resolve.
+const { data } = await executeQuery(ref);
+
+console.log(data.mesaReservas);
+
+// Or, you can use the `Promise` API.
+executeQuery(ref).then((response) => {
+  const data = response.data;
+  console.log(data.mesaReservas);
 });
 ```
 
@@ -2732,6 +3080,227 @@ console.log(data.movimientoInventario_insert);
 executeMutation(ref).then((response) => {
   const data = response.data;
   console.log(data.movimientoInventario_insert);
+});
+```
+
+## CreateMesaReserva
+You can execute the `CreateMesaReserva` mutation using the following action shortcut function, or by calling `executeMutation()` after calling the following `MutationRef` function, both of which are defined in [dataconnect-generated/index.d.ts](./index.d.ts):
+```typescript
+createMesaReserva(vars: CreateMesaReservaVariables): MutationPromise<CreateMesaReservaData, CreateMesaReservaVariables>;
+
+interface CreateMesaReservaRef {
+  ...
+  /* Allow users to create refs without passing in DataConnect */
+  (vars: CreateMesaReservaVariables): MutationRef<CreateMesaReservaData, CreateMesaReservaVariables>;
+}
+export const createMesaReservaRef: CreateMesaReservaRef;
+```
+You can also pass in a `DataConnect` instance to the action shortcut function or `MutationRef` function.
+```typescript
+createMesaReserva(dc: DataConnect, vars: CreateMesaReservaVariables): MutationPromise<CreateMesaReservaData, CreateMesaReservaVariables>;
+
+interface CreateMesaReservaRef {
+  ...
+  (dc: DataConnect, vars: CreateMesaReservaVariables): MutationRef<CreateMesaReservaData, CreateMesaReservaVariables>;
+}
+export const createMesaReservaRef: CreateMesaReservaRef;
+```
+
+If you need the name of the operation without creating a ref, you can retrieve the operation name by calling the `operationName` property on the createMesaReservaRef:
+```typescript
+const name = createMesaReservaRef.operationName;
+console.log(name);
+```
+
+### Variables
+The `CreateMesaReserva` mutation requires an argument of type `CreateMesaReservaVariables`, which is defined in [dataconnect-generated/index.d.ts](./index.d.ts). It has the following fields:
+
+```typescript
+export interface CreateMesaReservaVariables {
+  fechaDia: string;
+  mapItemId: string;
+}
+```
+### Return Type
+Recall that executing the `CreateMesaReserva` mutation returns a `MutationPromise` that resolves to an object with a `data` property.
+
+The `data` property is an object of type `CreateMesaReservaData`, which is defined in [dataconnect-generated/index.d.ts](./index.d.ts). It has the following fields:
+```typescript
+export interface CreateMesaReservaData {
+  mesaReserva_insert: MesaReserva_Key;
+}
+```
+### Using `CreateMesaReserva`'s action shortcut function
+
+```typescript
+import { getDataConnect } from 'firebase/data-connect';
+import { connectorConfig, createMesaReserva, CreateMesaReservaVariables } from '@dataconnect/generated';
+
+// The `CreateMesaReserva` mutation requires an argument of type `CreateMesaReservaVariables`:
+const createMesaReservaVars: CreateMesaReservaVariables = {
+  fechaDia: ..., 
+  mapItemId: ..., 
+};
+
+// Call the `createMesaReserva()` function to execute the mutation.
+// You can use the `await` keyword to wait for the promise to resolve.
+const { data } = await createMesaReserva(createMesaReservaVars);
+// Variables can be defined inline as well.
+const { data } = await createMesaReserva({ fechaDia: ..., mapItemId: ..., });
+
+// You can also pass in a `DataConnect` instance to the action shortcut function.
+const dataConnect = getDataConnect(connectorConfig);
+const { data } = await createMesaReserva(dataConnect, createMesaReservaVars);
+
+console.log(data.mesaReserva_insert);
+
+// Or, you can use the `Promise` API.
+createMesaReserva(createMesaReservaVars).then((response) => {
+  const data = response.data;
+  console.log(data.mesaReserva_insert);
+});
+```
+
+### Using `CreateMesaReserva`'s `MutationRef` function
+
+```typescript
+import { getDataConnect, executeMutation } from 'firebase/data-connect';
+import { connectorConfig, createMesaReservaRef, CreateMesaReservaVariables } from '@dataconnect/generated';
+
+// The `CreateMesaReserva` mutation requires an argument of type `CreateMesaReservaVariables`:
+const createMesaReservaVars: CreateMesaReservaVariables = {
+  fechaDia: ..., 
+  mapItemId: ..., 
+};
+
+// Call the `createMesaReservaRef()` function to get a reference to the mutation.
+const ref = createMesaReservaRef(createMesaReservaVars);
+// Variables can be defined inline as well.
+const ref = createMesaReservaRef({ fechaDia: ..., mapItemId: ..., });
+
+// You can also pass in a `DataConnect` instance to the `MutationRef` function.
+const dataConnect = getDataConnect(connectorConfig);
+const ref = createMesaReservaRef(dataConnect, createMesaReservaVars);
+
+// Call `executeMutation()` on the reference to execute the mutation.
+// You can use the `await` keyword to wait for the promise to resolve.
+const { data } = await executeMutation(ref);
+
+console.log(data.mesaReserva_insert);
+
+// Or, you can use the `Promise` API.
+executeMutation(ref).then((response) => {
+  const data = response.data;
+  console.log(data.mesaReserva_insert);
+});
+```
+
+## CancelarMesaReserva
+You can execute the `CancelarMesaReserva` mutation using the following action shortcut function, or by calling `executeMutation()` after calling the following `MutationRef` function, both of which are defined in [dataconnect-generated/index.d.ts](./index.d.ts):
+```typescript
+cancelarMesaReserva(vars: CancelarMesaReservaVariables): MutationPromise<CancelarMesaReservaData, CancelarMesaReservaVariables>;
+
+interface CancelarMesaReservaRef {
+  ...
+  /* Allow users to create refs without passing in DataConnect */
+  (vars: CancelarMesaReservaVariables): MutationRef<CancelarMesaReservaData, CancelarMesaReservaVariables>;
+}
+export const cancelarMesaReservaRef: CancelarMesaReservaRef;
+```
+You can also pass in a `DataConnect` instance to the action shortcut function or `MutationRef` function.
+```typescript
+cancelarMesaReserva(dc: DataConnect, vars: CancelarMesaReservaVariables): MutationPromise<CancelarMesaReservaData, CancelarMesaReservaVariables>;
+
+interface CancelarMesaReservaRef {
+  ...
+  (dc: DataConnect, vars: CancelarMesaReservaVariables): MutationRef<CancelarMesaReservaData, CancelarMesaReservaVariables>;
+}
+export const cancelarMesaReservaRef: CancelarMesaReservaRef;
+```
+
+If you need the name of the operation without creating a ref, you can retrieve the operation name by calling the `operationName` property on the cancelarMesaReservaRef:
+```typescript
+const name = cancelarMesaReservaRef.operationName;
+console.log(name);
+```
+
+### Variables
+The `CancelarMesaReserva` mutation requires an argument of type `CancelarMesaReservaVariables`, which is defined in [dataconnect-generated/index.d.ts](./index.d.ts). It has the following fields:
+
+```typescript
+export interface CancelarMesaReservaVariables {
+  id: UUIDString;
+}
+```
+### Return Type
+Recall that executing the `CancelarMesaReserva` mutation returns a `MutationPromise` that resolves to an object with a `data` property.
+
+The `data` property is an object of type `CancelarMesaReservaData`, which is defined in [dataconnect-generated/index.d.ts](./index.d.ts). It has the following fields:
+```typescript
+export interface CancelarMesaReservaData {
+  mesaReserva_update?: MesaReserva_Key | null;
+}
+```
+### Using `CancelarMesaReserva`'s action shortcut function
+
+```typescript
+import { getDataConnect } from 'firebase/data-connect';
+import { connectorConfig, cancelarMesaReserva, CancelarMesaReservaVariables } from '@dataconnect/generated';
+
+// The `CancelarMesaReserva` mutation requires an argument of type `CancelarMesaReservaVariables`:
+const cancelarMesaReservaVars: CancelarMesaReservaVariables = {
+  id: ..., 
+};
+
+// Call the `cancelarMesaReserva()` function to execute the mutation.
+// You can use the `await` keyword to wait for the promise to resolve.
+const { data } = await cancelarMesaReserva(cancelarMesaReservaVars);
+// Variables can be defined inline as well.
+const { data } = await cancelarMesaReserva({ id: ..., });
+
+// You can also pass in a `DataConnect` instance to the action shortcut function.
+const dataConnect = getDataConnect(connectorConfig);
+const { data } = await cancelarMesaReserva(dataConnect, cancelarMesaReservaVars);
+
+console.log(data.mesaReserva_update);
+
+// Or, you can use the `Promise` API.
+cancelarMesaReserva(cancelarMesaReservaVars).then((response) => {
+  const data = response.data;
+  console.log(data.mesaReserva_update);
+});
+```
+
+### Using `CancelarMesaReserva`'s `MutationRef` function
+
+```typescript
+import { getDataConnect, executeMutation } from 'firebase/data-connect';
+import { connectorConfig, cancelarMesaReservaRef, CancelarMesaReservaVariables } from '@dataconnect/generated';
+
+// The `CancelarMesaReserva` mutation requires an argument of type `CancelarMesaReservaVariables`:
+const cancelarMesaReservaVars: CancelarMesaReservaVariables = {
+  id: ..., 
+};
+
+// Call the `cancelarMesaReservaRef()` function to get a reference to the mutation.
+const ref = cancelarMesaReservaRef(cancelarMesaReservaVars);
+// Variables can be defined inline as well.
+const ref = cancelarMesaReservaRef({ id: ..., });
+
+// You can also pass in a `DataConnect` instance to the `MutationRef` function.
+const dataConnect = getDataConnect(connectorConfig);
+const ref = cancelarMesaReservaRef(dataConnect, cancelarMesaReservaVars);
+
+// Call `executeMutation()` on the reference to execute the mutation.
+// You can use the `await` keyword to wait for the promise to resolve.
+const { data } = await executeMutation(ref);
+
+console.log(data.mesaReserva_update);
+
+// Or, you can use the `Promise` API.
+executeMutation(ref).then((response) => {
+  const data = response.data;
+  console.log(data.mesaReserva_update);
 });
 ```
 

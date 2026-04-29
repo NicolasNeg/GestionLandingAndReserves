@@ -98,3 +98,17 @@ type Ticket @table {
   fechaCreacion: Timestamp! @default(expr: "request.time")
   fechaEscaneo: Timestamp
 }
+
+# Reserva de un ítem del mapa (p. ej. mesa) para un día concreto.
+# fechaDia: ISO local acordada en la app (YYYY-MM-DD), zona America/Mexico_City.
+# mapItemId: id del ítem en mapaDistribucionJson (editor de mapa).
+# estado: apartada | cancelada | vencida | ocupada (últimas dos en fases siguientes).
+type MesaReserva @table {
+  id: UUID! @default(expr: "uuidV4()")
+  fechaDia: String!
+  mapItemId: String!
+  estado: String!
+  ticket: Ticket
+  user: User
+  creadoEn: Timestamp! @default(expr: "request.time")
+}

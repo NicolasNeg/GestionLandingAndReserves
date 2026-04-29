@@ -156,19 +156,24 @@ function drawBackground(ctx, data) {
   ctx.textAlign = 'left';
 }
 
-function drawItem(ctx, item, selected = false) {
+function drawItem(ctx, item, selected = false, mesaEstadoVisual = null) {
   const meta = getMapKind(item.kind);
   const x = Number(item.x) || 0;
   const y = Number(item.y) || 0;
   const width = Number(item.width) || 100;
   const height = Number(item.height) || 80;
-  const stroke = item.stroke || meta.stroke;
+  let stroke = item.stroke || meta.stroke;
+  let fill = item.fill || meta.fill;
+  if (item.kind === 'mesa' && mesaEstadoVisual === 'apartada') {
+    fill = 'rgba(239, 68, 68, 0.36)';
+    stroke = '#b91c1c';
+  }
 
   ctx.save();
   ctx.shadowColor = 'rgba(15, 23, 42, 0.18)';
   ctx.shadowBlur = 14;
   ctx.shadowOffsetY = 6;
-  ctx.fillStyle = item.fill || meta.fill;
+  ctx.fillStyle = fill;
   roundRect(ctx, x, y, width, height, item.kind === 'mesa' ? 12 : 8);
   ctx.fill();
   ctx.restore();
@@ -242,6 +247,9 @@ function drawHandles(ctx, item) {
   });
 }
 
+/**
+ * @param {Record<string, 'apartada' | string>} [options.statusByMapItemId] - id de ítem del mapa → estado visual (solo afecta kind mesa)
+ */
 export function drawDistribucionCanvas(canvas, jsonStr, options = {}) {
   const data = parseDistribucionJson(jsonStr);
   const dpr = window.devicePixelRatio || 1;
@@ -254,11 +262,39 @@ export function drawDistribucionCanvas(canvas, jsonStr, options = {}) {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, data.w, data.h);
   drawBackground(ctx, data);
-  data.items.forEach((item, index) => drawItem(ctx, item, options.selected === index));
+  const statusByMapItemId = options.statusByMapItemId || {};
+  data.items.forEach((item, index) =>
+    drawItem(
+      ctx,
+      item,
+      options.selected === index,
+      item.kind === 'mesa' ? statusByMapItemId[item.id] || null : null
+    )
+  );
   if (!data.items.length) drawEmptyState(ctx, data);
   if (options.selected >= 0 && data.items[options.selected]) {
     drawHandles(ctx, data.items[options.selected]);
   }
+}
+
+/**
+ * Devuelve el índice del ítem bajo el punto (pantalla), o -1. Coordenadas en espacio lógico del plano (como `data.w` / `data.h`).
+ */
+export function findMapItemIndexAtClientPoint(canvas, jsonStr, clientX, clientY) {
+  const data = parseDistribucionJson(jsonStr);
+  const rect = canvas.getBoundingClientRect();
+  if (rect.width <= 0 || rect.height <= 0) return -1;
+  const mx = ((clientX - rect.left) / rect.width) * data.w;
+  const my = ((clientY - rect.top) / rect.height) * data.h;
+  for (let i = data.items.length - 1; i >= 0; i--) {
+    const it = data.items[i];
+    const x = Number(it.x) || 0;
+    const y = Number(it.y) || 0;
+    const w = Number(it.width) || 0;
+    const h = Number(it.height) || 0;
+    if (mx >= x && mx <= x + w && my >= y && my <= y + h) return i;
+  }
+  return -1;
 }
 
 function makeNewItem(data, patch = {}) {

@@ -155,3 +155,47 @@ query ListMovimientosInventario($productoId: UUID!) @auth(level: USER) {
     }
   }
 }
+
+# Mapa público: ítems apartados en una fecha (solo ids, sin datos personales)
+query ListMesaReservasActivasPorFecha($fechaDia: String!) @auth(level: PUBLIC) {
+  mesaReservas(
+    where: {
+      fechaDia: { eq: $fechaDia }
+      estado: { eq: "apartada" }
+    }
+  ) {
+    mapItemId
+  }
+}
+
+# Comprobar si una mesa ya está apartada (antes de insertar)
+query CheckMesaReservaLibre($fechaDia: String!, $mapItemId: String!) @auth(level: PUBLIC) {
+  mesaReservas(
+    where: {
+      fechaDia: { eq: $fechaDia }
+      mapItemId: { eq: $mapItemId }
+      estado: { eq: "apartada" }
+    }
+    limit: 1
+  ) {
+    id
+  }
+}
+
+# Mis reservas de mesa (el cliente pasa su uid; mismo patrón que ListUserTickets)
+query ListMisMesaReservas($userId: String!) @auth(level: USER) {
+  mesaReservas(
+    where: { userId: { eq: $userId } }
+    orderBy: [{ creadoEn: DESC }]
+    limit: 80
+  ) {
+    id
+    fechaDia
+    mapItemId
+    estado
+    creadoEn
+    ticket {
+      id
+    }
+  }
+}
