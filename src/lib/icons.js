@@ -27,7 +27,10 @@ const ICON_PATHS = {
   palette: `<path ${pathAttrs} d="M12 22a10 10 0 1 1 10-10c0 1.7-1 3-2.7 3h-1.1c-.9 0-1.6.7-1.6 1.6 0 .4.2.8.4 1.1.3.4.5.8.5 1.3 0 1.7-2.2 3-5.5 3Z"/><circle ${pathAttrs} cx="6.5" cy="11.5" r=".5"/><circle ${pathAttrs} cx="9.5" cy="7.5" r=".5"/><circle ${pathAttrs} cx="14.5" cy="7.5" r=".5"/><circle ${pathAttrs} cx="17.5" cy="11.5" r=".5"/>`,
   shield: `<path ${pathAttrs} d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/><path ${pathAttrs} d="m9 12 2 2 4-4"/>`,
   key: `<circle ${pathAttrs} cx="7.5" cy="15.5" r="4.5"/><path ${pathAttrs} d="m11 12 9-9"/><path ${pathAttrs} d="m15 4 3 3"/><path ${pathAttrs} d="m17 2 3 3"/>`,
-  chart: `<path ${pathAttrs} d="M3 3v18h18"/><path ${pathAttrs} d="m7 14 4-4 3 3 5-6"/>`
+  chart: `<path ${pathAttrs} d="M3 3v18h18"/><path ${pathAttrs} d="m7 14 4-4 3 3 5-6"/>`,
+  waves: `<path ${pathAttrs} d="M2 8c2 0 2-2 4-2s2 2 4 2 2-2 4-2 2 2 4 2 2-2 4-2"/><path ${pathAttrs} d="M2 14c2 0 2-2 4-2s2 2 4 2 2-2 4-2 2 2 4 2 2-2 4-2"/><path ${pathAttrs} d="M2 20c2 0 2-2 4-2s2 2 4 2 2-2 4-2 2 2 4 2 2-2 4-2"/>`,
+  umbrella: `<path ${pathAttrs} d="M3 12a9 9 0 0 1 18 0Z"/><path ${pathAttrs} d="M12 12v7a2 2 0 0 0 4 0"/><path ${pathAttrs} d="M12 3v2"/>`,
+  parking: `<rect ${pathAttrs} x="4" y="3" width="16" height="18" rx="2"/><path ${pathAttrs} d="M9 17V7h4a3 3 0 0 1 0 6H9"/>`
 };
 
 export function icon(name, className = 'h-5 w-5') {

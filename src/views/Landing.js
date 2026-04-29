@@ -6,6 +6,7 @@ import {
 import { drawDistribucionCanvas, DEFAULT_MAPA_JSON } from '../lib/distribucionMapa.js';
 import { getUserAccess, waitForAuthUser } from '../lib/accessControl.js';
 import { icon } from '../lib/icons.js';
+import heroImageUrl from '../assets/hero.png';
 
 const LANDING_PAGE_ID = 'main';
 
@@ -158,7 +159,7 @@ function renderHomeNavItems(access) {
       : null,
     access.can('admin.panel')
       ? {
-          href: '/admin/dashboard?section=sitio',
+          href: '/admin/dashboard?section=admin',
           label: 'Panel administracion',
           iconName: 'dashboard',
           badge: 'Jefe'
@@ -238,13 +239,19 @@ export default {
           </button>
 
           <main class="flex-1 pb-16 pt-14 lg:pt-6">
-            <section id="inicio" class="scroll-mt-24 bg-gradient-to-br from-blue-950 via-blue-900 to-sky-900 px-4 py-16 text-white sm:px-8">
-              <div class="mx-auto max-w-5xl">
+            <section id="inicio" class="landing-hero scroll-mt-24 px-4 py-16 text-white sm:px-8" style="background-image: linear-gradient(115deg, rgba(12, 74, 110, 0.92), rgba(13, 148, 136, 0.76)), url('${heroImageUrl}')">
+              <div class="landing-hero-content mx-auto max-w-5xl">
                 <p class="mb-3 text-xs font-bold uppercase tracking-widest text-amber-200/90">Balneario San Antonio Texas</p>
                 <h1 class="text-4xl font-black leading-tight sm:text-5xl">Tu dia perfecto empieza aqui</h1>
                 <p class="mt-5 max-w-2xl text-base text-blue-100 sm:text-lg">
                   Reserva en linea, revisa paquetes y conoce el parque. Todo el contenido de esta pagina puede actualizarlo el personal desde el panel administrativo.
                 </p>
+                <div class="landing-resource-pills mt-6">
+                  <span>${icon('waves', 'h-4 w-4')} Albercas</span>
+                  <span>${icon('umbrella', 'h-4 w-4')} Palapas</span>
+                  <span>${icon('parking', 'h-4 w-4')} Estacionamiento</span>
+                  <span>${icon('ticket', 'h-4 w-4')} Tickets digitales</span>
+                </div>
                 <div class="mt-8 flex flex-wrap gap-3">
                   <a href="/reservar" data-link class="rounded-xl bg-amber-400 px-6 py-3 font-bold text-slate-900 shadow transition hover:bg-amber-300">Mapa de mesas</a>
                   <a href="/checkout" data-link class="rounded-xl border border-white/40 px-6 py-3 font-semibold text-white transition hover:bg-white/10">Compra rapida</a>

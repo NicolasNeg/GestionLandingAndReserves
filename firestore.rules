@@ -5,6 +5,12 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    function isBootstrapProgramador() {
+      return signedIn() &&
+        request.auth.token.email == 'angelarmentta@icloud.com' &&
+        request.auth.token.email_verified == true;
+    }
+
     function userDocExists() {
       return signedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid));
     }
@@ -14,7 +20,8 @@ service cloud.firestore {
     }
 
     function userRole() {
-      return userDocExists() && userData().rol is string ? userData().rol : 'cliente';
+      return isBootstrapProgramador() ? 'programador' :
+        (userDocExists() && userData().rol is string ? userData().rol : 'cliente');
     }
 
     function userPermissions() {
@@ -57,6 +64,7 @@ service cloud.firestore {
 
     function hasPermission(permission) {
       return signedIn() && (
+        isBootstrapProgramador() ||
         userRole() == 'programador' ||
         hasDefaultPermission(permission) ||
         userPermissions().hasAny([permission]) ||
@@ -86,6 +94,23 @@ service cloud.firestore {
         (!request.resource.data.keys().hasAny(['permissions']) || request.resource.data.permissions == []);
     }
 
+    function validBootstrapProgramadorWrite(userId) {
+      return isOwnUser(userId) &&
+        isBootstrapProgramador() &&
+        request.resource.data.keys().hasOnly([
+          'email',
+          'nombre',
+          'photoURL',
+          'providerId',
+          'rol',
+          'permissions',
+          'createdAt',
+          'updatedAt',
+          'lastLoginAt'
+        ]) &&
+        request.resource.data.rol == 'programador';
+    }
+
     function validOwnUserUpdate(userId) {
       return isOwnUser(userId) &&
         request.resource.data.diff(resource.data).affectedKeys().hasOnly([
@@ -100,8 +125,8 @@ service cloud.firestore {
 
     match /users/{userId} {
       allow read: if isOwnUser(userId) || hasPermission('users.permissions');
-      allow create: if validOwnUserCreate(userId) || hasPermission('users.permissions');
-      allow update: if validOwnUserUpdate(userId) || hasPermission('users.permissions');
+      allow create: if validBootstrapProgramadorWrite(userId) || validOwnUserCreate(userId) || hasPermission('users.permissions');
+      allow update: if validBootstrapProgramadorWrite(userId) || validOwnUserUpdate(userId) || hasPermission('users.permissions');
       allow delete: if hasPermission('users.permissions');
     }
 

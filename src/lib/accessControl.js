@@ -3,6 +3,8 @@ import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { auth, db } from '../firebase-config.js';
 import { getUserProfile } from '../dataconnect-generated';
 
+export const BOOTSTRAP_PROGRAMADOR_EMAIL = 'angelarmentta@icloud.com';
+
 export const PERMISSIONS = [
   { key: 'dashboard.manage', label: 'Gestion' },
   { key: 'tickets.monitor', label: 'Monitor tickets' },
@@ -39,7 +41,13 @@ export const ROLE_LABELS = {
   programador: 'Programador'
 };
 
-const byPriority = ['programador', 'jefe', 'trabajador', 'cliente'];
+function isPermissionDenied(error) {
+  return error?.code === 'permission-denied' || /insufficient permissions/i.test(String(error?.message || ''));
+}
+
+export function isBootstrapProgramadorEmail(email) {
+  return String(email || '').trim().toLowerCase() === BOOTSTRAP_PROGRAMADOR_EMAIL;
+}
 
 export function normalizeRole(role) {
   const normalized = String(role || 'cliente').trim().toLowerCase().replace(/\s+/g, '-');
@@ -65,11 +73,16 @@ export function waitForAuthUser() {
 }
 
 function pickRole(dataConnectRole, firestoreRole) {
-  const roles = [normalizeRole(dataConnectRole), normalizeRole(firestoreRole)].filter(Boolean);
-  for (const role of byPriority) {
-    if (roles.includes(role)) return role;
-  }
-  return roles.find((role) => role !== 'cliente') || roles[0] || 'cliente';
+  const dcRole = normalizeRole(dataConnectRole);
+  const fsRole = normalizeRole(firestoreRole);
+  if (fsRole && fsRole !== 'cliente') return fsRole;
+  if (dcRole && dcRole !== 'cliente') return dcRole;
+  return fsRole || dcRole || 'cliente';
+}
+
+function roleForUser(user, dataConnectRole, firestoreRole) {
+  if (isBootstrapProgramadorEmail(user?.email)) return 'programador';
+  return pickRole(dataConnectRole, firestoreRole);
 }
 
 async function readDocData(path, id) {
@@ -102,29 +115,37 @@ export async function getUserAccess(user = auth.currentUser) {
     const profile = await getUserProfile({ id: user.uid });
     dataConnectUser = profile.data?.user || null;
   } catch (error) {
-    console.warn('Perfil Data Connect no disponible para permisos:', error);
+    if (!isPermissionDenied(error)) {
+      console.warn('Perfil Data Connect no disponible para permisos:', error);
+    }
   }
 
   try {
     firestoreUser = await readDocData('users', user.uid);
   } catch (error) {
-    console.warn('Perfil Firestore no disponible para permisos:', error);
+    if (!isPermissionDenied(error)) {
+      console.warn('Perfil Firestore no disponible para permisos:', error);
+    }
   }
 
-  const role = pickRole(dataConnectUser?.rol, firestoreUser?.rol);
+  const role = roleForUser(user, dataConnectUser?.rol, firestoreUser?.rol);
 
   try {
     const direct = await readDocData('userPermissions', user.uid);
     directPermissions = Array.isArray(direct?.permissions) ? direct.permissions : [];
   } catch (error) {
-    console.warn('Permisos directos no disponibles:', error);
+    if (!isPermissionDenied(error)) {
+      console.warn('Permisos directos no disponibles:', error);
+    }
   }
 
   try {
     const roleDoc = await readDocData('roles', role);
     customRolePermissions = Array.isArray(roleDoc?.permissions) ? roleDoc.permissions : [];
   } catch (error) {
-    console.warn('Permisos de rol no disponibles:', error);
+    if (!isPermissionDenied(error)) {
+      console.warn('Permisos de rol no disponibles:', error);
+    }
   }
 
   const roleDefaults = DEFAULT_ROLE_PERMISSIONS[role] || [];
@@ -155,6 +176,7 @@ export async function syncFirestoreUserProfile(user, profile = {}) {
   if (!user) return;
   const ref = doc(db, 'users', user.uid);
   const snap = await getDoc(ref);
+  const bootstrapProgramador = isBootstrapProgramadorEmail(user.email || profile.email);
   const base = {
     email: user.email || profile.email || '',
     nombre: profile.nombre || user.displayName || 'Usuario',
@@ -167,12 +189,20 @@ export async function syncFirestoreUserProfile(user, profile = {}) {
   if (!snap.exists()) {
     await setDoc(ref, {
       ...base,
-      rol: 'cliente',
-      permissions: [],
+      rol: bootstrapProgramador ? 'programador' : 'cliente',
+      permissions: bootstrapProgramador ? PERMISSIONS.map((p) => p.key) : [],
       createdAt: serverTimestamp()
     });
     return;
   }
 
-  await setDoc(ref, base, { merge: true });
+  await setDoc(ref, {
+    ...base,
+    ...(bootstrapProgramador
+      ? {
+          rol: 'programador',
+          permissions: PERMISSIONS.map((p) => p.key)
+        }
+      : {})
+  }, { merge: true });
 }

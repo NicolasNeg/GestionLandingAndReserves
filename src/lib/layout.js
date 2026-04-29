@@ -60,7 +60,7 @@ function renderHeader(access, theme) {
       ? navLink({ href: '/admin/dashboard?section=tickets', label: 'Gestion', iconName: 'briefcase', active: path === '/admin/dashboard' })
       : '',
     access.can('admin.panel')
-      ? navLink({ href: '/admin/dashboard?section=sitio', label: 'Panel administracion', iconName: 'dashboard', active: path === '/admin/dashboard' })
+      ? navLink({ href: '/admin/dashboard?section=admin', label: 'Panel administracion', iconName: 'dashboard', active: path === '/admin/dashboard' })
       : ''
   ].join('');
 
@@ -70,7 +70,7 @@ function renderHeader(access, theme) {
     </div>
     <nav class="app-topbar" aria-label="Navegacion principal">
       <a href="/home" data-link class="app-brand" aria-label="Balneario San Antonio Texas">
-        <span class="app-brand-mark">${icon('sparkles', 'h-5 w-5')}</span>
+        <span class="app-brand-mark">${icon('waves', 'h-5 w-5')}</span>
         <span>Balneario SA</span>
       </a>
       <div class="app-header-actions">
@@ -83,9 +83,9 @@ function renderHeader(access, theme) {
               ${icon('chevronDown', 'h-4 w-4')}
             </button>
             <div id="app-user-menu" class="app-user-menu hidden">
-              <a href="/cliente/dashboard" data-link class="app-user-menu-item">
+              <a href="/cliente/tickets" data-link class="app-user-menu-item">
                 ${icon('settings', 'h-4 w-4')}
-                <span>Mis tickets</span>
+                <span>Mi panel</span>
               </a>
               <a href="/home#contacto" data-link class="app-user-menu-item">
                 ${icon('info', 'h-4 w-4')}

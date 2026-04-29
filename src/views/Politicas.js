@@ -8,7 +8,7 @@ const Politicas = {
                 <div class="space-y-6 text-gray-700 leading-relaxed">
                     <section>
                         <h2 class="text-xl font-bold text-gray-800 mb-3">1. Recopilación de Información</h2>
-                        <p>En <strong>Balneario San Antonio</strong> recopilamos información personal básica como tu nombre, dirección de correo electrónico y foto de perfil cuando decides registrarte o iniciar sesión utilizando servicios de terceros como Facebook, Google o Apple. Esta información se utiliza exclusivamente para crear y gestionar tu cuenta de reservas en nuestra plataforma.</p>
+                        <p>En <strong>Balneario San Antonio</strong> recopilamos información personal básica como tu nombre, dirección de correo electrónico y foto de perfil cuando decides registrarte o iniciar sesión utilizando servicios de terceros como Facebook o Google. Esta información se utiliza exclusivamente para crear y gestionar tu cuenta de reservas en nuestra plataforma.</p>
                     </section>
 
                     <section>

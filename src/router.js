@@ -19,6 +19,8 @@ const routes = {
     '/reservar': Reservar,
     '/checkout': Checkout,
     '/cliente/dashboard': ClienteDashboard,
+    '/cliente/configuracion': ClienteDashboard,
+    '/cliente/tickets': ClienteDashboard,
     '/admin/dashboard': AdminDashboard,
     '/escaner': Escaner,
     '/politicas': Politicas
@@ -37,10 +39,12 @@ const resolveView = (path) => {
 };
 
 const isProtectedPath = (path) =>
-    ['/cliente/dashboard', '/admin/dashboard', '/escaner'].includes(path) || path.startsWith('/programador');
+    path.startsWith('/cliente/') ||
+    ['/admin/dashboard', '/escaner'].includes(path) ||
+    path.startsWith('/programador');
 
 const guardPath = async (path, user) => {
-    if (path === '/cliente/dashboard') return true;
+    if (path.startsWith('/cliente/')) return true;
     const access = await getUserAccess(user);
 
     if (path === '/admin/dashboard') {
@@ -92,6 +96,14 @@ const router = async () => {
         // Conservar ?mode= / &oobCode= al pasar de / a /home (evita perder la verificacion)
         window.history.replaceState(null, '', `/home${search}${hash}`);
         path = '/home';
+    }
+
+    if (path === '/login') {
+        const activeUser = await waitForAuthUser();
+        if (activeUser) {
+            window.history.replaceState(null, '', '/home');
+            path = '/home';
+        }
     }
 
     await updateAppShell(path);

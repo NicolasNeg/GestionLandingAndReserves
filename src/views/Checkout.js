@@ -39,7 +39,7 @@ const Checkout = {
                         <input type="radio" name="pago_opcion" value="online" class="mt-1 mr-4" checked>
                         <div>
                             <div class="font-bold text-lg text-blue-800">Pago en Línea</div>
-                            <div class="text-blue-600 text-sm">Paga con tarjeta de crédito/débito o Apple Pay de forma segura.</div>
+                            <div class="text-blue-600 text-sm">Paga con tarjeta de credito/debito de forma segura.</div>
                         </div>
                     </label>
                     <label class="flex items-start p-4 border rounded-lg cursor-pointer hover:bg-gray-50 transition" id="opt-taquilla">

@@ -36,6 +36,15 @@ function setChecked(name, permissions) {
   });
 }
 
+function initials(name, email) {
+  const source = String(name || email || 'U').trim();
+  return source
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() || '')
+    .join('') || 'U';
+}
+
 const ProgramadorDashboard = {
   render: async () => {
     const access = await getUserAccess(auth.currentUser);
@@ -156,31 +165,56 @@ const ProgramadorDashboard = {
           <section id="programador-users" class="programador-panel hidden">
             <div class="programador-panel-heading">
               <div>
-                <p class="programador-kicker">Permisos directos</p>
-                <h2>Usuario por UID</h2>
+                <p class="programador-kicker">Usuarios</p>
+                <h2>Panel de usuarios</h2>
               </div>
-              <span class="programador-chip">${icon('key', 'h-4 w-4')} Directos</span>
+              <span class="programador-chip">${icon('users', 'h-4 w-4')} Programador</span>
             </div>
-            <div class="programador-form-card">
-              <div class="programador-user-row">
-                <label class="programador-field">
-                  <span>UID del usuario</span>
+            <div class="programador-two-cols programador-users-layout">
+              <div class="programador-list-card">
+                <div class="programador-list-head">
+                  <h3>Usuarios registrados</h3>
+                  <button type="button" id="users-refresh" class="programador-secondary-btn">${icon('scan', 'h-4 w-4')} Actualizar</button>
+                </div>
+                <label class="programador-field mt-4">
+                  <span>Buscar</span>
+                  <input id="users-search" type="search" placeholder="Nombre, correo o UID" />
+                </label>
+                <div id="users-list" class="programador-list">
+                  <p class="text-sm text-slate-500">Cargando...</p>
+                </div>
+              </div>
+              <div class="programador-form-card">
+                <div class="programador-selected-user">
+                  <span id="selected-user-avatar" class="app-avatar-initials h-12 w-12">--</span>
+                  <div class="min-w-0">
+                    <p id="selected-user-name" class="truncate font-black text-slate-900">Selecciona un usuario</p>
+                    <p id="selected-user-email" class="truncate text-sm text-slate-500">---</p>
+                  </div>
+                </div>
+                <label class="programador-field mt-4">
+                  <span>UID</span>
                   <input id="permission-user-id" type="text" placeholder="Firebase UID" />
                 </label>
-                <button type="button" id="permission-load" class="programador-secondary-btn">
-                  ${icon('scan', 'h-4 w-4')}
-                  Cargar
-                </button>
-              </div>
-              <div class="programador-permission-grid mt-4">
-                ${permissionChecks('user-permission')}
-              </div>
-              <div class="programador-actions">
-                <button type="button" id="permission-save" class="programador-primary-btn">
-                  ${icon('key', 'h-4 w-4')}
-                  Guardar permisos
-                </button>
-                <p id="permission-msg" class="programador-msg"></p>
+                <label class="programador-field mt-4">
+                  <span>Rol</span>
+                  <input id="permission-user-role" type="text" list="programador-role-options" placeholder="cliente, trabajador, jefe, programador o rol nuevo" />
+                  <datalist id="programador-role-options"></datalist>
+                </label>
+                <div class="programador-permission-grid mt-4">
+                  ${permissionChecks('user-permission')}
+                </div>
+                <div class="programador-actions">
+                  <button type="button" id="permission-load" class="programador-secondary-btn">
+                    ${icon('scan', 'h-4 w-4')}
+                    Cargar por UID
+                  </button>
+                  <button type="button" id="permission-save" class="programador-primary-btn">
+                    ${icon('key', 'h-4 w-4')}
+                    Guardar usuario
+                  </button>
+                  <p id="permission-msg" class="programador-msg"></p>
+                </div>
               </div>
             </div>
           </section>
@@ -271,6 +305,21 @@ const ProgramadorDashboard = {
       }
     });
 
+    let rolesCache = Object.entries(DEFAULT_ROLE_PERMISSIONS).map(([id, permissions]) => ({
+      id,
+      name: labelRole(id),
+      permissions
+    }));
+    let usersCache = [];
+
+    const renderRoleOptions = () => {
+      const list = document.getElementById('programador-role-options');
+      if (!list) return;
+      list.innerHTML = rolesCache
+        .map((role) => `<option value="${escapeHtml(role.id)}">${escapeHtml(role.name || labelRole(role.id))}</option>`)
+        .join('');
+    };
+
     const renderRoles = async () => {
       const list = document.getElementById('roles-list');
       if (!list) return;
@@ -285,6 +334,8 @@ const ProgramadorDashboard = {
           custom: false
         }));
         const merged = [...defaults, ...custom.filter((role) => !DEFAULT_ROLE_PERMISSIONS[role.id])];
+        rolesCache = merged;
+        renderRoleOptions();
         list.innerHTML = merged.map((role) => {
           const permissions = Array.isArray(role.permissions) ? role.permissions : [];
           return `
@@ -342,41 +393,144 @@ const ProgramadorDashboard = {
       }
     });
     await renderRoles();
+    renderRoleOptions();
+
+    const setSelectedUserUi = (userId, data = {}, directPermissions = []) => {
+      const name = data.nombre || data.name || 'Usuario';
+      const email = data.email || '';
+      const avatar = document.getElementById('selected-user-avatar');
+      const nameEl = document.getElementById('selected-user-name');
+      const emailEl = document.getElementById('selected-user-email');
+      const uidInput = document.getElementById('permission-user-id');
+      const roleInput = document.getElementById('permission-user-role');
+      if (avatar) avatar.textContent = initials(name, email);
+      if (nameEl) nameEl.textContent = name;
+      if (emailEl) emailEl.textContent = email || userId;
+      if (uidInput) uidInput.value = userId;
+      if (roleInput) roleInput.value = normalizeRole(data.rol || 'cliente');
+      setChecked('user-permission', directPermissions);
+    };
+
+    const loadUserForEdit = async (uid) => {
+      const msg = document.getElementById('permission-msg');
+      if (!uid) {
+        if (msg) msg.textContent = 'Escribe o selecciona un UID.';
+        return;
+      }
+      if (msg) msg.textContent = 'Cargando usuario...';
+      try {
+        const [userSnap, permissionSnap] = await Promise.all([
+          getDoc(doc(db, 'users', uid)),
+          getDoc(doc(db, 'userPermissions', uid))
+        ]);
+        const userData = userSnap.exists() ? userSnap.data() : {};
+        const permissions =
+          permissionSnap.exists() && Array.isArray(permissionSnap.data().permissions)
+            ? permissionSnap.data().permissions
+            : [];
+        setSelectedUserUi(uid, userData, permissions);
+        document.querySelectorAll('[data-user-edit]').forEach((btn) => {
+          btn.classList.toggle('is-active', btn.getAttribute('data-user-edit') === uid);
+        });
+        if (msg) msg.textContent = userSnap.exists() ? 'Usuario cargado.' : 'UID sin perfil Firestore. Puedes asignar rol y permisos.';
+      } catch (error) {
+        console.error(error);
+        if (msg) msg.textContent = 'No se pudo cargar el usuario.';
+      }
+    };
+
+    const renderUsersList = (users) => {
+      const list = document.getElementById('users-list');
+      if (!list) return;
+      if (!users.length) {
+        list.innerHTML = '<p class="text-sm text-slate-500">No hay usuarios para mostrar.</p>';
+        return;
+      }
+      list.innerHTML = users
+        .map((user) => {
+          const name = user.nombre || 'Usuario';
+          const email = user.email || '';
+          const role = normalizeRole(user.rol || 'cliente');
+          return `
+            <button type="button" class="programador-user-card" data-user-edit="${escapeHtml(user.id)}">
+              <span class="app-avatar-initials h-10 w-10">${escapeHtml(initials(name, email))}</span>
+              <span class="min-w-0">
+                <strong class="truncate">${escapeHtml(name)}</strong>
+                <small class="truncate">${escapeHtml(email || user.id)}</small>
+              </span>
+              <em>${escapeHtml(labelRole(role))}</em>
+            </button>
+          `;
+        })
+        .join('');
+      list.querySelectorAll('[data-user-edit]').forEach((btn) => {
+        btn.addEventListener('click', () => loadUserForEdit(btn.getAttribute('data-user-edit') || ''));
+      });
+    };
+
+    const filterUsers = () => {
+      const term = String(document.getElementById('users-search')?.value || '').trim().toLowerCase();
+      if (!term) {
+        renderUsersList(usersCache);
+        return;
+      }
+      renderUsersList(
+        usersCache.filter((user) =>
+          [user.id, user.nombre, user.email, user.rol]
+            .filter(Boolean)
+            .some((value) => String(value).toLowerCase().includes(term))
+        )
+      );
+    };
+
+    const loadUsers = async () => {
+      const list = document.getElementById('users-list');
+      if (list) list.innerHTML = '<p class="text-sm text-slate-500">Cargando usuarios...</p>';
+      try {
+        const snaps = await getDocs(collection(db, 'users'));
+        usersCache = snaps.docs
+          .map((snap) => ({ id: snap.id, ...snap.data() }))
+          .sort((a, b) => String(a.nombre || a.email || a.id).localeCompare(String(b.nombre || b.email || b.id)));
+        filterUsers();
+      } catch (error) {
+        console.error(error);
+        if (list) list.innerHTML = '<p class="text-sm text-rose-600">No se pudieron cargar usuarios.</p>';
+      }
+    };
+
+    document.getElementById('users-refresh')?.addEventListener('click', loadUsers);
+    document.getElementById('users-search')?.addEventListener('input', filterUsers);
+    await loadUsers();
 
     document.getElementById('permission-load')?.addEventListener('click', async () => {
       const msg = document.getElementById('permission-msg');
       const uid = document.getElementById('permission-user-id')?.value?.trim();
-      if (!uid) {
-        if (msg) msg.textContent = 'Escribe un UID.';
-        return;
-      }
-      if (msg) msg.textContent = 'Cargando...';
-      try {
-        const snap = await getDoc(doc(db, 'userPermissions', uid));
-        const permissions = snap.exists() && Array.isArray(snap.data().permissions) ? snap.data().permissions : [];
-        setChecked('user-permission', permissions);
-        if (msg) msg.textContent = 'Permisos cargados.';
-      } catch (error) {
-        console.error(error);
-        if (msg) msg.textContent = 'No se pudieron cargar.';
-      }
+      await loadUserForEdit(uid);
     });
 
     document.getElementById('permission-save')?.addEventListener('click', async () => {
       const msg = document.getElementById('permission-msg');
       const uid = document.getElementById('permission-user-id')?.value?.trim();
+      const role = normalizeRole(document.getElementById('permission-user-role')?.value || 'cliente');
       if (!uid) {
         if (msg) msg.textContent = 'Escribe un UID.';
         return;
       }
       if (msg) msg.textContent = 'Guardando...';
       try {
-        await setDoc(doc(db, 'userPermissions', uid), {
-          permissions: readChecked('user-permission'),
-          updatedAt: serverTimestamp(),
-          updatedBy: auth.currentUser?.uid || null
-        }, { merge: true });
-        if (msg) msg.textContent = 'Permisos guardados.';
+        await Promise.all([
+          setDoc(doc(db, 'users', uid), {
+            rol: role,
+            updatedAt: serverTimestamp()
+          }, { merge: true }),
+          setDoc(doc(db, 'userPermissions', uid), {
+            permissions: readChecked('user-permission'),
+            updatedAt: serverTimestamp(),
+            updatedBy: auth.currentUser?.uid || null
+          }, { merge: true })
+        ]);
+        if (msg) msg.textContent = 'Usuario guardado.';
+        await loadUsers();
       } catch (error) {
         console.error(error);
         if (msg) msg.textContent = 'No se pudo guardar.';

@@ -88,13 +88,24 @@ export async function downloadTicketPdf(opts) {
     margin: 10,
     filename,
     image: { type: 'jpeg', quality: 0.98 },
-    html2canvas: { scale: 2, useCORS: true },
+    html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
     jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
   };
+
+  // html2canvas falla con funciones de color modernas (oklch) presentes en estilos globales.
+  // Para evitarlo, desactivamos temporalmente hojas de estilo del documento y dejamos estilos inline del ticket.
+  const styleNodes = [...document.querySelectorAll('style,link[rel="stylesheet"]')];
+  const previousDisabled = styleNodes.map((n) => n.disabled === true);
+  styleNodes.forEach((n) => {
+    n.disabled = true;
+  });
 
   try {
     await html2pdf().set(opt).from(inner).save();
   } finally {
+    styleNodes.forEach((n, idx) => {
+      n.disabled = previousDisabled[idx];
+    });
     document.body.removeChild(el);
   }
 }

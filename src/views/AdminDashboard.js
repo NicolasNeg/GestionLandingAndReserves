@@ -123,6 +123,7 @@ const AdminDashboard = {
     const canPackages = access.can('packages.manage');
     const canLanding = access.can('landing.manage');
     const canScan = access.can('tickets.scan');
+    const canAdminPanel = access.can('admin.panel');
     const avatar = access.photoURL
       ? `<img src="${escapeHtml(access.photoURL)}" alt="${escapeHtml(access.name)}" class="h-10 w-10 rounded-full object-cover" referrerpolicy="no-referrer" />`
       : `<span class="app-avatar-initials h-10 w-10">${escapeHtml(access.name.slice(0, 1).toUpperCase())}</span>`;
@@ -144,7 +145,8 @@ const AdminDashboard = {
                         <span class="admin-sidebar-label">Gestion</span>
                     </button>
                     ${canScan ? `<a href="/escaner" data-link class="admin-sidebar-item" title="Escaner">${icon('scan', 'h-5 w-5')}<span class="admin-sidebar-label">Escaner</span></a>` : ''}
-                    ${canLanding ? `<button type="button" data-admin-section="sitio" class="admin-sidebar-item" title="Sitio / Landing">${icon('dashboard', 'h-5 w-5')}<span class="admin-sidebar-label">Panel administracion</span></button>` : ''}
+                    ${canAdminPanel ? `<button type="button" data-admin-section="admin" class="admin-sidebar-item" title="Panel administracion">${icon('dashboard', 'h-5 w-5')}<span class="admin-sidebar-label">Panel administracion</span></button>` : ''}
+                    ${canLanding ? `<button type="button" data-admin-section="sitio" class="admin-sidebar-item" title="Sitio / Landing">${icon('palette', 'h-5 w-5')}<span class="admin-sidebar-label">Sitio / Landing</span></button>` : ''}
                     ${access.isProgramador ? `<a href="/programador/theme" data-link class="admin-sidebar-item" title="Programador">${icon('code', 'h-5 w-5')}<span class="admin-sidebar-label">Programador</span></a>` : ''}
                 </nav>
                 <div class="admin-sidebar-footer">
@@ -206,6 +208,53 @@ const AdminDashboard = {
                     </div>
                 </div>
                 </div>
+
+                ${canAdminPanel ? `<div id="admin-panel-admin" class="hidden space-y-8">
+                    <div class="admin-hero-panel">
+                        <div>
+                            <p class="admin-kicker">Administracion</p>
+                            <h1 class="text-3xl font-black text-slate-900">Panel del admin</h1>
+                            <p class="mt-2 max-w-2xl text-sm text-slate-600">Centro rapido para supervisar operacion, contenido, paquetes y accesos del balneario.</p>
+                        </div>
+                        <div class="admin-watermark">${icon('waves', 'h-12 w-12')}</div>
+                    </div>
+                    <div class="admin-resource-grid">
+                        <button type="button" class="admin-resource-card" data-admin-section="tickets">
+                            ${icon('ticket', 'h-6 w-6')}
+                            <span>Monitor de tickets</span>
+                            <small>Entradas recientes, pagos y escaneos.</small>
+                        </button>
+                        ${canPackages ? `<button type="button" class="admin-resource-card" data-admin-section="tickets">
+                            ${icon('package', 'h-6 w-6')}
+                            <span>Paquetes</span>
+                            <small>Altas rapidas de promociones y accesos.</small>
+                        </button>` : ''}
+                        ${canLanding ? `<button type="button" class="admin-resource-card" data-admin-section="sitio">
+                            ${icon('map', 'h-6 w-6')}
+                            <span>Landing y mapa</span>
+                            <small>Horarios, servicios, vista aerea y zonas.</small>
+                        </button>` : ''}
+                        ${canScan ? `<a href="/escaner" data-link class="admin-resource-card">
+                            ${icon('scan', 'h-6 w-6')}
+                            <span>Escaner</span>
+                            <small>Validacion de tickets en entrada.</small>
+                        </a>` : ''}
+                    </div>
+                    <div class="admin-resource-grid">
+                        <article class="admin-mini-stat">
+                            <p>Rol activo</p>
+                            <strong>${escapeHtml(access.roleLabel)}</strong>
+                        </article>
+                        <article class="admin-mini-stat">
+                            <p>Permisos</p>
+                            <strong>${access.permissions.length}</strong>
+                        </article>
+                        <article class="admin-mini-stat">
+                            <p>Area</p>
+                            <strong>Balneario</strong>
+                        </article>
+                    </div>
+                </div>` : ''}
 
                 ${canLanding ? `<div id="admin-panel-sitio" class="hidden space-y-8">
                     <h1 class="text-3xl font-bold text-gray-800">Contenido del sitio (/home)</h1>
@@ -292,6 +341,7 @@ const AdminDashboard = {
 
   mount: async () => {
     const panelTickets = document.getElementById('admin-panel-tickets');
+    const panelAdmin = document.getElementById('admin-panel-admin');
     const panelSitio = document.getElementById('admin-panel-sitio');
     const hint = document.getElementById('admin-rol-hint');
     const statsWrap = document.getElementById('admin-stats-wrap');
@@ -319,9 +369,10 @@ const AdminDashboard = {
 
     const showSection = (name) => {
       if (name === 'sitio' && !panelSitio) return;
-      const tickets = name === 'tickets';
-      if (panelTickets) panelTickets.classList.toggle('hidden', !tickets);
-      if (panelSitio) panelSitio.classList.toggle('hidden', tickets);
+      if (name === 'admin' && !panelAdmin) return;
+      if (panelTickets) panelTickets.classList.toggle('hidden', name !== 'tickets');
+      if (panelAdmin) panelAdmin.classList.toggle('hidden', name !== 'admin');
+      if (panelSitio) panelSitio.classList.toggle('hidden', name !== 'sitio');
       document.querySelectorAll('[data-admin-section]').forEach((btn) => {
         const on = btn.getAttribute('data-admin-section') === name;
         btn.classList.toggle('is-active', on);
@@ -538,7 +589,13 @@ const AdminDashboard = {
       sitioReady = true;
     };
 
-    showSection(requestedInitialSection === 'sitio' && panelSitio ? 'sitio' : 'tickets');
+    const initialSection =
+      requestedInitialSection === 'admin' && panelAdmin
+        ? 'admin'
+        : requestedInitialSection === 'sitio' && panelSitio
+          ? 'sitio'
+          : 'tickets';
+    showSection(initialSection);
     if (requestedInitialSection === 'sitio' && panelSitio) initSitioPanel();
 
     const btnCreatePkg = document.getElementById('btn-create-pkg');

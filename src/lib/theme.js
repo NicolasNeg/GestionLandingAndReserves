@@ -12,6 +12,10 @@ export const DEFAULT_THEME = {
 
 const colorKeys = ['primary', 'primaryDark', 'accent', 'surface', 'text'];
 
+function isPermissionDenied(error) {
+  return error?.code === 'permission-denied' || /insufficient permissions/i.test(String(error?.message || ''));
+}
+
 function safeColor(value, fallback) {
   return /^#[0-9a-f]{6}$/i.test(String(value || '')) ? value : fallback;
 }
@@ -48,7 +52,9 @@ export async function readThemeConfig() {
     const snap = await getDoc(doc(db, 'appConfig', 'theme'));
     return mergeTheme(snap.exists() ? snap.data() : {});
   } catch (error) {
-    console.warn('Tema Firestore no disponible:', error);
+    if (!isPermissionDenied(error)) {
+      console.warn('Tema Firestore no disponible:', error);
+    }
     return DEFAULT_THEME;
   }
 }

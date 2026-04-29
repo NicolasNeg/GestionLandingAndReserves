@@ -1,4 +1,4 @@
-import { auth, googleProvider, facebookProvider, appleProvider } from '../firebase-config.js';
+import { auth, googleProvider, facebookProvider } from '../firebase-config.js';
 import {
     signInWithPopup,
     signInWithEmailAndPassword,
@@ -11,13 +11,13 @@ import {
 } from 'firebase/auth';
 import { navigateTo } from '../router.js';
 import { getAuthActionParams } from '../lib/authUrlParams.js';
-import { syncFirestoreUserProfile } from '../lib/accessControl.js';
+import { isBootstrapProgramadorEmail, syncFirestoreUserProfile } from '../lib/accessControl.js';
 import { getUserProfile, upsertUser } from '../dataconnect-generated';
 
 const Login = {
     render: () => `
-        <div class="h-full flex items-center justify-center bg-gray-50 p-4 pt-12 pb-12">
-            <div class="max-w-md w-full bg-white rounded-2xl shadow-xl overflow-hidden">
+        <div class="balneario-page-bg flex min-h-full items-center justify-center p-4 pt-12 pb-12">
+            <div class="login-card max-w-md w-full bg-white rounded-2xl shadow-xl overflow-hidden">
                 <div class="p-8">
                     <h2 class="text-3xl font-black text-center text-gray-800 mb-2">Bienvenido</h2>
                     <p class="text-center text-gray-500 mb-8" id="form-subtitle">Inicia sesión en tu cuenta</p>
@@ -76,15 +76,12 @@ const Login = {
                             </div>
                         </div>
 
-                        <div class="mt-6 grid grid-cols-3 gap-3">
+                        <div class="mt-6 grid grid-cols-2 gap-3">
                             <button id="btn-google" class="flex justify-center items-center py-2 px-4 border border-gray-200 rounded-xl hover:bg-gray-50 transition">
                                 <img src="https://www.svgrepo.com/show/475656/google-color.svg" alt="Google" class="h-6 w-6">
                             </button>
                             <button id="btn-facebook" class="flex justify-center items-center py-2 px-4 border border-gray-200 rounded-xl hover:bg-gray-50 transition">
                                 <img src="https://www.svgrepo.com/show/475647/facebook-color.svg" alt="Facebook" class="h-6 w-6">
-                            </button>
-                            <button id="btn-apple" class="flex justify-center items-center py-2 px-4 border border-gray-200 rounded-xl hover:bg-gray-50 transition">
-                                <i class="fab fa-apple text-xl text-black"></i>
                             </button>
                         </div>
                     </div>
@@ -332,22 +329,24 @@ const Login = {
 
         const syncUserToDataConnect = async (user, displayName) => {
             let profileUser = null;
+            const targetRole = isBootstrapProgramadorEmail(user.email) ? 'programador' : 'cliente';
+            const targetName = displayName || user.displayName || 'Usuario';
             try {
                 // Verificar si el usuario ya existe para no sobrescribir su rol
                 const profileRes = await getUserProfile({ id: user.uid });
                 profileUser = profileRes.data?.user || null;
-                if (!profileUser) {
-                    // Es un usuario nuevo, lo registramos como cliente
+                if (!profileUser || (targetRole === 'programador' && profileUser.rol !== 'programador')) {
                     await upsertUser({
                         id: user.uid,
                         email: user.email,
-                        nombre: displayName || user.displayName || 'Usuario',
-                        rol: 'cliente'
+                        nombre: profileUser?.nombre || targetName,
+                        rol: targetRole
                     });
                     profileUser = {
+                        ...profileUser,
                         email: user.email,
-                        nombre: displayName || user.displayName || 'Usuario',
-                        rol: 'cliente'
+                        nombre: profileUser?.nombre || targetName,
+                        rol: targetRole
                     };
                 }
             } catch (err) {
@@ -356,7 +355,8 @@ const Login = {
             try {
                 await syncFirestoreUserProfile(user, profileUser || {
                     email: user.email,
-                    nombre: displayName || user.displayName || 'Usuario'
+                    nombre: targetName,
+                    rol: targetRole
                 });
             } catch (err) {
                 console.error("Error sincronizando Firestore:", err);
@@ -415,7 +415,6 @@ const Login = {
 
         document.getElementById('btn-google').addEventListener('click', () => handleSSO(googleProvider));
         document.getElementById('btn-facebook').addEventListener('click', () => handleSSO(facebookProvider));
-        document.getElementById('btn-apple').addEventListener('click', () => handleSSO(appleProvider));
 
         btnForgotPassword?.addEventListener('click', async () => {
             const email = emailInput.value.trim();
