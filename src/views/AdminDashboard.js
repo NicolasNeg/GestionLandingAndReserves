@@ -291,6 +291,90 @@ const AdminDashboard = {
                       <input id="prod-stock" type="number" class="rounded border p-2" placeholder="Stock inicial" />
                       <button id="btn-create-producto" class="rounded bg-emerald-600 px-4 py-2 font-semibold text-white hover:bg-emerald-700">Guardar producto</button>
                     </div>
+                    <div
+                      id="prod-edit-modal"
+                      class="fixed inset-0 z-[240] hidden items-center justify-center p-4"
+                      role="dialog"
+                      aria-modal="true"
+                      aria-labelledby="prod-edit-title"
+                    >
+                      <div class="absolute inset-0 bg-slate-950/60 backdrop-blur-[2px]" data-prod-edit-backdrop></div>
+                      <div class="relative w-full max-w-lg rounded-2xl border border-slate-200 bg-white shadow-2xl overflow-hidden">
+                        <div class="flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-4">
+                          <div class="min-w-0">
+                            <h3 id="prod-edit-title" class="text-lg font-black text-slate-900">Editar producto</h3>
+                            <p class="text-xs font-semibold text-slate-500">Actualiza titulo, descripcion, imagen y precio.</p>
+                          </div>
+                          <button type="button" id="prod-edit-cancel" class="grid h-9 w-9 place-items-center rounded-full border border-slate-300 bg-white text-slate-600 hover:bg-slate-50" aria-label="Cerrar">
+                            ${icon('x', 'h-4 w-4')}
+                          </button>
+                        </div>
+
+                        <div class="space-y-4 p-5">
+                          <div id="prod-edit-error" class="hidden rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700"></div>
+
+                          <label class="block text-xs font-bold uppercase tracking-wide text-slate-600">
+                            Titulo
+                            <input id="prod-edit-titulo" type="text" class="mt-1 w-full rounded border border-slate-300 p-2 text-sm" />
+                          </label>
+
+                          <label class="block text-xs font-bold uppercase tracking-wide text-slate-600">
+                            Descripcion
+                            <textarea id="prod-edit-desc" rows="3" class="mt-1 w-full rounded border border-slate-300 p-2 text-sm"></textarea>
+                          </label>
+
+                          <label class="block text-xs font-bold uppercase tracking-wide text-slate-600">
+                            Precio
+                            <input id="prod-edit-precio" type="number" step="0.01" class="mt-1 w-full rounded border border-slate-300 p-2 text-sm" />
+                          </label>
+
+                          <div class="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                            <p class="text-xs font-bold uppercase tracking-wide text-slate-600 mb-2">Imagen del producto</p>
+                            <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
+                              <input id="prod-edit-image-file" type="file" accept="image/jpeg,image/png,image/webp,image/gif" class="hidden" />
+                              <button type="button" id="prod-edit-image-pick" class="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-800 shadow-sm hover:bg-slate-50">
+                                ${icon('image', 'h-4 w-4')} Elegir imagen
+                              </button>
+                              <button type="button" id="prod-edit-image-clear" class="hidden text-sm font-semibold text-rose-600 hover:underline">Quitar</button>
+                              <div id="prod-edit-image-preview-wrap" class="hidden sm:ml-auto">
+                                <img id="prod-edit-image-preview" src="" alt="Vista previa" class="h-24 w-24 rounded-lg border border-slate-200 object-cover shadow-sm" />
+                              </div>
+                            </div>
+                            <p class="mt-2 text-xs text-slate-500">Se recorta antes de subir.</p>
+                          </div>
+
+                          <div class="flex gap-2 pt-2">
+                            <button type="button" id="prod-edit-save" class="flex-1 rounded-xl bg-emerald-600 px-4 py-2 font-bold text-white hover:bg-emerald-700">Guardar</button>
+                            <button type="button" id="prod-edit-cancel-2" class="flex-1 rounded-xl border border-slate-300 bg-white px-4 py-2 font-bold text-slate-700 hover:bg-slate-50">Cancelar</button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div
+                      id="prod-delete-modal"
+                      class="fixed inset-0 z-[250] hidden items-center justify-center p-4"
+                      role="dialog"
+                      aria-modal="true"
+                      aria-labelledby="prod-delete-title"
+                    >
+                      <div class="absolute inset-0 bg-slate-950/60 backdrop-blur-[2px]" data-prod-delete-backdrop></div>
+                      <div class="relative w-full max-w-md rounded-2xl border border-slate-200 bg-white shadow-2xl overflow-hidden">
+                        <div class="px-5 py-4 border-b border-slate-100 flex items-start justify-between gap-3">
+                          <div class="min-w-0">
+                            <h3 id="prod-delete-title" class="text-lg font-black text-slate-900">Eliminar producto</h3>
+                            <p class="text-sm text-slate-600 mt-1" id="prod-delete-msg">Esta accion no se puede deshacer.</p>
+                          </div>
+                          <button type="button" id="prod-delete-cancel" class="grid h-9 w-9 place-items-center rounded-full border border-slate-300 bg-white text-slate-600 hover:bg-slate-50" aria-label="Cerrar">
+                            ${icon('x', 'h-4 w-4')}
+                          </button>
+                        </div>
+                        <div class="p-5 flex gap-2">
+                          <button type="button" id="prod-delete-confirm" class="flex-1 rounded-xl bg-rose-600 px-4 py-2 font-bold text-white hover:bg-rose-700">Eliminar</button>
+                          <button type="button" id="prod-delete-cancel-2" class="flex-1 rounded-xl border border-slate-300 bg-white px-4 py-2 font-bold text-slate-700 hover:bg-slate-50">Cancelar</button>
+                        </div>
+                      </div>
+                    </div>
                   </div>` : ''}
                   <div class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
                     <div class="mb-4 flex items-center justify-between">
@@ -1273,6 +1357,225 @@ const AdminDashboard = {
       const mvWrap = document.getElementById('inventario-movimientos');
       if (!wrap || !mvWrap) return;
 
+      // Modal de edición/eliminación de productos (sin prompts nativos)
+      let croppedProductEditFile = null;
+      let prodEditImageShouldClear = false;
+      let prodEditPreviewObjectUrl = null;
+      let prodEditTarget = null;
+      let prodDeleteTarget = null;
+
+      const prodEditModal = document.getElementById('prod-edit-modal');
+      const prodEditError = document.getElementById('prod-edit-error');
+      const prodEditTitulo = document.getElementById('prod-edit-titulo');
+      const prodEditDesc = document.getElementById('prod-edit-desc');
+      const prodEditPrecio = document.getElementById('prod-edit-precio');
+      const prodEditImageFile = document.getElementById('prod-edit-image-file');
+      const prodEditImagePick = document.getElementById('prod-edit-image-pick');
+      const prodEditImageClear = document.getElementById('prod-edit-image-clear');
+      const prodEditImagePreviewWrap = document.getElementById('prod-edit-image-preview-wrap');
+      const prodEditImagePreview = document.getElementById('prod-edit-image-preview');
+      const prodEditSaveBtn = document.getElementById('prod-edit-save');
+      const prodEditCancelBtn = document.getElementById('prod-edit-cancel');
+      const prodEditCancelBtn2 = document.getElementById('prod-edit-cancel-2');
+
+      const prodDeleteModal = document.getElementById('prod-delete-modal');
+      const prodDeleteMsg = document.getElementById('prod-delete-msg');
+      const prodDeleteConfirmBtn = document.getElementById('prod-delete-confirm');
+      const prodDeleteCancelBtn = document.getElementById('prod-delete-cancel');
+      const prodDeleteCancelBtn2 = document.getElementById('prod-delete-cancel-2');
+
+      const closeProdEdit = () => {
+        prodEditModal?.classList.add('hidden');
+        prodEditError?.classList.add('hidden');
+        prodEditError && (prodEditError.textContent = '');
+        prodEditTarget = null;
+        croppedProductEditFile = null;
+        prodEditImageShouldClear = false;
+        if (prodEditPreviewObjectUrl) {
+          try {
+            URL.revokeObjectURL(prodEditPreviewObjectUrl);
+          } catch {
+            /* noop */
+          }
+        }
+        prodEditPreviewObjectUrl = null;
+        if (prodEditImagePreview) prodEditImagePreview.src = '';
+        if (prodEditImagePreviewWrap) prodEditImagePreviewWrap.classList.add('hidden');
+        if (prodEditImageClear) prodEditImageClear.classList.add('hidden');
+        if (prodEditImageFile) prodEditImageFile.value = '';
+      };
+
+      const openProdEdit = (p) => {
+        prodEditTarget = p;
+        prodEditError?.classList.add('hidden');
+        prodEditError && (prodEditError.textContent = '');
+        croppedProductEditFile = null;
+        prodEditImageShouldClear = false;
+
+        if (prodEditPreviewObjectUrl) {
+          try {
+            URL.revokeObjectURL(prodEditPreviewObjectUrl);
+          } catch {
+            /* noop */
+          }
+        }
+        prodEditPreviewObjectUrl = null;
+
+        if (prodEditTitulo) prodEditTitulo.value = p.titulo || '';
+        if (prodEditDesc) prodEditDesc.value = p.descripcion || '';
+        if (prodEditPrecio) prodEditPrecio.value = Number(p.precio || 0);
+
+        const hasImg = Boolean(p.imagenUrl);
+        if (prodEditImagePreviewWrap) prodEditImagePreviewWrap.classList.toggle('hidden', !hasImg);
+        if (prodEditImageClear) prodEditImageClear.classList.toggle('hidden', !hasImg);
+        if (prodEditImagePreview) prodEditImagePreview.src = hasImg ? p.imagenUrl : '';
+        if (prodEditImageFile) prodEditImageFile.value = '';
+      };
+
+      const closeProdDelete = () => {
+        prodDeleteModal?.classList.add('hidden');
+        prodDeleteTarget = null;
+      };
+
+      const openProdDelete = (p) => {
+        prodDeleteTarget = p;
+        if (prodDeleteMsg) prodDeleteMsg.textContent = `¿Eliminar "${p.titulo}"? Esta accion no se puede deshacer.`;
+        prodDeleteModal?.classList.remove('hidden');
+      };
+
+      if (prodEditModal) {
+        prodEditModal.addEventListener('click', (ev) => {
+          if (ev.target?.getAttribute('data-prod-edit-backdrop') != null) closeProdEdit();
+        });
+        prodEditCancelBtn?.addEventListener('click', closeProdEdit);
+        prodEditCancelBtn2?.addEventListener('click', closeProdEdit);
+
+        prodEditImagePick?.addEventListener('click', () => prodEditImageFile?.click());
+        prodEditImageClear?.addEventListener('click', () => {
+          prodEditImageShouldClear = true;
+          croppedProductEditFile = null;
+          if (prodEditPreviewObjectUrl) {
+            try {
+              URL.revokeObjectURL(prodEditPreviewObjectUrl);
+            } catch {
+              /* noop */
+            }
+          }
+          prodEditPreviewObjectUrl = null;
+          prodEditImagePreview && (prodEditImagePreview.src = '');
+          prodEditImagePreviewWrap?.classList.add('hidden');
+          prodEditImageClear?.classList.add('hidden');
+          if (prodEditImageFile) prodEditImageFile.value = '';
+        });
+
+        prodEditImageFile?.addEventListener('change', async () => {
+          const f = prodEditImageFile?.files?.[0];
+          if (!f) return;
+          if (!prodEditImagePreview || !prodEditImagePreviewWrap) return;
+          try {
+            const blob = await openImageCropModal({
+              file: f,
+              aspectRatio: Number.NaN,
+              title: 'Recortar imagen del producto'
+            });
+            const nameBase = (f.name && f.name.replace(/\.\w+$/, '')) || 'producto';
+            croppedProductEditFile = new File([blob], `${nameBase}.jpg`, { type: 'image/jpeg' });
+            prodEditImageShouldClear = false;
+
+            if (prodEditPreviewObjectUrl) {
+              try {
+                URL.revokeObjectURL(prodEditPreviewObjectUrl);
+              } catch {
+                /* noop */
+              }
+            }
+            prodEditPreviewObjectUrl = URL.createObjectURL(croppedProductEditFile);
+            prodEditImagePreview.src = prodEditPreviewObjectUrl;
+            prodEditImagePreviewWrap.classList.remove('hidden');
+            prodEditImageClear?.classList.remove('hidden');
+          } catch (e) {
+            if (e?.name === 'AbortError') return;
+            console.error(e);
+            if (prodEditError) {
+              prodEditError.textContent = e?.message || 'No se pudo procesar la imagen.';
+              prodEditError.classList.remove('hidden');
+            }
+          }
+        });
+
+        prodEditSaveBtn?.addEventListener('click', async () => {
+          if (!prodEditTarget) return;
+          const titulo = prodEditTitulo?.value?.trim() || '';
+          const descripcion = prodEditDesc?.value?.trim() || '';
+          const precio = parseFloat(prodEditPrecio?.value || '0');
+
+          if (!titulo || !(precio > 0)) {
+            if (prodEditError) {
+              prodEditError.textContent = 'Titulo y precio valido son obligatorios.';
+              prodEditError.classList.remove('hidden');
+            }
+            return;
+          }
+
+          const user = auth.currentUser;
+          if (!user?.uid) {
+            if (prodEditError) {
+              prodEditError.textContent = 'Sesion no valida. Vuelve a iniciar sesion.';
+              prodEditError.classList.remove('hidden');
+            }
+            return;
+          }
+
+          try {
+            let imagenUrl = prodEditTarget.imagenUrl || '';
+            if (prodEditImageShouldClear) imagenUrl = '';
+            if (croppedProductEditFile) {
+              imagenUrl = await uploadProductImage(croppedProductEditFile, user.uid);
+            }
+
+            await updateProducto({
+              id: prodEditTarget.id,
+              titulo,
+              descripcion,
+              imagenUrl,
+              precio,
+              activo: Boolean(prodEditTarget.activo)
+            });
+            await publishAppUpdate('inventory', `Producto ${prodEditTarget.id} editado`);
+            closeProdEdit();
+            await loadProductos();
+          } catch (e) {
+            console.error(e);
+            if (prodEditError) {
+              prodEditError.textContent = e?.message || 'No se pudo guardar el producto.';
+              prodEditError.classList.remove('hidden');
+            }
+          }
+        });
+      }
+
+      if (prodDeleteModal) {
+        prodDeleteModal.addEventListener('click', (ev) => {
+          if (ev.target?.getAttribute('data-prod-delete-backdrop') != null) closeProdDelete();
+        });
+        prodDeleteCancelBtn?.addEventListener('click', closeProdDelete);
+        prodDeleteCancelBtn2?.addEventListener('click', closeProdDelete);
+
+        prodDeleteConfirmBtn?.addEventListener('click', async () => {
+          if (!prodDeleteTarget) return;
+          try {
+            await deleteProducto({ id: prodDeleteTarget.id });
+            await publishAppUpdate('inventory', `Producto ${prodDeleteTarget.id} eliminado`);
+            closeProdDelete();
+            await loadProductos();
+          } catch (e) {
+            console.error(e);
+            closeProdDelete();
+            await loadProductos();
+          }
+        });
+      }
+
       const renderMovs = async (productoId) => {
         if (!productoId) {
           mvWrap.innerHTML = 'Selecciona un producto para ver historial.';
@@ -1377,33 +1680,22 @@ const AdminDashboard = {
             btn.addEventListener('click', () => renderMovs(btn.getAttribute('data-prod-show-mov')));
           });
           if (canManage) {
-            document.querySelectorAll('[data-prod-edit]').forEach((btn) => btn.addEventListener('click', async () => {
-              const id = btn.getAttribute('data-prod-edit');
-              const p = byId.get(id);
-              if (!p) return;
-              const titulo = window.prompt('Titulo', p.titulo || '');
-              if (titulo == null) return;
-              const descripcionPrompt = window.prompt('Descripcion', p.descripcion || '');
-              const descripcion = descripcionPrompt == null ? (p.descripcion || '') : descripcionPrompt;
-              const precioRaw = window.prompt('Precio', String(p.precio || 0));
-              if (precioRaw == null) return;
-              const precio = Number(precioRaw);
-              if (!titulo.trim() || !(precio > 0)) {
-                await showAlert('Titulo y precio valido son obligatorios.', { title: 'Producto', variant: 'warning' });
-                return;
-              }
-              await updateProducto({ id, titulo: titulo.trim(), descripcion, imagenUrl: p.imagenUrl || '', precio, activo: Boolean(p.activo) });
-              await publishAppUpdate('inventory', `Producto ${id} editado`);
-              await loadProductos();
-            }));
-            document.querySelectorAll('[data-prod-del]').forEach((btn) => btn.addEventListener('click', async () => {
-              const id = btn.getAttribute('data-prod-del');
-              if (!id) return;
-              if (!window.confirm('Eliminar producto? Esta accion no se puede deshacer.')) return;
-              await deleteProducto({ id });
-              await publishAppUpdate('inventory', `Producto ${id} eliminado`);
-              await loadProductos();
-            }));
+            document.querySelectorAll('[data-prod-edit]').forEach((btn) =>
+              btn.addEventListener('click', () => {
+                const id = btn.getAttribute('data-prod-edit');
+                const p = byId.get(id);
+                if (!p) return;
+                openProdEdit(p);
+              })
+            );
+            document.querySelectorAll('[data-prod-del]').forEach((btn) =>
+              btn.addEventListener('click', () => {
+                const id = btn.getAttribute('data-prod-del');
+                const p = byId.get(id);
+                if (!p) return;
+                openProdDelete(p);
+              })
+            );
           }
 
           if (canAdjust) {
@@ -1500,17 +1792,6 @@ const AdminDashboard = {
             file: f,
             aspectRatio: Number.NaN,
             title: 'Recortar imagen del producto'
-          });
-          body.querySelectorAll('[data-svc-del]').forEach((btn) => {
-            btn.addEventListener('click', async () => {
-              const row = btn.closest('tr');
-              const id = row?.getAttribute('data-svc-id');
-              if (!id) return;
-              if (!window.confirm('Eliminar servicio?')) return;
-              await deleteServicio({ id });
-              await publishAppUpdate('landing', 'Servicio eliminado');
-              await loadServicios();
-            });
           });
         } catch (e) {
           if (e?.name === 'AbortError') {

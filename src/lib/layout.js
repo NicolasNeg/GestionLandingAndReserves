@@ -132,10 +132,12 @@ function ensureCartDrawer() {
   if (drawer) return drawer;
   drawer = document.createElement('div');
   drawer.id = 'app-cart-drawer';
-  drawer.className = 'fixed inset-0 z-[120] hidden';
+  // No usamos `hidden` para que las transiciones se vean siempre.
+  // El drawer se controla con opacity + transform y pointer-events.
+  drawer.className = 'fixed inset-0 z-[120] pointer-events-none opacity-0 transition-opacity duration-300 ease-out';
   drawer.innerHTML = `
-    <div class="absolute inset-0 bg-slate-900/55 backdrop-blur-[2px]" data-app-cart-overlay></div>
-    <aside class="absolute inset-y-0 right-0 flex h-full w-full max-w-md flex-col rounded-l-3xl border-l border-cyan-100 bg-slate-50 shadow-[-20px_0px_40px_rgba(0,104,95,0.14)]">
+    <div class="absolute inset-0 bg-slate-900/55 backdrop-blur-[2px] opacity-0 transition-opacity duration-300 ease-out" data-app-cart-overlay></div>
+    <aside class="absolute inset-y-0 right-0 flex h-full w-full max-w-md flex-col rounded-l-3xl border-l border-cyan-100 bg-slate-50 shadow-[-20px_0px_40px_rgba(0,104,95,0.14)] translate-x-full opacity-0 transition-transform transition-opacity duration-300 ease-out will-change-transform">
       <div class="flex items-center justify-between border-b border-cyan-100/80 px-5 py-4">
         <h3 class="text-xl font-black text-teal-700">Tu carrito</h3>
         <button type="button" data-app-cart-close class="grid h-9 w-9 place-items-center rounded-full border border-slate-300 bg-white text-slate-500 transition hover:text-teal-700 hover:bg-slate-100" aria-label="Cerrar carrito">
@@ -239,13 +241,27 @@ function openCartDrawer() {
   const drawer = ensureCartDrawer();
   cartOpen = true;
   renderCartDrawer();
-  drawer.classList.remove('hidden');
+  const overlay = drawer.querySelector('[data-app-cart-overlay]');
+  const aside = drawer.querySelector('aside');
+  drawer.classList.remove('pointer-events-none', 'opacity-0');
+  drawer.classList.add('pointer-events-auto', 'opacity-100');
+  overlay?.classList.remove('opacity-0');
+  overlay?.classList.add('opacity-100');
+  aside?.classList.remove('translate-x-full', 'opacity-0');
+  aside?.classList.add('translate-x-0', 'opacity-100');
 }
 
 function closeCartDrawer() {
   const drawer = ensureCartDrawer();
   cartOpen = false;
-  drawer.classList.add('hidden');
+  const overlay = drawer.querySelector('[data-app-cart-overlay]');
+  const aside = drawer.querySelector('aside');
+  drawer.classList.remove('pointer-events-auto', 'opacity-100');
+  drawer.classList.add('pointer-events-none', 'opacity-0');
+  overlay?.classList.remove('opacity-100');
+  overlay?.classList.add('opacity-0');
+  aside?.classList.remove('translate-x-0', 'opacity-100');
+  aside?.classList.add('translate-x-full', 'opacity-0');
 }
 
 export function closeUserMenu() {
