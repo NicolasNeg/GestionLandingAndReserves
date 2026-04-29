@@ -9,6 +9,7 @@ import {
   drawDistribucionCanvas,
   DEFAULT_MAPA_JSON,
   MAP_ITEM_KINDS,
+  createMapViewer,
   findMapItemIndexAtClientPoint,
   parseDistribucionJson
 } from '../lib/distribucionMapa.js';
@@ -140,7 +141,8 @@ function renderScheduleRows(schedule) {
 }
 
 function renderMapLegend() {
-  return MAP_ITEM_KINDS.map(
+  const publicKinds = ['area', 'mesa', 'estacionamiento', 'alberca', 'palapa', 'servicio', 'entrada', 'limitacion'];
+  return MAP_ITEM_KINDS.filter((kind) => publicKinds.includes(kind.value)).map(
     (kind) => `
       <span class="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-black text-slate-700">
         <span class="h-3 w-3 rounded-sm border" style="background:${escapeHtml(kind.fill)}; border-color:${escapeHtml(kind.stroke)}"></span>
@@ -148,6 +150,10 @@ function renderMapLegend() {
       </span>
     `
   ).join('');
+}
+
+function getPublicKindLabel(kindValue) {
+  return MAP_ITEM_KINDS.find((kind) => kind.value === kindValue)?.label || 'Zona';
 }
 
 function googleMapsEmbedUrl(rawUrl) {
@@ -654,10 +660,15 @@ export default {
                     <p class="text-sm font-black text-slate-800">Leyenda de espacios</p>
                     <div class="flex flex-wrap gap-2">${renderMapLegend()}</div>
                   </div>
-                  <div class="overflow-x-auto p-4">
-                    <canvas id="landing-mapa-canvas" width="800" height="440" class="mx-auto block max-w-full rounded-2xl border border-cyan-100 shadow-inner"></canvas>
+                  <div class="relative h-[420px] overflow-hidden bg-slate-950 sm:h-[520px]">
+                    <canvas id="landing-mapa-canvas" width="1000" height="620" class="absolute inset-0 h-full w-full cursor-grab"></canvas>
+                    <div class="absolute right-3 top-3 z-10 flex items-center gap-1 rounded-xl border border-white/20 bg-white/90 p-1 shadow-lg backdrop-blur">
+                      <button type="button" id="landing-map-zoom-out" class="grid h-8 w-8 place-items-center rounded-lg text-sm font-black text-slate-700 hover:bg-slate-100" title="Alejar">−</button>
+                      <button type="button" id="landing-map-reset" class="rounded-lg px-2 py-1 text-[11px] font-black uppercase text-slate-500 hover:bg-slate-100" title="Restablecer">Reset</button>
+                      <button type="button" id="landing-map-zoom-in" class="grid h-8 w-8 place-items-center rounded-lg text-sm font-black text-slate-700 hover:bg-slate-100" title="Acercar">+</button>
+                    </div>
                   </div>
-                  <div id="landing-map-info" class="border-t border-slate-100 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-600">
+                  <div id="landing-map-info" class="border-t border-slate-100 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-600 sm:min-h-16">
                     Toca una zona del mapa para ver su descripción.
                   </div>
                 </div>
@@ -807,7 +818,37 @@ export default {
     if (est) est.textContent = landing.estacionamientoTexto;
 
     const mapCanvas = document.getElementById('landing-mapa-canvas');
-    if (mapCanvas) drawDistribucionCanvas(mapCanvas, landing.mapaDistribucionJson, { showItemIds: false, showKindBadge: true });
+    let globalMapViewer = null;
+    const mapInfo = document.getElementById('landing-map-info');
+    const setMapInfo = (item) => {
+      if (!mapInfo) return;
+      if (!item) {
+        mapInfo.textContent = 'Toca una zona del mapa para ver su descripción.';
+        return;
+      }
+      const publicDetail =
+        item.metadata?.description ||
+        item.notes ||
+        item.metadata?.category ||
+        '';
+      mapInfo.innerHTML = `
+        <div class="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+          <span><strong class="text-slate-900">${escapeHtml(item.label || 'Zona')}</strong>${publicDetail ? ` · ${escapeHtml(publicDetail)}` : ''}</span>
+          <span class="text-xs font-black uppercase tracking-wide text-cyan-700">${escapeHtml(getPublicKindLabel(item.kind))}</span>
+        </div>
+      `;
+    };
+    if (mapCanvas) {
+      globalMapViewer = createMapViewer(mapCanvas, landing.mapaDistribucionJson, {
+        view: 'global',
+        showItemIds: false,
+        showKindBadge: false,
+        onSelect: (item) => setMapInfo(item)
+      });
+      document.getElementById('landing-map-zoom-in')?.addEventListener('click', () => globalMapViewer?.zoomIn());
+      document.getElementById('landing-map-zoom-out')?.addEventListener('click', () => globalMapViewer?.zoomOut());
+      document.getElementById('landing-map-reset')?.addEventListener('click', () => globalMapViewer?.reset());
+    }
 
     const parkingMapCanvas = document.getElementById('landing-parking-canvas');
     if (parkingMapCanvas) {
@@ -983,7 +1024,8 @@ export default {
           const libres = spots.filter((s) => s.estado === 'libre').length;
           const reservados = spots.filter((s) => s.estado === 'reservado').length;
           const ocupados = spots.filter((s) => s.estado === 'ocupado').length;
-          parkingSummary.textContent = `Libres: ${libres} · Reservados: ${reservados} · Ocupados: ${ocupados}`;
+          const mantenimiento = spots.filter((s) => s.estado === 'mantenimiento' || s.estado === 'taller').length;
+          parkingSummary.textContent = `Totales: ${spots.length} · Libres: ${libres} · Reservados: ${reservados} · Ocupados: ${ocupados} · Mantenimiento: ${mantenimiento}`;
           parkingMap.innerHTML = spots
             .map((s) => {
               const x = Math.max(0, Math.min(95, Number(s.x || 0)));
@@ -993,8 +1035,10 @@ export default {
                   ? 'bg-emerald-500'
                   : s.estado === 'reservado'
                     ? 'bg-amber-500'
-                    : 'bg-rose-600';
-              const title = `${s.id} · ${s.estado}${s.placas ? ` · ${s.placas}` : ''}${s.modelo ? ` · ${s.modelo}` : ''}`;
+                    : s.estado === 'mantenimiento' || s.estado === 'taller'
+                      ? 'bg-slate-600'
+                      : 'bg-rose-600';
+              const title = `${s.id} · ${s.estado || 'libre'}`;
               return `<div title="${escapeHtml(title)}" class="absolute h-7 min-w-7 rounded px-2 text-[11px] font-bold text-white ${cls} flex items-center justify-center" style="left:${x}%; top:${y}%">${escapeHtml(s.id)}</div>`;
             })
             .join('');
@@ -1010,8 +1054,7 @@ export default {
       );
     }
 
-    if (mapCanvas) {
-      const mapInfo = document.getElementById('landing-map-info');
+    if (mapCanvas && !globalMapViewer) {
       mapCanvas.addEventListener('click', (ev) => {
         const idx = findMapItemIndexAtClientPoint(mapCanvas, landing.mapaDistribucionJson, ev.clientX, ev.clientY);
         const item = parseDistribucionJson(landing.mapaDistribucionJson).items[idx];

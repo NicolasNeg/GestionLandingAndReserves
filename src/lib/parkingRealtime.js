@@ -44,6 +44,7 @@ export async function upsertParkingSpot(spot) {
       placas: spot.placas || '',
       modelo: spot.modelo || '',
       reservadoPor: spot.reservadoPor || '',
+      ubicacion: spot.ubicacion || 'patio',
       updatedAt: serverTimestamp()
     },
     { merge: true }

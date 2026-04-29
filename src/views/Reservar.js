@@ -18,6 +18,7 @@ import {
   upsertMesaReservaLive
 } from '../lib/mesaRealtime.js';
 import {
+  createMapViewer,
   drawDistribucionCanvas,
   findMapItemIndexAtClientPoint,
   parseDistribucionJson
@@ -69,18 +70,31 @@ export default {
 
         <div class="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_280px]">
           <div class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-            <div id="reservar-canvas-wrap" class="relative overflow-auto p-4">
-              <canvas id="reservar-canvas" width="800" height="440" class="mx-auto block max-w-full cursor-crosshair rounded-xl border border-slate-100 bg-slate-50"></canvas>
+            <div id="reservar-canvas-wrap" class="relative h-[430px] overflow-hidden bg-slate-950 sm:h-[560px]">
+              <canvas id="reservar-canvas" width="1000" height="620" class="absolute inset-0 h-full w-full cursor-pointer"></canvas>
+              <div class="absolute right-3 top-3 z-10 flex items-center gap-1 rounded-xl border border-white/20 bg-white/90 p-1 shadow-lg backdrop-blur">
+                <button type="button" id="reservar-map-zoom-out" class="grid h-8 w-8 place-items-center rounded-lg text-sm font-black text-slate-700 hover:bg-slate-100">−</button>
+                <button type="button" id="reservar-map-reset" class="rounded-lg px-2 py-1 text-[11px] font-black uppercase text-slate-500 hover:bg-slate-100">Reset</button>
+                <button type="button" id="reservar-map-zoom-in" class="grid h-8 w-8 place-items-center rounded-lg text-sm font-black text-slate-700 hover:bg-slate-100">+</button>
+              </div>
               <p id="reservar-canvas-placeholder" class="hidden py-16 text-center text-sm text-slate-500"></p>
             </div>
           </div>
-          <aside class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+          <aside class="space-y-4">
+            <div id="reservar-mesa-panel" class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+              <p class="text-xs font-black uppercase tracking-wide text-teal-700">Mesa seleccionada</p>
+              <div id="reservar-mesa-detail" class="mt-3 text-sm text-slate-600">
+                Toca una mesa libre para revisar detalles y confirmar.
+              </div>
+            </div>
+            <div class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
             <p class="text-xs font-black uppercase tracking-wide text-teal-700">Mis apartados</p>
             <p class="mt-1 text-xs text-slate-500">Para el día seleccionado.</p>
             <div id="reservar-mis" class="mt-4 space-y-2 text-sm"></div>
             <p class="mt-4 text-xs text-slate-500">
               ${icon('info', 'h-4 w-4 inline-block')} Inicia sesión para apartar. El mapa coincide con el editor del personal.
             </p>
+            </div>
           </aside>
         </div>
       </div>
@@ -93,11 +107,20 @@ export default {
     const msgEl = document.getElementById('reservar-msg');
     const misEl = document.getElementById('reservar-mis');
     const placeholder = document.getElementById('reservar-canvas-placeholder');
+    const detailEl = document.getElementById('reservar-mesa-detail');
     if (!canvas || !fechaInput) return;
 
     let mapJson = '';
     let currentFecha = (fechaInput.value || '').trim() || formatFechaDia();
     let unsubscribeLive = null;
+    let mesaViewer = null;
+    const mesaViewerOptions = {
+      view: 'mesas',
+      showItemIds: false,
+      showKindBadge: false,
+      statusByMapItemId: {},
+      onSelect: (item) => openMesaDetail(item)
+    };
     const ownerByMapItemId = new Map();
     const stateByMapItemId = new Map();
     /** @type {Set<string>} */
@@ -144,7 +167,15 @@ export default {
       }
       canvas.classList.remove('hidden');
       if (placeholder) placeholder.classList.add('hidden');
-      drawDistribucionCanvas(canvas, mapJson, { statusByMapItemId });
+      mesaViewerOptions.statusByMapItemId = statusByMapItemId;
+      if (!mesaViewer) {
+        mesaViewer = createMapViewer(canvas, mapJson, mesaViewerOptions);
+        document.getElementById('reservar-map-zoom-in')?.addEventListener('click', () => mesaViewer?.zoomIn());
+        document.getElementById('reservar-map-zoom-out')?.addEventListener('click', () => mesaViewer?.zoomOut());
+        document.getElementById('reservar-map-reset')?.addEventListener('click', () => mesaViewer?.reset());
+      } else {
+        mesaViewer.redraw();
+      }
     };
 
     const loadApartadasBase = async () => {
@@ -265,21 +296,76 @@ export default {
       if (!isValidFechaDia(v)) return;
       currentFecha = v;
       setMsg('');
+      if (detailEl) detailEl.innerHTML = 'Toca una mesa libre para revisar detalles y confirmar.';
       await loadApartadasBase();
       connectLive();
       await renderMis();
     });
 
-    canvas.addEventListener('click', async (ev) => {
-      if (!mapJson || parsedEmpty) return;
-      const idx = findMapItemIndexAtClientPoint(canvas, mapJson, ev.clientX, ev.clientY);
-      const data = parseDistribucionJson(mapJson);
-      const item = data.items[idx];
+    function openMesaDetail(item) {
+      if (!detailEl) return;
       if (!item || item.kind !== 'mesa') {
-        await showAlert('Selecciona una mesa del mapa.', { title: 'Mapa', variant: 'warning' });
+        detailEl.innerHTML = '<p class="text-slate-500">Selecciona una mesa disponible del mapa.</p>';
         return;
       }
+      const metadata = item.metadata || {};
+      const capacidad = Number(metadata.capacidad || 4);
+      const precio = Number(metadata.precio || 0);
+      const estado = stateByMapItemId.get(item.id) || (apartadas.has(item.id) ? 'apartada' : 'libre');
+      const mine = ownerByMapItemId.get(item.id) === auth.currentUser?.uid;
+      const statusText =
+        estado === 'ocupada'
+          ? 'Ocupada'
+          : apartadas.has(item.id)
+            ? (mine ? 'Apartada por mi' : 'Apartada por otro usuario')
+            : 'Disponible';
+      const canReserve = estado !== 'ocupada' && !apartadas.has(item.id) && metadata.reservable !== false;
+      detailEl.innerHTML = `
+        <div class="space-y-3">
+          <div>
+            <h2 class="text-lg font-black text-slate-900">${escapeHtml(item.label || item.id)}</h2>
+            <p class="text-xs font-bold uppercase tracking-wide ${canReserve ? 'text-emerald-700' : 'text-amber-700'}">${escapeHtml(statusText)}</p>
+          </div>
+          <dl class="grid grid-cols-2 gap-2 text-xs">
+            <div class="rounded-xl bg-slate-50 p-2"><dt class="font-black text-slate-500">Capacidad</dt><dd class="mt-1 font-bold text-slate-900">${capacidad} personas</dd></div>
+            <div class="rounded-xl bg-slate-50 p-2"><dt class="font-black text-slate-500">Base</dt><dd class="mt-1 font-bold text-slate-900">${precio > 0 ? `$${precio.toFixed(2)}` : 'Incluida'}</dd></div>
+          </dl>
+          ${item.notes || metadata.description ? `<p class="rounded-xl bg-cyan-50 p-3 text-xs font-semibold leading-5 text-cyan-950">${escapeHtml(metadata.description || item.notes)}</p>` : ''}
+          <label class="block text-xs font-black uppercase tracking-wide text-slate-500">Extras
+            <select id="reservar-extra" class="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-900">
+              <option value="0">Sin extras</option>
+              <option value="80">Hielera / apoyo $80</option>
+              <option value="150">Decoracion sencilla $150</option>
+            </select>
+          </label>
+          <label class="block text-xs font-black uppercase tracking-wide text-slate-500">Codigo de descuento
+            <input id="reservar-descuento" class="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-900" placeholder="Opcional" />
+          </label>
+          <label class="block text-xs font-black uppercase tracking-wide text-slate-500">Metodo de pago
+            <select id="reservar-pago" class="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-900">
+              <option value="taquilla">Taquilla</option>
+              <option value="online">Online</option>
+            </select>
+          </label>
+          <div id="reservar-total" class="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm font-black text-slate-900">Total estimado: $${precio.toFixed(2)}</div>
+          <button type="button" id="reservar-confirmar-mesa" ${canReserve ? '' : 'disabled'} class="w-full rounded-xl ${canReserve ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-slate-300'} px-4 py-3 text-sm font-black text-white">
+            ${canReserve ? 'Confirmar apartado' : 'No disponible'}
+          </button>
+        </div>
+      `;
+      const totalEl = document.getElementById('reservar-total');
+      const updateTotal = () => {
+        const extra = Number(document.getElementById('reservar-extra')?.value || 0);
+        const code = String(document.getElementById('reservar-descuento')?.value || '').trim().toUpperCase();
+        const discount = code ? Math.min(50, (precio + extra) * 0.1) : 0;
+        if (totalEl) totalEl.textContent = `Total estimado: $${Math.max(0, precio + extra - discount).toFixed(2)}`;
+      };
+      document.getElementById('reservar-extra')?.addEventListener('change', updateTotal);
+      document.getElementById('reservar-descuento')?.addEventListener('input', updateTotal);
+      document.getElementById('reservar-confirmar-mesa')?.addEventListener('click', () => reserveMesa(item));
+    }
 
+    async function reserveMesa(item) {
       const user = auth.currentUser;
       if (!user) {
         await showAlert('Inicia sesión para apartar una mesa.', { title: 'Cuenta', variant: 'warning' });
@@ -357,13 +443,14 @@ export default {
           userId: user.uid,
           estado: 'apartada'
         });
-        await showAlert(`Mesa ${item.id} apartada para el ${currentFecha}.`, {
+        await showAlert(`Mesa ${item.label || item.id} apartada para el ${currentFecha}.`, {
           title: 'Listo',
           variant: 'success'
         });
         await loadApartadasBase();
         connectLive();
         await renderMis();
+        openMesaDetail(item);
       } catch (e) {
         console.error(e);
         try {
@@ -377,6 +464,13 @@ export default {
           : e?.message || 'No se pudo apartar.';
         await showAlert(msg, { title: 'Error', variant: 'danger' });
       }
+    }
+
+    canvas.addEventListener('click', async (ev) => {
+      if (!mapJson || parsedEmpty || mesaViewer) return;
+      const idx = findMapItemIndexAtClientPoint(canvas, mapJson, ev.clientX, ev.clientY);
+      const data = parseDistribucionJson(mapJson);
+      openMesaDetail(data.items[idx]);
     });
 
     async function checkMine(mapItemId) {
@@ -407,6 +501,7 @@ export default {
 
     auth.onAuthStateChanged(() => {
       renderMis();
+      redraw();
     });
 
     const onPopstate = () => {
