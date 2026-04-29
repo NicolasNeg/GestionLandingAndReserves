@@ -15,7 +15,15 @@ import {
   updateServicio,
   deleteServicio,
   deleteProducto,
-  updateTicketStatus
+  updateTicketStatus,
+  deleteUserRecord,
+  deleteConfiguracion,
+  deletePaquete,
+  deleteMovimientoInventario,
+  deleteLandingPage,
+  deleteDescuento,
+  deleteTicket,
+  deleteMesaReserva
 } from '../dataconnect-generated';
 import {
   createDistribucionEditor,
@@ -150,12 +158,12 @@ function collectBotonesFromDom() {
 const AdminDashboard = {
   render: async () => {
     const access = await getUserAccess(auth.currentUser);
+    const canScan = access.can('tickets.scan');
     const canPackages = access.can('packages.manage');
     const canSitioPanel =
       access.can('landing.manage') ||
       access.can('admin.panel') ||
       access.isProgramador === true;
-    const canScan = access.can('tickets.scan');
     const canAdminPanel = access.can('admin.panel');
     const canInventoryView = access.can('inventory.manage') || access.can('inventory.adjust') || access.can('sales.physical');
     const canParking = access.can('parking.manage');
@@ -446,6 +454,43 @@ const AdminDashboard = {
                             <strong>Balneario</strong>
                         </article>
                     </div>
+                    <section class="rounded-2xl border border-rose-300 bg-rose-50/70 p-5 shadow-sm">
+                        <div class="flex items-start gap-3">
+                            <span class="mt-0.5 text-rose-700">${icon('warning', 'h-5 w-5')}</span>
+                            <div class="min-w-0">
+                                <h3 class="text-base font-black text-rose-900">Zona de borrado global</h3>
+                                <p class="text-xs text-rose-800">Elimina cualquier registro por entidad + ID. Esta accion es permanente y no usa alertas del navegador.</p>
+                            </div>
+                        </div>
+                        <div class="mt-4 grid gap-3 sm:grid-cols-12">
+                            <label class="sm:col-span-4 text-xs font-semibold text-rose-900">Entidad
+                                <select id="admin-db-entity" class="mt-1 w-full rounded-lg border border-rose-300 bg-white p-2 text-sm">
+                                    <option value="ticket">Ticket (UUID)</option>
+                                    <option value="mesaReserva">MesaReserva (UUID)</option>
+                                    <option value="producto">Producto (UUID)</option>
+                                    <option value="servicio">Servicio (UUID)</option>
+                                    <option value="paquete">Paquete (UUID)</option>
+                                    <option value="descuento">Descuento (UUID)</option>
+                                    <option value="movimientoInventario">MovimientoInventario (UUID)</option>
+                                    <option value="configuracion">Configuracion (String ID)</option>
+                                    <option value="landingPage">LandingPage (String ID)</option>
+                                    <option value="user">User (UID String)</option>
+                                </select>
+                            </label>
+                            <label class="sm:col-span-5 text-xs font-semibold text-rose-900">ID del registro
+                                <input id="admin-db-record-id" type="text" class="mt-1 w-full rounded-lg border border-rose-300 bg-white p-2 text-sm" placeholder="Ej: 4b7f... o main o UID" />
+                            </label>
+                            <label class="sm:col-span-3 text-xs font-semibold text-rose-900">Confirmacion
+                                <input id="admin-db-confirm" type="text" class="mt-1 w-full rounded-lg border border-rose-300 bg-white p-2 text-sm" placeholder="Escribe BORRAR" />
+                            </label>
+                        </div>
+                        <div class="mt-3 flex flex-wrap items-center gap-2">
+                            <button type="button" id="admin-db-delete-btn" class="rounded-lg bg-rose-700 px-4 py-2 text-sm font-bold text-white hover:bg-rose-800">Eliminar registro</button>
+                            <button type="button" id="admin-db-clear-btn" class="rounded-lg border border-rose-300 bg-white px-4 py-2 text-sm font-bold text-rose-700 hover:bg-rose-100">Limpiar</button>
+                            <span id="admin-db-delete-status" class="text-xs font-semibold text-slate-600"></span>
+                        </div>
+                        <p class="mt-2 text-[11px] text-rose-800">Nota: borrar usuario puede fallar si tiene relaciones activas. En ese caso limpia relaciones primero o usa mantenimiento SQL controlado.</p>
+                    </section>
                 </div>` : ''}
 
                 ${canSitioPanel ? `<div id="admin-panel-sitio" class="hidden space-y-8">
@@ -711,6 +756,70 @@ const AdminDashboard = {
     const sidebar = document.getElementById('admin-sidebar');
     const collapse = document.getElementById('admin-sidebar-collapse');
     const access = await getUserAccess(auth.currentUser);
+    const dangerousDeleteMutations = {
+      ticket: deleteTicket,
+      mesaReserva: deleteMesaReserva,
+      producto: deleteProducto,
+      servicio: deleteServicio,
+      paquete: deletePaquete,
+      descuento: deleteDescuento,
+      movimientoInventario: deleteMovimientoInventario,
+      configuracion: deleteConfiguracion,
+      landingPage: deleteLandingPage,
+      user: deleteUserRecord
+    };
+
+    const dangerousDeleteEntity = document.getElementById('admin-db-entity');
+    const dangerousDeleteId = document.getElementById('admin-db-record-id');
+    const dangerousDeleteConfirm = document.getElementById('admin-db-confirm');
+    const dangerousDeleteStatus = document.getElementById('admin-db-delete-status');
+    const dangerousDeleteBtn = document.getElementById('admin-db-delete-btn');
+    const dangerousDeleteClearBtn = document.getElementById('admin-db-clear-btn');
+
+    const setDangerousDeleteStatus = (msg, tone = 'neutral') => {
+      if (!dangerousDeleteStatus) return;
+      dangerousDeleteStatus.textContent = msg || '';
+      dangerousDeleteStatus.className = 'text-xs font-semibold';
+      if (tone === 'ok') dangerousDeleteStatus.classList.add('text-emerald-700');
+      else if (tone === 'err') dangerousDeleteStatus.classList.add('text-rose-700');
+      else dangerousDeleteStatus.classList.add('text-slate-600');
+    };
+
+    dangerousDeleteClearBtn?.addEventListener('click', () => {
+      if (dangerousDeleteId) dangerousDeleteId.value = '';
+      if (dangerousDeleteConfirm) dangerousDeleteConfirm.value = '';
+      setDangerousDeleteStatus('');
+    });
+    dangerousDeleteBtn?.addEventListener('click', async () => {
+      const entity = String(dangerousDeleteEntity?.value || '');
+      const id = String(dangerousDeleteId?.value || '').trim();
+      const confirmation = String(dangerousDeleteConfirm?.value || '').trim().toUpperCase();
+      if (!entity || !dangerousDeleteMutations[entity]) {
+        setDangerousDeleteStatus('Entidad no soportada.', 'err');
+        return;
+      }
+      if (!id) {
+        setDangerousDeleteStatus('Captura un ID para borrar.', 'err');
+        return;
+      }
+      if (confirmation !== 'BORRAR') {
+        setDangerousDeleteStatus('Escribe BORRAR para confirmar.', 'err');
+        return;
+      }
+      try {
+        dangerousDeleteBtn.disabled = true;
+        setDangerousDeleteStatus('Eliminando registro...', 'neutral');
+        await dangerousDeleteMutations[entity]({ id });
+        setDangerousDeleteStatus(`Registro eliminado en ${entity}.`, 'ok');
+        if (dangerousDeleteConfirm) dangerousDeleteConfirm.value = '';
+        await publishAppUpdate('general', `admin-delete:${entity}:${id}`);
+      } catch (error) {
+        console.error('Error eliminando registro global:', error);
+        setDangerousDeleteStatus(error?.message || 'No se pudo eliminar el registro.', 'err');
+      } finally {
+        dangerousDeleteBtn.disabled = false;
+      }
+    });
 
     const setCollapsed = (collapsed) => {
       sidebar?.classList.toggle('is-collapsed', collapsed);

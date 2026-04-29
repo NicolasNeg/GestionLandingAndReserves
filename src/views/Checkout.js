@@ -280,8 +280,14 @@ const Checkout = {
                     const res = await createAnonymousTicket(variables);
                     ticketId = res.data.ticket_insert.id;
                 }
-                await publishAppUpdate('tickets', `created:${ticketId}`);
-                await publishAppUpdate('sales', `checkout:${ticketId}`);
+                try {
+                    await publishAppUpdate('tickets', `created:${ticketId}`);
+                    await publishAppUpdate('sales', `checkout:${ticketId}`);
+                } catch (rtErr) {
+                    // En compras anónimas no siempre hay permiso de escritura en appRealtime.
+                    // La compra/ticket no debe fallar por este canal auxiliar de sincronización.
+                    console.warn('Realtime publish no disponible para este usuario:', rtErr);
+                }
 
                 const estadoPago = variables.estadoPago;
 

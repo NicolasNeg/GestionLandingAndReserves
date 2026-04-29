@@ -25,6 +25,8 @@ export function createMapViewer(canvas, jsonOrDoc, options = {}) {
   let dragStart = null;
   let pinchStart = null;
   let destroyed = false;
+  let hoveredId = '';
+  let selectedId = '';
 
   canvas.style.touchAction = 'none';
   canvas.style.userSelect = 'none';
@@ -44,7 +46,11 @@ export function createMapViewer(canvas, jsonOrDoc, options = {}) {
 
   const draw = () => {
     if (destroyed) return;
-    drawMapCanvasViewport(canvas, doc, state, options);
+    drawMapCanvasViewport(canvas, doc, state, {
+      ...options,
+      hoveredId,
+      selectedIds: options.selectedIds || (selectedId ? [selectedId] : [])
+    });
   };
 
   const clientToMap = (clientX, clientY) => {
@@ -70,6 +76,20 @@ export function createMapViewer(canvas, jsonOrDoc, options = {}) {
     return hitTestMapDocument(doc, point.x, point.y);
   };
 
+  const setHoverFromClient = (ev) => {
+    if (options.interactive === false) return;
+    const hit = hitAtClient(ev.clientX, ev.clientY);
+    const nextHoveredId = hit.item?.id || '';
+    canvas.style.cursor = hit.item ? 'pointer' : 'grab';
+    if (nextHoveredId === hoveredId) return;
+    hoveredId = nextHoveredId;
+    options.onHover?.(hit.item || null, hit.index, clientToMap(ev.clientX, ev.clientY), {
+      clientX: ev.clientX,
+      clientY: ev.clientY
+    });
+    draw();
+  };
+
   const onWheel = (ev) => {
     if (options.interactive === false) return;
     ev.preventDefault();
@@ -81,6 +101,7 @@ export function createMapViewer(canvas, jsonOrDoc, options = {}) {
     if (options.interactive === false) return;
     pointers.set(ev.pointerId, ev);
     canvas.setPointerCapture?.(ev.pointerId);
+    canvas.style.cursor = 'grabbing';
     if (pointers.size === 2) {
       const [a, b] = [...pointers.values()];
       pinchStart = {
@@ -97,7 +118,10 @@ export function createMapViewer(canvas, jsonOrDoc, options = {}) {
   };
 
   const onPointerMove = (ev) => {
-    if (!pointers.has(ev.pointerId)) return;
+    if (!pointers.has(ev.pointerId)) {
+      setHoverFromClient(ev);
+      return;
+    }
     pointers.set(ev.pointerId, ev);
     if (pointers.size === 2 && pinchStart) {
       const [a, b] = [...pointers.values()];
@@ -125,8 +149,20 @@ export function createMapViewer(canvas, jsonOrDoc, options = {}) {
     const moved = Math.hypot(ev.clientX - start.x, ev.clientY - start.y);
     if (moved <= 5) {
       const hit = hitAtClient(ev.clientX, ev.clientY);
+      selectedId = hit.item?.id || '';
       options.onSelect?.(hit.item, hit.index, clientToMap(ev.clientX, ev.clientY));
+      draw();
+    } else {
+      canvas.style.cursor = hoveredId ? 'pointer' : 'grab';
     }
+  };
+
+  const onPointerLeave = () => {
+    if (!hoveredId) return;
+    hoveredId = '';
+    canvas.style.cursor = 'grab';
+    options.onHover?.(null, -1, null, null);
+    draw();
   };
 
   const resizeObserver = typeof ResizeObserver !== 'undefined'
@@ -142,6 +178,7 @@ export function createMapViewer(canvas, jsonOrDoc, options = {}) {
   canvas.addEventListener('pointermove', onPointerMove);
   canvas.addEventListener('pointerup', onPointerUp);
   canvas.addEventListener('pointercancel', onPointerUp);
+  canvas.addEventListener('pointerleave', onPointerLeave);
 
   fit();
   draw();
@@ -166,6 +203,8 @@ export function createMapViewer(canvas, jsonOrDoc, options = {}) {
     },
     setJson: (nextJson, nextOptions = {}) => {
       doc = typeof nextJson === 'string' ? parseMapDocument(nextJson, { ...options, ...nextOptions }) : nextJson;
+      hoveredId = '';
+      selectedId = '';
       fit();
       draw();
     },
@@ -181,7 +220,7 @@ export function createMapViewer(canvas, jsonOrDoc, options = {}) {
       canvas.removeEventListener('pointermove', onPointerMove);
       canvas.removeEventListener('pointerup', onPointerUp);
       canvas.removeEventListener('pointercancel', onPointerUp);
+      canvas.removeEventListener('pointerleave', onPointerLeave);
     }
   };
 }
-

@@ -17,11 +17,13 @@ function roundRect(ctx, x, y, w, h, r = 10) {
   ctx.closePath();
 }
 
-function drawGrid(ctx, doc) {
+function drawGrid(ctx, doc, options = {}) {
   if (doc.grid?.visible === false) return;
   const size = Math.max(10, Number(doc.grid?.size || 40));
+  const view = options.view || doc.view;
+  const dark = view === 'estacionamiento';
   ctx.save();
-  ctx.strokeStyle = 'rgba(15, 23, 42, 0.08)';
+  ctx.strokeStyle = dark ? 'rgba(148, 163, 184, 0.13)' : 'rgba(15, 23, 42, 0.055)';
   ctx.lineWidth = 1;
   for (let x = 0; x <= doc.width; x += size) {
     ctx.beginPath();
@@ -35,39 +37,81 @@ function drawGrid(ctx, doc) {
     ctx.lineTo(doc.width, y);
     ctx.stroke();
   }
+  if (options.editor) {
+    ctx.strokeStyle = dark ? 'rgba(34, 211, 238, 0.18)' : 'rgba(14, 116, 144, 0.11)';
+    ctx.lineWidth = 1.4;
+    const major = size * 4;
+    for (let x = 0; x <= doc.width; x += major) {
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, doc.height);
+      ctx.stroke();
+    }
+    for (let y = 0; y <= doc.height; y += major) {
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(doc.width, y);
+      ctx.stroke();
+    }
+  }
   ctx.restore();
 }
 
 function drawBackground(ctx, doc, options = {}) {
   const bg = doc.background || {};
+  const view = options.view || doc.view;
   const gradient = ctx.createLinearGradient(0, 0, doc.width, doc.height);
-  gradient.addColorStop(0, bg.fill || '#ecfdf5');
-  gradient.addColorStop(0.48, '#f8fafc');
-  gradient.addColorStop(1, '#dbeafe');
+  if (view === 'estacionamiento') {
+    gradient.addColorStop(0, bg.fill || '#101827');
+    gradient.addColorStop(0.52, '#172033');
+    gradient.addColorStop(1, '#0f172a');
+  } else if (view === 'mesas') {
+    gradient.addColorStop(0, bg.fill || '#ecfdf5');
+    gradient.addColorStop(0.55, '#f8fafc');
+    gradient.addColorStop(1, '#eef6ff');
+  } else {
+    gradient.addColorStop(0, bg.fill || '#f0fdfa');
+    gradient.addColorStop(0.5, '#f8fafc');
+    gradient.addColorStop(1, '#e0f2fe');
+  }
   ctx.fillStyle = gradient;
   ctx.fillRect(0, 0, doc.width, doc.height);
 
   ctx.save();
-  ctx.globalAlpha = options.editor ? 0.16 : 0.28;
-  ctx.strokeStyle = 'rgba(14, 165, 233, 0.34)';
-  ctx.lineWidth = 2;
-  for (let y = 38; y < doc.height; y += 82) {
-    ctx.beginPath();
-    for (let x = 0; x <= doc.width; x += 30) {
-      const wave = Math.sin((x + y) / 38) * 5;
-      if (x === 0) ctx.moveTo(x, y + wave);
-      else ctx.lineTo(x, y + wave);
+  if (view === 'estacionamiento') {
+    ctx.globalAlpha = 0.18;
+    ctx.strokeStyle = 'rgba(34, 211, 238, 0.35)';
+    ctx.lineWidth = 2;
+    for (let x = 80; x < doc.width; x += 180) {
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x + 80, doc.height);
+      ctx.stroke();
     }
-    ctx.stroke();
+  } else {
+    ctx.globalAlpha = options.editor ? 0.13 : 0.22;
+    ctx.strokeStyle = view === 'mesas' ? 'rgba(16, 185, 129, 0.25)' : 'rgba(14, 165, 233, 0.32)';
+    ctx.lineWidth = 2;
+    for (let y = 38; y < doc.height; y += 82) {
+      ctx.beginPath();
+      for (let x = 0; x <= doc.width; x += 30) {
+        const wave = Math.sin((x + y) / 38) * 5;
+        if (x === 0) ctx.moveTo(x, y + wave);
+        else ctx.lineTo(x, y + wave);
+      }
+      ctx.stroke();
+    }
   }
   ctx.restore();
 
-  drawGrid(ctx, doc);
+  drawGrid(ctx, doc, { ...options, view });
 
   ctx.save();
-  ctx.strokeStyle = bg.stroke || 'rgba(15, 118, 110, 0.42)';
-  ctx.lineWidth = 3;
+  ctx.strokeStyle = bg.stroke || (view === 'estacionamiento' ? 'rgba(34, 211, 238, 0.46)' : 'rgba(15, 118, 110, 0.48)');
+  ctx.lineWidth = view === 'estacionamiento' ? 2.4 : 3;
+  if (view === 'estacionamiento') ctx.setLineDash([10, 8]);
   ctx.strokeRect(1.5, 1.5, doc.width - 3, doc.height - 3);
+  ctx.setLineDash([]);
   ctx.restore();
 }
 
@@ -134,7 +178,9 @@ function drawLabel(ctx, item, options, stroke) {
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.font = item.type === 'text' ? '800 18px system-ui, sans-serif' : '800 13px system-ui, sans-serif';
-  ctx.fillStyle = item.type === 'text' ? (item.fill || '#0f172a') : '#0f172a';
+  const view = options.view || options.docView;
+  const labelInk = view === 'estacionamiento' && item.type !== 'parkingSpot' ? '#e2e8f0' : '#0f172a';
+  ctx.fillStyle = item.type === 'text' ? (item.fill || labelInk) : labelInk;
   const text = showIds ? String(item.id || label) : label;
   const yPos = item.type === 'table' ? y + h / 2 + 1 : y + h / 2;
   if (item.type !== 'text') {
@@ -163,6 +209,18 @@ function drawRectLike(ctx, item, options, fill, stroke) {
   ctx.fillStyle = fill;
   roundRect(ctx, x, y, w, h, item.kind === 'area' ? 16 : 10);
   ctx.fill();
+  if (dashed) {
+    ctx.clip();
+    ctx.globalAlpha = 0.28;
+    ctx.strokeStyle = stroke;
+    ctx.lineWidth = 1.5;
+    for (let i = -h; i < w + h; i += 16) {
+      ctx.beginPath();
+      ctx.moveTo(x + i, y + h);
+      ctx.lineTo(x + i + h, y);
+      ctx.stroke();
+    }
+  }
   ctx.restore();
   ctx.strokeStyle = stroke;
   ctx.lineWidth = 2.2;
@@ -215,6 +273,9 @@ function drawTable(ctx, item, fill, stroke) {
   const cy = y + h / 2;
   const r = Math.max(Math.min(w, h) * 0.34, 14);
   ctx.save();
+  ctx.shadowColor = 'rgba(15, 23, 42, 0.18)';
+  ctx.shadowBlur = 12;
+  ctx.shadowOffsetY = 5;
   ctx.fillStyle = 'rgba(15, 23, 42, 0.12)';
   const chairs = Math.max(2, Math.min(10, Number(item.metadata?.capacidad || 4)));
   for (let i = 0; i < chairs; i++) {
@@ -240,7 +301,7 @@ function drawParkingSpot(ctx, item, options, fill, stroke) {
   const h = Number(item.height || 0);
   drawRectLike(ctx, item, { ...options, editor: true }, fill, stroke);
   ctx.save();
-  ctx.strokeStyle = 'rgba(255,255,255,0.65)';
+  ctx.strokeStyle = options.editor ? 'rgba(255,255,255,0.52)' : 'rgba(226,232,240,0.72)';
   ctx.lineWidth = 1.4;
   for (let i = -h; i < w; i += 18) {
     ctx.beginPath();
@@ -250,9 +311,11 @@ function drawParkingSpot(ctx, item, options, fill, stroke) {
   }
   const parking = options.parkingById?.[item.id] || options.parkingById?.[item.metadata?.spotCode];
   if (parking?.placas || parking?.modelo || parking?.estado === 'ocupado') {
-    roundRect(ctx, x + w * 0.18, y + h * 0.28, w * 0.64, h * 0.42, 7);
-    ctx.fillStyle = parking.estado === 'ocupado' ? '#0f172a' : '#475569';
+    roundRect(ctx, x + w * 0.16, y + h * 0.26, w * 0.68, h * 0.46, 9);
+    ctx.fillStyle = parking.estado === 'ocupado' ? '#020617' : '#334155';
     ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.28)';
+    ctx.stroke();
     ctx.fillStyle = 'white';
     ctx.font = '800 11px system-ui, sans-serif';
     ctx.textAlign = 'center';
@@ -377,11 +440,17 @@ function drawSelection(ctx, item, multi = false) {
   const h = Number(item.height || 0);
   ctx.save();
   applyItemTransform(ctx, item);
-  ctx.strokeStyle = multi ? '#22d3ee' : '#f59e0b';
-  ctx.lineWidth = 2.5;
-  ctx.setLineDash([7, 5]);
-  ctx.strokeRect(x - 4, y - 4, w + 8, h + 8);
+  ctx.strokeStyle = multi ? '#67e8f9' : '#f59e0b';
+  ctx.lineWidth = multi ? 1.8 : 2.8;
+  ctx.setLineDash(multi ? [5, 5] : []);
+  ctx.shadowColor = multi ? 'rgba(103, 232, 249, 0.35)' : 'rgba(245, 158, 11, 0.36)';
+  ctx.shadowBlur = 10;
+  ctx.strokeRect(x - 5, y - 5, w + 10, h + 10);
   ctx.setLineDash([]);
+  if (multi) {
+    ctx.restore();
+    return;
+  }
   [[x, y], [x + w, y], [x, y + h], [x + w, y + h]].forEach(([hx, hy]) => {
     ctx.fillStyle = '#f59e0b';
     ctx.strokeStyle = '#fff';
@@ -391,6 +460,45 @@ function drawSelection(ctx, item, multi = false) {
     ctx.fill();
     ctx.stroke();
   });
+  ctx.restore();
+}
+
+function boundsForItems(items) {
+  if (!items.length) return null;
+  const left = Math.min(...items.map((item) => Number(item.x || 0)));
+  const top = Math.min(...items.map((item) => Number(item.y || 0)));
+  const right = Math.max(...items.map((item) => Number(item.x || 0) + Number(item.width || 0)));
+  const bottom = Math.max(...items.map((item) => Number(item.y || 0) + Number(item.height || 0)));
+  return { x: left, y: top, width: right - left, height: bottom - top };
+}
+
+function drawSelectionBounds(ctx, items) {
+  const box = boundsForItems(items);
+  if (!box) return;
+  ctx.save();
+  ctx.strokeStyle = '#22d3ee';
+  ctx.fillStyle = 'rgba(34, 211, 238, 0.06)';
+  ctx.lineWidth = 2.2;
+  ctx.setLineDash([10, 6]);
+  ctx.fillRect(box.x - 8, box.y - 8, box.width + 16, box.height + 16);
+  ctx.strokeRect(box.x - 8, box.y - 8, box.width + 16, box.height + 16);
+  ctx.setLineDash([]);
+  ctx.restore();
+}
+
+function drawHover(ctx, item) {
+  const x = Number(item.x || 0);
+  const y = Number(item.y || 0);
+  const w = Number(item.width || 0);
+  const h = Number(item.height || 0);
+  ctx.save();
+  applyItemTransform(ctx, item);
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.86)';
+  ctx.lineWidth = 5;
+  ctx.shadowColor = 'rgba(14, 165, 233, 0.42)';
+  ctx.shadowBlur = 16;
+  roundRect(ctx, x - 5, y - 5, w + 10, h + 10, 14);
+  ctx.stroke();
   ctx.restore();
 }
 
@@ -442,14 +550,18 @@ function drawEmptyState(ctx, doc) {
 }
 
 export function drawMapDocument(ctx, doc, options = {}) {
-  drawBackground(ctx, doc, options);
+  const renderOptions = { ...options, view: options.view || doc.view, docView: doc.view };
+  drawBackground(ctx, doc, renderOptions);
   const selectedIds = new Set(options.selectedIds || []);
-  getSortedMapItems(doc).forEach(({ item }) => drawItem(ctx, item, options));
+  const sorted = getSortedMapItems(doc);
+  sorted.forEach(({ item }) => drawItem(ctx, item, renderOptions));
   if (!doc.items.length) drawEmptyState(ctx, doc);
+  const hovered = options.hoveredId ? doc.items.find((item) => item.id === options.hoveredId) : null;
+  if (hovered && hovered.visible !== false && !selectedIds.has(hovered.id)) drawHover(ctx, hovered);
   if (selectedIds.size) {
-    getSortedMapItems(doc)
-      .filter(({ item }) => selectedIds.has(item.id))
-      .forEach(({ item }) => drawSelection(ctx, item, selectedIds.size > 1));
+    const selected = sorted.filter(({ item }) => selectedIds.has(item.id)).map(({ item }) => item);
+    if (selected.length > 1) drawSelectionBounds(ctx, selected);
+    selected.forEach((item) => drawSelection(ctx, item, selectedIds.size > 1));
   }
   if (options.marqueeRect) {
     const r = options.marqueeRect;
@@ -498,4 +610,3 @@ export function drawMapCanvasViewport(canvas, doc, viewport, options = {}) {
   drawMapDocument(ctx, doc, options);
   ctx.restore();
 }
-

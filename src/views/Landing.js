@@ -636,13 +636,13 @@ export default {
               </div>
             </section>
 
-            <section id="mapa" class="landing-reveal scroll-mt-24 bg-slate-50 px-4 py-14 sm:px-8">
+            <section id="mapa" class="landing-reveal scroll-mt-24 bg-slate-50 px-4 py-16 sm:px-8">
               <div class="mx-auto max-w-5xl">
-                <div class="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+                <div class="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
                   <div>
-                    <p class="flex items-center gap-2 text-xs font-black uppercase tracking-wide text-cyan-700">${icon('map', 'h-4 w-4')} Plano del parque</p>
+                    <p class="flex items-center gap-2 text-xs font-black uppercase tracking-wide text-cyan-700">${icon('map', 'h-4 w-4')} Plano interactivo</p>
                     <h2 class="text-2xl font-black text-slate-900 sm:text-3xl">Distribucion del parque</h2>
-                    <p class="mt-2 max-w-2xl text-sm text-slate-600">Zonas, mesas, albercas, palapas, servicios y accesos publicados por el personal.</p>
+                    <p class="mt-2 max-w-2xl text-sm leading-6 text-slate-600">Explora zonas, albercas, palapas, servicios, accesos y referencias de mesas. Arrastra el plano, usa zoom y toca una zona para ver detalles.</p>
                   </div>
                   <div class="flex flex-col items-end gap-2 sm:flex-row sm:items-center">
                     <p class="${access.can('dashboard.manage') || access.can('admin.panel') || access.isProgramador ? 'inline-flex' : 'hidden'} w-fit items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-black text-slate-700">
@@ -655,21 +655,31 @@ export default {
                     </p>
                   </div>
                 </div>
-                <div class="mt-8 overflow-hidden rounded-3xl border border-cyan-100 bg-white shadow-sm">
-                  <div class="flex flex-col gap-3 border-b border-slate-100 bg-gradient-to-r from-cyan-50 to-blue-50 p-4">
-                    <p class="text-sm font-black text-slate-800">Leyenda de espacios</p>
+                <div class="public-map-card mt-8">
+                  <div class="flex flex-col gap-3 border-b border-slate-100 bg-white/92 p-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p class="text-sm font-black text-slate-900">Mapa del parque</p>
+                      <p class="mt-0.5 text-xs font-semibold text-slate-500">Arrastra para explorar · rueda o pellizca para acercar</p>
+                    </div>
                     <div class="flex flex-wrap gap-2">${renderMapLegend()}</div>
                   </div>
-                  <div class="relative h-[420px] overflow-hidden bg-slate-950 sm:h-[520px]">
+                  <div class="public-map-stage relative h-[420px] overflow-hidden sm:h-[540px]">
                     <canvas id="landing-mapa-canvas" width="1000" height="620" class="absolute inset-0 h-full w-full cursor-grab"></canvas>
-                    <div class="absolute right-3 top-3 z-10 flex items-center gap-1 rounded-xl border border-white/20 bg-white/90 p-1 shadow-lg backdrop-blur">
-                      <button type="button" id="landing-map-zoom-out" class="grid h-8 w-8 place-items-center rounded-lg text-sm font-black text-slate-700 hover:bg-slate-100" title="Alejar">−</button>
-                      <button type="button" id="landing-map-reset" class="rounded-lg px-2 py-1 text-[11px] font-black uppercase text-slate-500 hover:bg-slate-100" title="Restablecer">Reset</button>
-                      <button type="button" id="landing-map-zoom-in" class="grid h-8 w-8 place-items-center rounded-lg text-sm font-black text-slate-700 hover:bg-slate-100" title="Acercar">+</button>
+                    <div id="landing-map-tooltip" class="map-tooltip hidden"></div>
+                    <div class="absolute left-3 top-3 z-10 hidden rounded-full border border-white/25 bg-slate-950/70 px-3 py-1.5 text-xs font-black uppercase tracking-wide text-white shadow-lg backdrop-blur sm:block">
+                      ${icon('map', 'h-3.5 w-3.5 inline-block')} Arrastra para explorar
+                    </div>
+                    <div class="map-floating-toolbar absolute right-3 top-3 z-10">
+                      <button type="button" id="landing-map-zoom-out" class="map-icon-btn" title="Alejar">−</button>
+                      <button type="button" id="landing-map-reset" class="map-reset-btn" title="Restablecer">Reset</button>
+                      <button type="button" id="landing-map-zoom-in" class="map-icon-btn" title="Acercar">+</button>
                     </div>
                   </div>
-                  <div id="landing-map-info" class="border-t border-slate-100 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-600 sm:min-h-16">
-                    Toca una zona del mapa para ver su descripción.
+                  <div id="landing-map-info" class="public-map-info">
+                    <div>
+                      <p class="text-xs font-black uppercase tracking-wide text-cyan-700">Sin zona seleccionada</p>
+                      <p class="mt-1 text-sm font-semibold text-slate-600">Toca una zona del mapa para ver su descripcion publica.</p>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -820,10 +830,16 @@ export default {
     const mapCanvas = document.getElementById('landing-mapa-canvas');
     let globalMapViewer = null;
     const mapInfo = document.getElementById('landing-map-info');
+    const mapTooltip = document.getElementById('landing-map-tooltip');
     const setMapInfo = (item) => {
       if (!mapInfo) return;
       if (!item) {
-        mapInfo.textContent = 'Toca una zona del mapa para ver su descripción.';
+        mapInfo.innerHTML = `
+          <div>
+            <p class="text-xs font-black uppercase tracking-wide text-cyan-700">Sin zona seleccionada</p>
+            <p class="mt-1 text-sm font-semibold text-slate-600">Toca una zona del mapa para ver su descripcion publica.</p>
+          </div>
+        `;
         return;
       }
       const publicDetail =
@@ -831,18 +847,44 @@ export default {
         item.notes ||
         item.metadata?.category ||
         '';
+      const typeLabel = getPublicKindLabel(item.kind);
+      const cta =
+        item.kind === 'mesa'
+          ? '<a href="/reservar" data-link class="public-map-cta">Ver mesas</a>'
+          : '';
       mapInfo.innerHTML = `
-        <div class="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-          <span><strong class="text-slate-900">${escapeHtml(item.label || 'Zona')}</strong>${publicDetail ? ` · ${escapeHtml(publicDetail)}` : ''}</span>
-          <span class="text-xs font-black uppercase tracking-wide text-cyan-700">${escapeHtml(getPublicKindLabel(item.kind))}</span>
+        <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p class="text-xs font-black uppercase tracking-wide text-cyan-700">${escapeHtml(typeLabel)}</p>
+            <h3 class="mt-0.5 text-base font-black text-slate-900">${escapeHtml(item.label || 'Zona')}</h3>
+            <p class="mt-1 text-sm font-semibold leading-6 text-slate-600">${escapeHtml(publicDetail || 'Espacio publicado por el personal del parque.')}</p>
+          </div>
+          ${cta}
         </div>
       `;
+    };
+    const setMapTooltip = (item, _index, _point, pointer) => {
+      if (!mapTooltip) return;
+      if (!item || !pointer || window.matchMedia('(max-width: 640px)').matches) {
+        mapTooltip.classList.add('hidden');
+        return;
+      }
+      const rect = mapCanvas?.getBoundingClientRect();
+      if (!rect) return;
+      mapTooltip.innerHTML = `
+        <strong>${escapeHtml(item.label || 'Zona')}</strong>
+        <span>${escapeHtml(getPublicKindLabel(item.kind))}</span>
+      `;
+      mapTooltip.style.left = `${Math.min(rect.width - 190, Math.max(10, pointer.clientX - rect.left + 14))}px`;
+      mapTooltip.style.top = `${Math.min(rect.height - 74, Math.max(10, pointer.clientY - rect.top + 14))}px`;
+      mapTooltip.classList.remove('hidden');
     };
     if (mapCanvas) {
       globalMapViewer = createMapViewer(mapCanvas, landing.mapaDistribucionJson, {
         view: 'global',
         showItemIds: false,
         showKindBadge: false,
+        onHover: setMapTooltip,
         onSelect: (item) => setMapInfo(item)
       });
       document.getElementById('landing-map-zoom-in')?.addEventListener('click', () => globalMapViewer?.zoomIn());

@@ -42,47 +42,61 @@ export default {
   async render() {
     const hoy = formatFechaDia();
     return `
-      <div class="mx-auto max-w-6xl px-4 py-8">
-        <div class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+      <div class="mx-auto max-w-6xl px-4 py-8 sm:py-10">
+        <div class="reservation-hero">
           <div>
-            <h1 class="text-3xl font-black text-slate-900">Mapa de mesas</h1>
-            <p class="mt-1 text-sm font-semibold text-slate-600">
-              Elige el día y toca una mesa disponible para apartarla (requiere cuenta).
-            </p>
+            <p class="text-xs font-black uppercase tracking-wide text-emerald-700">${icon('map', 'h-4 w-4 inline-block')} Reservas por plano</p>
+            <h1 class="mt-1 text-3xl font-black text-slate-900">Mapa de mesas</h1>
+            <p class="mt-2 max-w-2xl text-sm font-semibold leading-6 text-slate-600">Elige fecha, revisa disponibilidad en vivo y toca una mesa libre para ver detalles antes de confirmar.</p>
           </div>
-          <div class="flex flex-wrap items-center gap-3">
-            <label class="text-sm font-black text-slate-700">
+          <div class="flex flex-wrap items-center gap-3 rounded-2xl border border-slate-200 bg-white/90 p-3 shadow-sm">
+            <span id="reservar-live-pill" class="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-2 text-xs font-black text-slate-600">
+              <span class="h-2.5 w-2.5 rounded-full bg-slate-400"></span>
+              Conectando
+            </span>
+            <label class="text-xs font-black uppercase tracking-wide text-slate-500">
               Día de visita
               <input id="reservar-fecha" type="date" value="${hoy}" min="${hoy}"
-                class="ml-2 mt-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-900 shadow-sm" />
+                class="mt-1 block rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-900 shadow-sm" />
             </label>
           </div>
         </div>
 
         <p id="reservar-msg" class="mt-3 text-sm font-semibold text-slate-500" aria-live="polite"></p>
 
-        <div class="mt-6 flex flex-wrap gap-4 text-xs font-bold text-slate-600">
-          <span class="inline-flex items-center gap-2"><span class="h-3 w-3 rounded-full bg-emerald-500"></span> Libre</span>
-          <span class="inline-flex items-center gap-2"><span class="h-3 w-3 rounded-full bg-amber-500"></span> Apartada por mí</span>
-          <span class="inline-flex items-center gap-2"><span class="h-3 w-3 rounded-full bg-red-500"></span> Apartada</span>
-          <span class="inline-flex items-center gap-2"><span class="h-3 w-3 rounded-full bg-indigo-600"></span> Ocupada</span>
+        <div class="reservation-legend mt-5">
+          <span><i class="bg-emerald-500"></i> Libre</span>
+          <span><i class="bg-amber-500"></i> Apartada por mí</span>
+          <span><i class="bg-red-500"></i> Apartada</span>
+          <span><i class="bg-indigo-600"></i> Ocupada</span>
         </div>
 
-        <div class="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_280px]">
-          <div class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-            <div id="reservar-canvas-wrap" class="relative h-[430px] overflow-hidden bg-slate-950 sm:h-[560px]">
+        <div class="reservation-layout mt-6">
+          <div class="reservation-map-card">
+            <div class="flex items-center justify-between gap-3 border-b border-white/10 px-4 py-3">
+              <div>
+                <p class="text-xs font-black uppercase tracking-wide text-emerald-200">Plano de reservaciones</p>
+                <p class="text-sm font-semibold text-white/80">Arrastra para explorar y usa zoom para acercarte.</p>
+              </div>
+              <span class="hidden rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-xs font-black text-white sm:inline-flex">${icon('ticket', 'h-3.5 w-3.5')} Selección segura</span>
+            </div>
+            <div id="reservar-canvas-wrap" class="relative h-[430px] overflow-hidden sm:h-[560px]">
               <canvas id="reservar-canvas" width="1000" height="620" class="absolute inset-0 h-full w-full cursor-pointer"></canvas>
-              <div class="absolute right-3 top-3 z-10 flex items-center gap-1 rounded-xl border border-white/20 bg-white/90 p-1 shadow-lg backdrop-blur">
-                <button type="button" id="reservar-map-zoom-out" class="grid h-8 w-8 place-items-center rounded-lg text-sm font-black text-slate-700 hover:bg-slate-100">−</button>
-                <button type="button" id="reservar-map-reset" class="rounded-lg px-2 py-1 text-[11px] font-black uppercase text-slate-500 hover:bg-slate-100">Reset</button>
-                <button type="button" id="reservar-map-zoom-in" class="grid h-8 w-8 place-items-center rounded-lg text-sm font-black text-slate-700 hover:bg-slate-100">+</button>
+              <div id="reservar-map-tooltip" class="map-tooltip hidden"></div>
+              <div class="map-floating-toolbar absolute right-3 top-3 z-10">
+                <button type="button" id="reservar-map-zoom-out" class="map-icon-btn">−</button>
+                <button type="button" id="reservar-map-reset" class="map-reset-btn">Reset</button>
+                <button type="button" id="reservar-map-zoom-in" class="map-icon-btn">+</button>
               </div>
               <p id="reservar-canvas-placeholder" class="hidden py-16 text-center text-sm text-slate-500"></p>
             </div>
           </div>
-          <aside class="space-y-4">
-            <div id="reservar-mesa-panel" class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-              <p class="text-xs font-black uppercase tracking-wide text-teal-700">Mesa seleccionada</p>
+          <aside class="reservation-side-panel space-y-4">
+            <div id="reservar-mesa-panel" class="reservation-detail-card">
+              <div class="flex items-center justify-between gap-3">
+                <p class="text-xs font-black uppercase tracking-wide text-teal-700">Mesa seleccionada</p>
+                <button type="button" id="reservar-close-panel" class="hidden rounded-full border border-slate-200 px-2 py-1 text-xs font-black text-slate-500 sm:hidden">Cerrar</button>
+              </div>
               <div id="reservar-mesa-detail" class="mt-3 text-sm text-slate-600">
                 Toca una mesa libre para revisar detalles y confirmar.
               </div>

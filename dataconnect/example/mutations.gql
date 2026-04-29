@@ -246,6 +246,38 @@ mutation DeleteProducto($id: UUID!) @auth(level: USER) {
   producto_delete(id: $id)
 }
 
+mutation DeleteUserRecord($id: String!) @auth(level: USER) {
+  user_delete(id: $id)
+}
+
+mutation DeleteConfiguracion($id: String!) @auth(level: USER) {
+  configuracion_delete(id: $id)
+}
+
+mutation DeletePaquete($id: UUID!) @auth(level: USER) {
+  paquete_delete(id: $id)
+}
+
+mutation DeleteMovimientoInventario($id: UUID!) @auth(level: USER) {
+  movimientoInventario_delete(id: $id)
+}
+
+mutation DeleteLandingPage($id: String!) @auth(level: USER) {
+  landingPage_delete(id: $id)
+}
+
+mutation DeleteDescuento($id: UUID!) @auth(level: USER) {
+  descuento_delete(id: $id)
+}
+
+mutation DeleteTicket($id: UUID!) @auth(level: USER) {
+  ticket_delete(id: $id)
+}
+
+mutation DeleteMesaReserva($id: UUID!) @auth(level: USER) {
+  mesaReserva_delete(id: $id)
+}
+
 
 mutation UpdateMesaReservaEstado($id: UUID!, $estado: String!) @auth(level: USER) {
   mesaReserva_update(id: $id, data: { estado: $estado })
