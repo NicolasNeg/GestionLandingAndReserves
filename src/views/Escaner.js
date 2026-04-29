@@ -1,9 +1,19 @@
 import { Html5Qrcode } from 'html5-qrcode';
-import { getTicketById, updateTicketStatus, listRecentTickets } from '../dataconnect-generated';
+import {
+    getTicketById,
+    updateTicketStatus,
+    listRecentTickets,
+    listMisMesaReservas,
+    updateMesaReservaEstado,
+    vincularTicketMesaReserva
+} from '../dataconnect-generated';
 import { auth } from '../firebase-config.js';
 import { getUserAccess } from '../lib/accessControl.js';
 import { icon } from '../lib/icons.js';
 import { showAlert } from '../lib/appDialog.js';
+import { upsertMesaReservaLive } from '../lib/mesaRealtime.js';
+import { formatFechaDia } from '../lib/fechaDiaMexico.js';
+import { sweepExpiredMesaReservas } from '../lib/mesaLifecycle.js';
 
 const UUID_PATTERN = /[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/i;
 
@@ -338,6 +348,12 @@ const Escaner = {
 
                 currentTicketData = ticket;
                 currentTicketId = ticket.id;
+                const fechaTicket = ticket.fechaCreacion ? formatFechaDia(new Date(ticket.fechaCreacion)) : '';
+                const hoy = formatFechaDia();
+                if (fechaTicket && fechaTicket !== hoy) {
+                    showInvalidScan(`Ticket de fecha ${fechaTicket}. Hoy es ${hoy}; no se permite acceso con fecha distinta.`);
+                    return;
+                }
                 showTicketModal(currentTicketId, currentTicketData);
             } catch (error) {
                 console.error('Error obteniendo ticket: ', error);
@@ -552,6 +568,24 @@ const Escaner = {
                     estadoTicket: 'escaneado',
                     estadoPago: 'pagado'
                 });
+                const ticketOwnerId = currentTicketData?.user?.id || '';
+                const fechaDia = formatFechaDia();
+                if (ticketOwnerId) {
+                    const myMesaRes = await listMisMesaReservas({ userId: ticketOwnerId });
+                    const target = (myMesaRes.data?.mesaReservas || []).filter(
+                        (r) => r.fechaDia === fechaDia && r.estado === 'apartada'
+                    );
+                    for (const row of target) {
+                        await updateMesaReservaEstado({ id: row.id, estado: 'ocupada' });
+                        await vincularTicketMesaReserva({ id: row.id, ticketId: currentTicketId });
+                        await upsertMesaReservaLive({
+                            fechaDia,
+                            mapItemId: row.mapItemId,
+                            userId: ticketOwnerId,
+                            estado: 'ocupada'
+                        });
+                    }
+                }
 
                 showScannerStatus('success', 'INGRESO REGISTRADO', 'El boleto quedó marcado como usado en el sistema.');
                 playTone(true);
@@ -576,6 +610,7 @@ const Escaner = {
         });
 
         const ticketFromUrl = new URLSearchParams(window.location.search).get('ticket');
+        sweepExpiredMesaReservas().catch((e) => console.warn('sweep expired mesas', e));
         if (ticketFromUrl) {
             inputId.value = ticketFromUrl;
             validateRawCode(ticketFromUrl);

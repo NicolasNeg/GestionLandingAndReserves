@@ -11,11 +11,19 @@ import {
 import { showAlert } from '../lib/appDialog.js';
 import { icon } from '../lib/icons.js';
 import {
+  claimMesaReservaLive,
+  clearMesaReservaLive,
+  getMesaReservaLive,
+  subscribeMesaReservasByFecha,
+  upsertMesaReservaLive
+} from '../lib/mesaRealtime.js';
+import {
   drawDistribucionCanvas,
   findMapItemIndexAtClientPoint,
   parseDistribucionJson
 } from '../lib/distribucionMapa.js';
 import { formatFechaDia, isValidFechaDia } from '../lib/fechaDiaMexico.js';
+import { sweepExpiredMesaReservas } from '../lib/mesaLifecycle.js';
 
 const LANDING_PAGE_ID = 'main';
 
@@ -54,7 +62,9 @@ export default {
 
         <div class="mt-6 flex flex-wrap gap-4 text-xs font-bold text-slate-600">
           <span class="inline-flex items-center gap-2"><span class="h-3 w-3 rounded-full bg-emerald-500"></span> Libre</span>
+          <span class="inline-flex items-center gap-2"><span class="h-3 w-3 rounded-full bg-amber-500"></span> Apartada por mí</span>
           <span class="inline-flex items-center gap-2"><span class="h-3 w-3 rounded-full bg-red-500"></span> Apartada</span>
+          <span class="inline-flex items-center gap-2"><span class="h-3 w-3 rounded-full bg-indigo-600"></span> Ocupada</span>
         </div>
 
         <div class="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_280px]">
@@ -87,6 +97,9 @@ export default {
 
     let mapJson = '';
     let currentFecha = (fechaInput.value || '').trim() || formatFechaDia();
+    let unsubscribeLive = null;
+    const ownerByMapItemId = new Map();
+    const stateByMapItemId = new Map();
     /** @type {Set<string>} */
     const apartadas = new Set();
 
@@ -113,9 +126,12 @@ export default {
     const parsedEmpty = !parseDistribucionJson(mapJson).items.length;
 
     const redraw = () => {
+      const me = auth.currentUser?.uid || '';
       const statusByMapItemId = {};
       apartadas.forEach((id) => {
-        statusByMapItemId[id] = 'apartada';
+        const state = stateByMapItemId.get(id) || 'apartada';
+        if (state === 'ocupada') statusByMapItemId[id] = 'ocupada';
+        else statusByMapItemId[id] = ownerByMapItemId.get(id) === me ? 'apartada_mia' : 'apartada';
       });
       if (!mapJson || parsedEmpty) {
         canvas.classList.add('hidden');
@@ -131,13 +147,19 @@ export default {
       drawDistribucionCanvas(canvas, mapJson, { statusByMapItemId });
     };
 
-    const loadApartadas = async () => {
+    const loadApartadasBase = async () => {
       apartadas.clear();
+      ownerByMapItemId.clear();
+      stateByMapItemId.clear();
       try {
         const res = await listMesaReservasActivasPorFecha({ fechaDia: currentFecha });
         const rows = res.data?.mesaReservas || [];
         rows.forEach((r) => {
-          if (r.mapItemId) apartadas.add(r.mapItemId);
+          if (r.mapItemId) {
+            apartadas.add(r.mapItemId);
+            ownerByMapItemId.set(r.mapItemId, '');
+            stateByMapItemId.set(r.mapItemId, 'apartada');
+          }
         });
       } catch (e) {
         if (isDataConnectMissing(e)) {
@@ -151,6 +173,35 @@ export default {
         }
       }
       redraw();
+    };
+
+    const connectLive = () => {
+      if (unsubscribeLive) {
+        unsubscribeLive();
+        unsubscribeLive = null;
+      }
+      setMsg('Sincronizando en vivo...');
+      unsubscribeLive = subscribeMesaReservasByFecha(
+        currentFecha,
+        (rows) => {
+          apartadas.clear();
+          ownerByMapItemId.clear();
+          stateByMapItemId.clear();
+          rows.forEach((r) => {
+            if (r.mapItemId && (r.estado === 'apartada' || r.estado === 'ocupada')) {
+              apartadas.add(r.mapItemId);
+              ownerByMapItemId.set(r.mapItemId, String(r.userId || ''));
+              stateByMapItemId.set(r.mapItemId, String(r.estado || 'apartada'));
+            }
+          });
+          redraw();
+          setMsg('Sincronizado en vivo.', 'ok');
+        },
+        (e) => {
+          console.warn('mesa realtime', e);
+          setMsg('Sin realtime; mostrando último estado.', 'danger');
+        }
+      );
     };
 
     const renderMis = async () => {
@@ -174,7 +225,7 @@ export default {
             (r) => `
           <div class="flex items-center justify-between gap-2 rounded-xl border border-slate-100 bg-slate-50 px-3 py-2">
             <span class="font-bold text-slate-800">${escapeHtml(r.mapItemId)}</span>
-            <button type="button" data-cancel-r="${r.id}" class="shrink-0 rounded-lg border border-rose-200 px-2 py-1 text-xs font-black text-rose-700 hover:bg-rose-50">
+            <button type="button" data-cancel-r="${r.id}" data-cancel-map="${escapeHtml(r.mapItemId)}" class="shrink-0 rounded-lg border border-rose-200 px-2 py-1 text-xs font-black text-rose-700 hover:bg-rose-50">
               Cancelar
             </button>
           </div>`
@@ -183,11 +234,14 @@ export default {
         misEl.querySelectorAll('[data-cancel-r]').forEach((btn) => {
           btn.addEventListener('click', async () => {
             const id = btn.getAttribute('data-cancel-r');
+            const mapItemId = btn.getAttribute('data-cancel-map');
             if (!id) return;
             try {
               await cancelarMesaReserva({ id });
+              if (mapItemId) await clearMesaReservaLive(currentFecha, mapItemId);
               await showAlert('Apartado cancelado.', { title: 'Listo', variant: 'success' });
-              await loadApartadas();
+              await loadApartadasBase();
+              connectLive();
               await renderMis();
               setMsg('');
             } catch (e) {
@@ -211,7 +265,8 @@ export default {
       if (!isValidFechaDia(v)) return;
       currentFecha = v;
       setMsg('');
-      await loadApartadas();
+      await loadApartadasBase();
+      connectLive();
       await renderMis();
     });
 
@@ -233,7 +288,11 @@ export default {
       }
 
       if (apartadas.has(item.id)) {
-        const mine = await checkMine(item.id);
+        if (stateByMapItemId.get(item.id) === 'ocupada') {
+          await showAlert('Esta mesa ya está ocupada para esta fecha.', { title: 'Mesa', variant: 'warning' });
+          return;
+        }
+        const mine = ownerByMapItemId.get(item.id) === user.uid || (await checkMine(item.id));
         if (mine) {
           await showAlert('Ya tienes esta mesa apartada para este día.', { title: 'Mesa', variant: 'success' });
         } else {
@@ -248,7 +307,8 @@ export default {
           mapItemId: item.id
         });
         if ((chk.data?.mesaReservas || []).length > 0) {
-          await loadApartadas();
+          await loadApartadasBase();
+          connectLive();
           await showAlert('Alguien acaba de apartar esta mesa. Actualiza e intenta otra.', {
             title: 'Mesa',
             variant: 'warning'
@@ -256,15 +316,62 @@ export default {
           return;
         }
 
+        const claim = await claimMesaReservaLive({
+          fechaDia: currentFecha,
+          mapItemId: item.id,
+          userId: user.uid
+        });
+        if (!claim.acquired) {
+          await loadApartadasBase();
+          connectLive();
+          await showAlert('La mesa fue tomada por otro usuario justo ahora.', {
+            title: 'Mesa',
+            variant: 'warning'
+          });
+          return;
+        }
+
+        // doble verificacion contra fuente canonical
+        const chkAfter = await checkMesaReservaLibre({
+          fechaDia: currentFecha,
+          mapItemId: item.id
+        });
+        if ((chkAfter.data?.mesaReservas || []).length > 0) {
+          const live = await getMesaReservaLive(currentFecha, item.id);
+          if (!live || live.userId !== user.uid) {
+            await clearMesaReservaLive(currentFecha, item.id);
+          }
+          await loadApartadasBase();
+          connectLive();
+          await showAlert('La mesa ya estaba ocupada en servidor.', {
+            title: 'Mesa',
+            variant: 'warning'
+          });
+          return;
+        }
+
         await createMesaReserva({ fechaDia: currentFecha, mapItemId: item.id });
+        await upsertMesaReservaLive({
+          fechaDia: currentFecha,
+          mapItemId: item.id,
+          userId: user.uid,
+          estado: 'apartada'
+        });
         await showAlert(`Mesa ${item.id} apartada para el ${currentFecha}.`, {
           title: 'Listo',
           variant: 'success'
         });
-        await loadApartadas();
+        await loadApartadasBase();
+        connectLive();
         await renderMis();
       } catch (e) {
         console.error(e);
+        try {
+          const live = await getMesaReservaLive(currentFecha, item.id);
+          if (live?.userId === user.uid) await clearMesaReservaLive(currentFecha, item.id);
+        } catch {
+          // noop
+        }
         const msg = isDataConnectMissing(e)
           ? 'Despliega Data Connect con MesaReserva o revisa la consola.'
           : e?.message || 'No se pudo apartar.';
@@ -289,12 +396,23 @@ export default {
       }
     }
 
-    await loadApartadas();
+    try {
+      await sweepExpiredMesaReservas();
+    } catch (e) {
+      console.warn('sweep expired mesas', e);
+    }
+    await loadApartadasBase();
+    connectLive();
     await renderMis();
 
     auth.onAuthStateChanged(() => {
       renderMis();
     });
+
+    const onPopstate = () => {
+      if (unsubscribeLive) unsubscribeLive();
+    };
+    window.addEventListener('popstate', onPopstate);
   }
 };
 

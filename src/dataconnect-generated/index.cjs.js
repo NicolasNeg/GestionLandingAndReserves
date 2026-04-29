@@ -231,6 +231,34 @@ exports.deleteProducto = function deleteProducto(dcOrVars, vars) {
 }
 ;
 
+const updateMesaReservaEstadoRef = (dcOrVars, vars) => {
+  const { dc: dcInstance, vars: inputVars} = validateArgs(connectorConfig, dcOrVars, vars, true);
+  dcInstance._useGeneratedSdk();
+  return mutationRef(dcInstance, 'UpdateMesaReservaEstado', inputVars);
+}
+updateMesaReservaEstadoRef.operationName = 'UpdateMesaReservaEstado';
+exports.updateMesaReservaEstadoRef = updateMesaReservaEstadoRef;
+
+exports.updateMesaReservaEstado = function updateMesaReservaEstado(dcOrVars, vars) {
+  const { dc: dcInstance, vars: inputVars } = validateArgs(connectorConfig, dcOrVars, vars, true);
+  return executeMutation(updateMesaReservaEstadoRef(dcInstance, inputVars));
+}
+;
+
+const vincularTicketMesaReservaRef = (dcOrVars, vars) => {
+  const { dc: dcInstance, vars: inputVars} = validateArgs(connectorConfig, dcOrVars, vars, true);
+  dcInstance._useGeneratedSdk();
+  return mutationRef(dcInstance, 'VincularTicketMesaReserva', inputVars);
+}
+vincularTicketMesaReservaRef.operationName = 'VincularTicketMesaReserva';
+exports.vincularTicketMesaReservaRef = vincularTicketMesaReservaRef;
+
+exports.vincularTicketMesaReserva = function vincularTicketMesaReserva(dcOrVars, vars) {
+  const { dc: dcInstance, vars: inputVars } = validateArgs(connectorConfig, dcOrVars, vars, true);
+  return executeMutation(vincularTicketMesaReservaRef(dcInstance, inputVars));
+}
+;
+
 const getTicketByIdRef = (dcOrVars, vars) => {
   const { dc: dcInstance, vars: inputVars} = validateArgs(connectorConfig, dcOrVars, vars, true);
   dcInstance._useGeneratedSdk();
@@ -438,5 +466,35 @@ exports.listMisMesaReservas = function listMisMesaReservas(dcOrVars, varsOrOptio
   
   const { dc: dcInstance, vars: inputVars, options: inputOpts } = validateArgsWithOptions(connectorConfig, dcOrVars, varsOrOptions, options, true, true);
   return executeQuery(listMisMesaReservasRef(dcInstance, inputVars), inputOpts && inputOpts.fetchPolicy);
+}
+;
+
+const listMesaReservasByFechaRef = (dcOrVars, vars) => {
+  const { dc: dcInstance, vars: inputVars} = validateArgs(connectorConfig, dcOrVars, vars, true);
+  dcInstance._useGeneratedSdk();
+  return queryRef(dcInstance, 'ListMesaReservasByFecha', inputVars);
+}
+listMesaReservasByFechaRef.operationName = 'ListMesaReservasByFecha';
+exports.listMesaReservasByFechaRef = listMesaReservasByFechaRef;
+
+exports.listMesaReservasByFecha = function listMesaReservasByFecha(dcOrVars, varsOrOptions, options) {
+  
+  const { dc: dcInstance, vars: inputVars, options: inputOpts } = validateArgsWithOptions(connectorConfig, dcOrVars, varsOrOptions, options, true, true);
+  return executeQuery(listMesaReservasByFechaRef(dcInstance, inputVars), inputOpts && inputOpts.fetchPolicy);
+}
+;
+
+const listMesaReservasVenciblesRef = (dcOrVars, vars) => {
+  const { dc: dcInstance, vars: inputVars} = validateArgs(connectorConfig, dcOrVars, vars, true);
+  dcInstance._useGeneratedSdk();
+  return queryRef(dcInstance, 'ListMesaReservasVencibles', inputVars);
+}
+listMesaReservasVenciblesRef.operationName = 'ListMesaReservasVencibles';
+exports.listMesaReservasVenciblesRef = listMesaReservasVenciblesRef;
+
+exports.listMesaReservasVencibles = function listMesaReservasVencibles(dcOrVars, varsOrOptions, options) {
+  
+  const { dc: dcInstance, vars: inputVars, options: inputOpts } = validateArgsWithOptions(connectorConfig, dcOrVars, varsOrOptions, options, true, true);
+  return executeQuery(listMesaReservasVenciblesRef(dcInstance, inputVars), inputOpts && inputOpts.fetchPolicy);
 }
 ;

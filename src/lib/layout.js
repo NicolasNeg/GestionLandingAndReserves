@@ -13,6 +13,7 @@ let lastPath = window.location.pathname;
 let themeCache = null;
 let renderToken = 0;
 let cartOpen = false;
+const CART_TAX_RATE = 0.089;
 
 function escapeHtml(text) {
   return String(text ?? '')
@@ -133,21 +134,34 @@ function ensureCartDrawer() {
   drawer.id = 'app-cart-drawer';
   drawer.className = 'fixed inset-0 z-[120] hidden';
   drawer.innerHTML = `
-    <div class="absolute inset-0 bg-slate-900/45" data-app-cart-overlay></div>
-    <aside class="absolute right-0 top-0 h-full w-full max-w-md bg-white shadow-2xl border-l border-slate-200 flex flex-col">
-      <div class="flex items-center justify-between border-b border-slate-200 px-4 py-3">
-        <h3 class="text-lg font-black text-slate-900">Tu carrito</h3>
-        <button type="button" data-app-cart-close class="rounded border border-slate-300 px-3 py-1 text-sm font-semibold hover:bg-slate-50">Cerrar</button>
+    <div class="absolute inset-0 bg-slate-900/55 backdrop-blur-[2px]" data-app-cart-overlay></div>
+    <aside class="absolute inset-y-0 right-0 flex h-full w-full max-w-md flex-col rounded-l-3xl border-l border-cyan-100 bg-slate-50 shadow-[-20px_0px_40px_rgba(0,104,95,0.14)]">
+      <div class="flex items-center justify-between border-b border-cyan-100/80 px-5 py-4">
+        <h3 class="text-xl font-black text-teal-700">Tu carrito</h3>
+        <button type="button" data-app-cart-close class="grid h-9 w-9 place-items-center rounded-full border border-slate-300 bg-white text-slate-500 transition hover:text-teal-700 hover:bg-slate-100" aria-label="Cerrar carrito">
+          ${icon('x', 'h-4 w-4')}
+        </button>
       </div>
-      <div id="app-cart-items" class="flex-1 overflow-y-auto p-4"></div>
-      <div class="border-t border-slate-200 p-4">
-        <div class="mb-3 flex items-center justify-between text-sm">
-          <span class="text-slate-500">Subtotal</span>
-          <strong id="app-cart-subtotal" class="text-slate-900">$0.00 MXN</strong>
+      <div id="app-cart-items" class="flex-1 overflow-y-auto p-5"></div>
+      <div class="rounded-bl-3xl border-t border-cyan-100 bg-white/90 p-5">
+        <div class="mb-4 space-y-2 text-sm">
+          <div class="flex items-center justify-between">
+            <span class="text-slate-500">Subtotal</span>
+            <strong id="app-cart-subtotal" class="text-slate-900">$0.00 MXN</strong>
+          </div>
+          <div class="flex items-center justify-between">
+            <span class="text-slate-500">Impuestos y cargos</span>
+            <strong id="app-cart-fees" class="text-slate-700">$0.00 MXN</strong>
+          </div>
+          <div class="mt-2 flex items-center justify-between border-t border-slate-200 pt-2">
+            <span class="text-base font-black text-slate-900">Total</span>
+            <strong id="app-cart-total" class="text-2xl font-black text-teal-700">$0.00 MXN</strong>
+          </div>
         </div>
-        <button type="button" data-app-cart-checkout class="w-full rounded-xl bg-blue-600 px-4 py-3 font-bold text-white hover:bg-blue-700">
+        <button type="button" data-app-cart-checkout class="w-full rounded-full bg-blue-700 px-4 py-3 font-black text-white transition hover:bg-blue-600">
           Completar compra
         </button>
+        <p class="mt-3 text-center text-xs font-semibold text-slate-500">Pago seguro y validación inmediata de tickets.</p>
       </div>
     </aside>
   `;
@@ -159,27 +173,66 @@ function renderCartDrawer() {
   const drawer = ensureCartDrawer();
   const itemsWrap = drawer.querySelector('#app-cart-items');
   const subtotalEl = drawer.querySelector('#app-cart-subtotal');
+  const feesEl = drawer.querySelector('#app-cart-fees');
+  const totalEl = drawer.querySelector('#app-cart-total');
   const items = listCartItems();
+  const fmtMoney = (value) => `$${Number(value || 0).toFixed(2)} MXN`;
+  const itemCover = (item) => {
+    const img = item?.meta?.imageUrl || item?.meta?.imagenUrl || '';
+    if (img) {
+      return `<img src="${escapeHtml(img)}" alt="${escapeHtml(item.name)}" class="h-16 w-16 rounded-2xl object-cover" loading="lazy" />`;
+    }
+    const tint =
+      item.type === 'paquete'
+        ? 'from-amber-200 to-orange-100 text-amber-700'
+        : item.type === 'producto'
+          ? 'from-cyan-200 to-blue-100 text-cyan-700'
+          : 'from-emerald-200 to-teal-100 text-emerald-700';
+    return `<div class="grid h-16 w-16 place-items-center rounded-2xl bg-gradient-to-br ${tint}">${icon('ticket', 'h-7 w-7')}</div>`;
+  };
+  const subtotal = cartSubtotal();
+  const fees = subtotal * CART_TAX_RATE;
+  const total = subtotal + fees;
   if (!items.length) {
-    itemsWrap.innerHTML = '<p class="text-sm text-slate-500">Tu carrito está vacío.</p>';
-    subtotalEl.textContent = '$0.00 MXN';
+    itemsWrap.innerHTML = `
+      <div class="rounded-2xl border border-dashed border-slate-300 bg-white p-6 text-center">
+        <p class="text-sm font-semibold text-slate-500">Tu carrito está vacío.</p>
+      </div>
+    `;
+    subtotalEl.textContent = fmtMoney(0);
+    feesEl.textContent = fmtMoney(0);
+    totalEl.textContent = fmtMoney(0);
     return;
   }
   itemsWrap.innerHTML = items
     .map((item) => `
-      <article class="mb-3 rounded-xl border border-slate-200 p-3">
-        <p class="font-semibold text-slate-900">${escapeHtml(item.name)}</p>
-        <p class="text-xs text-slate-500">${escapeHtml(item.type)} · $${Number(item.price || 0).toFixed(2)} MXN</p>
-        <div class="mt-2 flex items-center gap-2">
-          <button type="button" data-app-cart-minus="${escapeHtml(item.key)}" class="rounded border px-2">-</button>
-          <span class="w-6 text-center font-bold">${Number(item.qty || 1)}</span>
-          <button type="button" data-app-cart-plus="${escapeHtml(item.key)}" class="rounded border px-2">+</button>
-          <button type="button" data-app-cart-remove="${escapeHtml(item.key)}" class="ml-auto rounded border border-rose-200 px-2 text-rose-700">Quitar</button>
+      <article class="mb-4 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-cyan-100">
+        <div class="flex gap-3">
+          ${itemCover(item)}
+          <div class="min-w-0 flex-1">
+            <div class="flex items-start justify-between gap-2">
+              <p class="truncate font-black text-slate-900">${escapeHtml(item.name)}</p>
+              <button type="button" data-app-cart-remove="${escapeHtml(item.key)}" class="rounded-full p-1 text-rose-600 transition hover:bg-rose-50" aria-label="Quitar item">
+                ${icon('x', 'h-4 w-4')}
+              </button>
+            </div>
+            <p class="mt-0.5 text-xs font-semibold uppercase tracking-wide text-slate-500">${escapeHtml(item.type)}</p>
+            <div class="mt-3 flex items-center justify-between gap-3">
+              <div class="inline-flex items-center gap-2 rounded-full bg-slate-100 px-2 py-1">
+                <button type="button" data-app-cart-minus="${escapeHtml(item.key)}" class="grid h-6 w-6 place-items-center rounded-full text-slate-700 hover:bg-slate-200">-</button>
+                <span class="w-5 text-center text-sm font-black">${Number(item.qty || 1)}</span>
+                <button type="button" data-app-cart-plus="${escapeHtml(item.key)}" class="grid h-6 w-6 place-items-center rounded-full text-slate-700 hover:bg-slate-200">+</button>
+              </div>
+              <span class="text-lg font-black text-teal-700">${fmtMoney(Number(item.price || 0) * Number(item.qty || 0))}</span>
+            </div>
+          </div>
         </div>
       </article>
     `)
     .join('');
-  subtotalEl.textContent = `$${cartSubtotal().toFixed(2)} MXN`;
+  subtotalEl.textContent = fmtMoney(subtotal);
+  feesEl.textContent = fmtMoney(fees);
+  totalEl.textContent = fmtMoney(total);
 }
 
 function openCartDrawer() {

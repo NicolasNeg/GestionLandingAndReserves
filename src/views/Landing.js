@@ -5,7 +5,13 @@ import {
   listServiciosLanding
 } from '../dataconnect-generated';
 import { auth } from '../firebase-config.js';
-import { drawDistribucionCanvas, DEFAULT_MAPA_JSON, MAP_ITEM_KINDS } from '../lib/distribucionMapa.js';
+import {
+  drawDistribucionCanvas,
+  DEFAULT_MAPA_JSON,
+  MAP_ITEM_KINDS,
+  findMapItemIndexAtClientPoint,
+  parseDistribucionJson
+} from '../lib/distribucionMapa.js';
 import { getUserAccess, waitForAuthUser } from '../lib/accessControl.js';
 import { icon } from '../lib/icons.js';
 import heroImageUrl from '../assets/hero.png';
@@ -347,14 +353,14 @@ function renderHomeMobileQuickNav() {
     ${quickItems
       .map(
         (item) => `
-        <a href="#${item.id}" class="home-mobile-nav-link flex min-w-0 flex-col items-center justify-center gap-1 rounded-2xl px-2 py-2 text-[0.68rem] font-black text-slate-600 transition hover:bg-cyan-50 hover:text-cyan-800" title="${escapeHtml(item.label)}">
-          ${icon(item.iconName, 'h-5 w-5')}
+        <a href="#${item.id}" class="home-mobile-nav-link flex min-w-0 flex-col items-center justify-center gap-1 rounded-2xl px-2 py-2 text-[0.68rem] font-black text-slate-700 transition hover:bg-white hover:text-cyan-800" title="${escapeHtml(item.label)}">
+          <span class="grid h-8 w-8 place-items-center rounded-xl bg-slate-100 text-slate-700">${icon(item.iconName, 'h-4 w-4')}</span>
           <span class="truncate">${escapeHtml(item.label)}</span>
         </a>`
       )
       .join('')}
-    <button type="button" id="home-nav-more" class="flex min-w-0 flex-col items-center justify-center gap-1 rounded-2xl px-2 py-2 text-[0.68rem] font-black text-slate-600 transition hover:bg-cyan-50 hover:text-cyan-800" aria-expanded="false" aria-controls="home-nav-drawer">
-      ${icon('menu', 'h-5 w-5')}
+    <button type="button" id="home-nav-more" class="flex min-w-0 flex-col items-center justify-center gap-1 rounded-2xl px-2 py-2 text-[0.68rem] font-black text-slate-700 transition hover:bg-white hover:text-cyan-800" aria-expanded="false" aria-controls="home-nav-drawer">
+      <span class="grid h-8 w-8 place-items-center rounded-xl bg-slate-100 text-slate-700">${icon('menu', 'h-4 w-4')}</span>
       <span>Mas</span>
     </button>
   `;
@@ -406,7 +412,7 @@ export default {
             <span>Menu</span>
           </button>
 
-          <nav id="home-mobile-quicknav" class="fixed inset-x-3 bottom-[calc(0.75rem+env(safe-area-inset-bottom))] z-30 grid grid-cols-5 gap-1 rounded-3xl border border-slate-200 bg-white/95 p-2 shadow-2xl shadow-slate-900/15 backdrop-blur lg:hidden" aria-label="Navegacion rapida">
+          <nav id="home-mobile-quicknav" class="fixed inset-x-3 bottom-[calc(0.75rem+env(safe-area-inset-bottom))] z-30 grid grid-cols-5 gap-1 rounded-3xl border border-cyan-100 bg-white/92 p-2 shadow-2xl shadow-cyan-900/20 backdrop-blur-md lg:hidden" aria-label="Navegacion rapida">
             ${navQuickMobile}
           </nav>
 
@@ -442,6 +448,13 @@ export default {
               <div class="mx-auto max-w-5xl">
                 <h2 class="text-2xl font-black text-slate-900 sm:text-3xl">Servicios</h2>
                 <p class="mt-2 text-sm text-slate-500">Gestionados desde el panel del personal.</p>
+                <div class="group relative mt-8 overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-xl">
+                  <img src="${heroImageUrl}" alt="Experiencia en el parque" class="h-56 w-full object-cover transition duration-500 group-hover:scale-105 sm:h-72" />
+                  <div class="absolute inset-0 bg-slate-900/25"></div>
+                  <button type="button" class="absolute inset-0 m-auto h-20 w-20 rounded-full border-4 border-white/70 bg-white/35 text-white backdrop-blur">
+                    ${icon('ticket', 'h-8 w-8')}
+                  </button>
+                </div>
                 <div id="landing-servicios" class="mt-8 grid gap-6 sm:grid-cols-2">
                   <p class="text-sm text-slate-500">Cargando servicios...</p>
                 </div>
@@ -516,7 +529,7 @@ export default {
                     <p class="mt-2 max-w-2xl text-sm text-slate-600">Zonas, mesas, albercas, palapas, servicios y accesos publicados por el personal.</p>
                   </div>
                   <div class="flex flex-col items-end gap-2 sm:flex-row sm:items-center">
-                    <p class="inline-flex w-fit items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-black text-slate-700">
+                    <p class="${access.can('dashboard.manage') || access.can('admin.panel') || access.isProgramador ? 'inline-flex' : 'hidden'} w-fit items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-black text-slate-700">
                       ${icon('settings', 'h-4 w-4')} Editable desde panel
                     </p>
                     <p id="landing-mapa-edit-wrap" class="hidden">
@@ -533,6 +546,9 @@ export default {
                   </div>
                   <div class="overflow-x-auto p-4">
                     <canvas id="landing-mapa-canvas" width="800" height="440" class="mx-auto block max-w-full rounded-2xl border border-cyan-100 shadow-inner"></canvas>
+                  </div>
+                  <div id="landing-map-info" class="border-t border-slate-100 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-600">
+                    Toca una zona del mapa para ver su descripción.
                   </div>
                 </div>
               </div>
@@ -681,12 +697,12 @@ export default {
     if (est) est.textContent = landing.estacionamientoTexto;
 
     const mapCanvas = document.getElementById('landing-mapa-canvas');
-    if (mapCanvas) drawDistribucionCanvas(mapCanvas, landing.mapaDistribucionJson);
+    if (mapCanvas) drawDistribucionCanvas(mapCanvas, landing.mapaDistribucionJson, { showItemIds: false, showKindBadge: true });
 
     const parkingMapCanvas = document.getElementById('landing-parking-canvas');
     if (parkingMapCanvas) {
       const parkingJson = landing.mapaEstacionamientoJson || landing.mapaDistribucionJson;
-      drawDistribucionCanvas(parkingMapCanvas, parkingJson);
+      drawDistribucionCanvas(parkingMapCanvas, parkingJson, { showItemIds: false, showKindBadge: false });
     }
 
     const mapEditWrap = document.getElementById('landing-mapa-edit-wrap');
@@ -742,9 +758,15 @@ export default {
           serviciosEl.innerHTML = servicios
             .map(
               (s) => `
-            <article class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-              <h3 class="text-lg font-bold text-slate-900">${escapeHtml(s.titulo)}</h3>
-              <p class="mt-2 text-sm text-slate-600 whitespace-pre-wrap">${escapeHtml(s.descripcion)}</p>
+            <article class="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-lg">
+              ${s.imagenUrl ? `<img src="${escapeHtml(s.imagenUrl)}" alt="${escapeHtml(s.titulo)}" class="h-36 w-full object-cover" loading="lazy" />` : ''}
+              <div class="p-6">
+                <div class="flex items-start justify-between gap-3">
+                  <h3 class="text-lg font-bold text-slate-900">${escapeHtml(s.titulo)}</h3>
+                  ${Number(s.precio || 0) > 0 ? `<span class="rounded-full bg-amber-100 px-3 py-1 text-xs font-black text-amber-800">${currencyFormatter.format(s.precio)}</span>` : ''}
+                </div>
+                <p class="mt-2 text-sm text-slate-600 whitespace-pre-wrap">${escapeHtml(s.descripcion)}</p>
+              </div>
             </article>`
             )
             .join('');
@@ -857,6 +879,21 @@ export default {
       );
     }
 
+    if (mapCanvas) {
+      const mapInfo = document.getElementById('landing-map-info');
+      mapCanvas.addEventListener('click', (ev) => {
+        const idx = findMapItemIndexAtClientPoint(mapCanvas, landing.mapaDistribucionJson, ev.clientX, ev.clientY);
+        const item = parseDistribucionJson(landing.mapaDistribucionJson).items[idx];
+        if (!item) {
+          if (mapInfo) mapInfo.textContent = 'Toca una zona del mapa para ver su descripción.';
+          return;
+        }
+        const title = item.label || 'Zona';
+        const detail = item.notes || `Tipo: ${item.kind}`;
+        if (mapInfo) mapInfo.innerHTML = `<strong class="text-slate-900">${escapeHtml(title)}</strong> · ${escapeHtml(detail)}`;
+      });
+    }
+
     const drawer = document.getElementById('home-nav-drawer');
     const overlay = document.getElementById('home-nav-overlay');
     const toggle = document.getElementById('home-nav-toggle');
@@ -925,6 +962,11 @@ export default {
         link.classList.toggle('bg-cyan-50', active);
         link.classList.toggle('text-cyan-800', active);
         link.classList.toggle('text-slate-600', !active);
+        const bubble = link.querySelector('span');
+        if (bubble) {
+          bubble.classList.toggle('bg-cyan-100', active);
+          bubble.classList.toggle('text-cyan-700', active);
+        }
       });
     };
     const observedSections = quickLinks

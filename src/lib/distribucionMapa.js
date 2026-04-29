@@ -156,7 +156,7 @@ function drawBackground(ctx, data) {
   ctx.textAlign = 'left';
 }
 
-function drawItem(ctx, item, selected = false, mesaEstadoVisual = null) {
+function drawItem(ctx, item, selected = false, mesaEstadoVisual = null, options = {}) {
   const meta = getMapKind(item.kind);
   const x = Number(item.x) || 0;
   const y = Number(item.y) || 0;
@@ -167,6 +167,12 @@ function drawItem(ctx, item, selected = false, mesaEstadoVisual = null) {
   if (item.kind === 'mesa' && mesaEstadoVisual === 'apartada') {
     fill = 'rgba(239, 68, 68, 0.36)';
     stroke = '#b91c1c';
+  } else if (item.kind === 'mesa' && mesaEstadoVisual === 'apartada_mia') {
+    fill = 'rgba(245, 158, 11, 0.34)';
+    stroke = '#b45309';
+  } else if (item.kind === 'mesa' && mesaEstadoVisual === 'ocupada') {
+    fill = 'rgba(79, 70, 229, 0.34)';
+    stroke = '#3730a3';
   }
 
   ctx.save();
@@ -184,15 +190,23 @@ function drawItem(ctx, item, selected = false, mesaEstadoVisual = null) {
   ctx.stroke();
   ctx.setLineDash([]);
 
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.88)';
-  roundRect(ctx, x + 6, y + 6, Math.max(Math.min(width - 12, 190), 56), 44, 8);
-  ctx.fill();
-  ctx.fillStyle = '#0f172a';
-  ctx.font = '800 12px system-ui, sans-serif';
-  ctx.fillText(String(item.id || 'sin-id').slice(0, 24), x + 14, y + 23);
-  ctx.font = '700 11px system-ui, sans-serif';
-  ctx.fillStyle = stroke;
-  ctx.fillText(String(meta.label || item.kind).slice(0, 26), x + 14, y + 40);
+  const showItemIds = options.showItemIds !== false;
+  const showKindBadge = options.showKindBadge !== false;
+  if (showItemIds || showKindBadge) {
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.88)';
+    roundRect(ctx, x + 6, y + 6, Math.max(Math.min(width - 12, 190), 56), 44, 8);
+    ctx.fill();
+    if (showItemIds) {
+      ctx.fillStyle = '#0f172a';
+      ctx.font = '800 12px system-ui, sans-serif';
+      ctx.fillText(String(item.id || 'sin-id').slice(0, 24), x + 14, y + 23);
+    }
+    if (showKindBadge) {
+      ctx.font = '700 11px system-ui, sans-serif';
+      ctx.fillStyle = stroke;
+      ctx.fillText(String(meta.label || item.kind).slice(0, 26), x + 14, showItemIds ? 40 : 28);
+    }
+  }
 
   if (height > 72) {
     ctx.fillStyle = '#334155';
@@ -249,6 +263,8 @@ function drawHandles(ctx, item) {
 
 /**
  * @param {Record<string, 'apartada' | string>} [options.statusByMapItemId] - id de ítem del mapa → estado visual (solo afecta kind mesa)
+ * @param {boolean} [options.showItemIds] - mostrar IDs técnicos en canvas (default true).
+ * @param {boolean} [options.showKindBadge] - mostrar tipo/kind en canvas (default true).
  */
 export function drawDistribucionCanvas(canvas, jsonStr, options = {}) {
   const data = parseDistribucionJson(jsonStr);
@@ -268,7 +284,8 @@ export function drawDistribucionCanvas(canvas, jsonStr, options = {}) {
       ctx,
       item,
       options.selected === index,
-      item.kind === 'mesa' ? statusByMapItemId[item.id] || null : null
+      item.kind === 'mesa' ? statusByMapItemId[item.id] || null : null,
+      options
     )
   );
   if (!data.items.length) drawEmptyState(ctx, data);

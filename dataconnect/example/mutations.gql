@@ -245,3 +245,12 @@ mutation DeleteServicio($id: UUID!) @auth(level: PUBLIC) {
 mutation DeleteProducto($id: UUID!) @auth(level: USER) {
   producto_delete(id: $id)
 }
+
+
+mutation UpdateMesaReservaEstado($id: UUID!, $estado: String!) @auth(level: USER) {
+  mesaReserva_update(id: $id, data: { estado: $estado })
+}
+
+mutation VincularTicketMesaReserva($id: UUID!, $ticketId: UUID!) @auth(level: USER) {
+  mesaReserva_update(id: $id, data: { ticketId: $ticketId })
+}

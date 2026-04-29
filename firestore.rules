@@ -196,6 +196,19 @@ service cloud.firestore {
       allow create, update, delete: if signedIn() && hasPermission('parking.manage');
     }
 
+    // Canal realtime de mesas por fecha (Fase B).
+    // Persistencia canonical sigue en Data Connect; este canal replica estado para UI en vivo.
+    match /mesaReservasLive/{rowId} {
+      allow read: if true;
+      allow create, update: if signedIn() &&
+        request.resource.data.keys().hasOnly(['id', 'fechaDia', 'mapItemId', 'userId', 'estado', 'updatedAt']) &&
+        request.resource.data.userId == request.auth.uid &&
+        request.resource.data.estado is string &&
+        request.resource.data.fechaDia is string &&
+        request.resource.data.mapItemId is string;
+      allow delete: if signedIn();
+    }
+
     // Canal ligero para refrescar vistas tras cambios en panel (lectura publica)
     match /appRealtime/{docId} {
       allow read: if true;

@@ -205,3 +205,40 @@ query ListMisMesaReservas($userId: String!) @auth(level: USER) {
     }
   }
 }
+
+
+query ListMesaReservasByFecha($fechaDia: String!) @auth(level: USER) {
+  mesaReservas(
+    where: { fechaDia: { eq: $fechaDia } }
+    orderBy: [{ creadoEn: DESC }]
+    limit: 500
+  ) {
+    id
+    fechaDia
+    mapItemId
+    estado
+    user {
+      id
+    }
+    ticket {
+      id
+    }
+    creadoEn
+  }
+}
+
+query ListMesaReservasVencibles($fechaDia: String!) @auth(level: USER) {
+  mesaReservas(
+    where: {
+      fechaDia: { lt: $fechaDia }
+      estado: { eq: "apartada" }
+    }
+    orderBy: [{ creadoEn: DESC }]
+    limit: 800
+  ) {
+    id
+    fechaDia
+    mapItemId
+    estado
+  }
+}

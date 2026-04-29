@@ -209,6 +209,39 @@ export interface ListMesaReservasActivasPorFechaVariables {
   fechaDia: string;
 }
 
+export interface ListMesaReservasByFechaData {
+  mesaReservas: ({
+    id: UUIDString;
+    fechaDia: string;
+    mapItemId: string;
+    estado: string;
+    user?: {
+      id: string;
+    } & User_Key;
+      ticket?: {
+        id: UUIDString;
+      } & Ticket_Key;
+        creadoEn: TimestampString;
+  } & MesaReserva_Key)[];
+}
+
+export interface ListMesaReservasByFechaVariables {
+  fechaDia: string;
+}
+
+export interface ListMesaReservasVenciblesData {
+  mesaReservas: ({
+    id: UUIDString;
+    fechaDia: string;
+    mapItemId: string;
+    estado: string;
+  } & MesaReserva_Key)[];
+}
+
+export interface ListMesaReservasVenciblesVariables {
+  fechaDia: string;
+}
+
 export interface ListMisMesaReservasData {
   mesaReservas: ({
     id: UUIDString;
@@ -368,6 +401,15 @@ export interface Ticket_Key {
   __typename?: 'Ticket_Key';
 }
 
+export interface UpdateMesaReservaEstadoData {
+  mesaReserva_update?: MesaReserva_Key | null;
+}
+
+export interface UpdateMesaReservaEstadoVariables {
+  id: UUIDString;
+  estado: string;
+}
+
 export interface UpdateProductoData {
   producto_update?: Producto_Key | null;
 }
@@ -448,6 +490,15 @@ export interface UpsertUserVariables {
 export interface User_Key {
   id: string;
   __typename?: 'User_Key';
+}
+
+export interface VincularTicketMesaReservaData {
+  mesaReserva_update?: MesaReserva_Key | null;
+}
+
+export interface VincularTicketMesaReservaVariables {
+  id: UUIDString;
+  ticketId: UUIDString;
 }
 
 interface CreateAnonymousTicketRef {
@@ -642,6 +693,30 @@ export const deleteProductoRef: DeleteProductoRef;
 export function deleteProducto(vars: DeleteProductoVariables): MutationPromise<DeleteProductoData, DeleteProductoVariables>;
 export function deleteProducto(dc: DataConnect, vars: DeleteProductoVariables): MutationPromise<DeleteProductoData, DeleteProductoVariables>;
 
+interface UpdateMesaReservaEstadoRef {
+  /* Allow users to create refs without passing in DataConnect */
+  (vars: UpdateMesaReservaEstadoVariables): MutationRef<UpdateMesaReservaEstadoData, UpdateMesaReservaEstadoVariables>;
+  /* Allow users to pass in custom DataConnect instances */
+  (dc: DataConnect, vars: UpdateMesaReservaEstadoVariables): MutationRef<UpdateMesaReservaEstadoData, UpdateMesaReservaEstadoVariables>;
+  operationName: string;
+}
+export const updateMesaReservaEstadoRef: UpdateMesaReservaEstadoRef;
+
+export function updateMesaReservaEstado(vars: UpdateMesaReservaEstadoVariables): MutationPromise<UpdateMesaReservaEstadoData, UpdateMesaReservaEstadoVariables>;
+export function updateMesaReservaEstado(dc: DataConnect, vars: UpdateMesaReservaEstadoVariables): MutationPromise<UpdateMesaReservaEstadoData, UpdateMesaReservaEstadoVariables>;
+
+interface VincularTicketMesaReservaRef {
+  /* Allow users to create refs without passing in DataConnect */
+  (vars: VincularTicketMesaReservaVariables): MutationRef<VincularTicketMesaReservaData, VincularTicketMesaReservaVariables>;
+  /* Allow users to pass in custom DataConnect instances */
+  (dc: DataConnect, vars: VincularTicketMesaReservaVariables): MutationRef<VincularTicketMesaReservaData, VincularTicketMesaReservaVariables>;
+  operationName: string;
+}
+export const vincularTicketMesaReservaRef: VincularTicketMesaReservaRef;
+
+export function vincularTicketMesaReserva(vars: VincularTicketMesaReservaVariables): MutationPromise<VincularTicketMesaReservaData, VincularTicketMesaReservaVariables>;
+export function vincularTicketMesaReserva(dc: DataConnect, vars: VincularTicketMesaReservaVariables): MutationPromise<VincularTicketMesaReservaData, VincularTicketMesaReservaVariables>;
+
 interface GetTicketByIdRef {
   /* Allow users to create refs without passing in DataConnect */
   (vars: GetTicketByIdVariables): QueryRef<GetTicketByIdData, GetTicketByIdVariables>;
@@ -809,4 +884,28 @@ export const listMisMesaReservasRef: ListMisMesaReservasRef;
 
 export function listMisMesaReservas(vars: ListMisMesaReservasVariables, options?: ExecuteQueryOptions): QueryPromise<ListMisMesaReservasData, ListMisMesaReservasVariables>;
 export function listMisMesaReservas(dc: DataConnect, vars: ListMisMesaReservasVariables, options?: ExecuteQueryOptions): QueryPromise<ListMisMesaReservasData, ListMisMesaReservasVariables>;
+
+interface ListMesaReservasByFechaRef {
+  /* Allow users to create refs without passing in DataConnect */
+  (vars: ListMesaReservasByFechaVariables): QueryRef<ListMesaReservasByFechaData, ListMesaReservasByFechaVariables>;
+  /* Allow users to pass in custom DataConnect instances */
+  (dc: DataConnect, vars: ListMesaReservasByFechaVariables): QueryRef<ListMesaReservasByFechaData, ListMesaReservasByFechaVariables>;
+  operationName: string;
+}
+export const listMesaReservasByFechaRef: ListMesaReservasByFechaRef;
+
+export function listMesaReservasByFecha(vars: ListMesaReservasByFechaVariables, options?: ExecuteQueryOptions): QueryPromise<ListMesaReservasByFechaData, ListMesaReservasByFechaVariables>;
+export function listMesaReservasByFecha(dc: DataConnect, vars: ListMesaReservasByFechaVariables, options?: ExecuteQueryOptions): QueryPromise<ListMesaReservasByFechaData, ListMesaReservasByFechaVariables>;
+
+interface ListMesaReservasVenciblesRef {
+  /* Allow users to create refs without passing in DataConnect */
+  (vars: ListMesaReservasVenciblesVariables): QueryRef<ListMesaReservasVenciblesData, ListMesaReservasVenciblesVariables>;
+  /* Allow users to pass in custom DataConnect instances */
+  (dc: DataConnect, vars: ListMesaReservasVenciblesVariables): QueryRef<ListMesaReservasVenciblesData, ListMesaReservasVenciblesVariables>;
+  operationName: string;
+}
+export const listMesaReservasVenciblesRef: ListMesaReservasVenciblesRef;
+
+export function listMesaReservasVencibles(vars: ListMesaReservasVenciblesVariables, options?: ExecuteQueryOptions): QueryPromise<ListMesaReservasVenciblesData, ListMesaReservasVenciblesVariables>;
+export function listMesaReservasVencibles(dc: DataConnect, vars: ListMesaReservasVenciblesVariables, options?: ExecuteQueryOptions): QueryPromise<ListMesaReservasVenciblesData, ListMesaReservasVenciblesVariables>;
 
