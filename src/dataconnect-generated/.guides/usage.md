@@ -14,7 +14,7 @@ If a user is not using a supported framework, they can use the generated SDK dir
 Here's an example of how to use it with the first 5 operations:
 
 ```js
-import { createAnonymousTicket, createUserTicket, updateTicketStatus, createPaquete, upsertUser, upsertLandingPage, createServicio, updateServicio, getTicketById, listRecentTickets } from '@dataconnect/generated';
+import { createAnonymousTicket, createUserTicket, updateTicketStatus, createPaquete, upsertUser, upsertLandingPage, createServicio, updateServicio, createProducto, updateProducto } from '@dataconnect/generated';
 
 
 // Operation CreateAnonymousTicket:  For variables, look at type CreateAnonymousTicketVars in ../index.d.ts
@@ -41,11 +41,11 @@ const { data } = await CreateServicio(dataConnect, createServicioVars);
 // Operation UpdateServicio:  For variables, look at type UpdateServicioVars in ../index.d.ts
 const { data } = await UpdateServicio(dataConnect, updateServicioVars);
 
-// Operation GetTicketById:  For variables, look at type GetTicketByIdVars in ../index.d.ts
-const { data } = await GetTicketById(dataConnect, getTicketByIdVars);
+// Operation CreateProducto:  For variables, look at type CreateProductoVars in ../index.d.ts
+const { data } = await CreateProducto(dataConnect, createProductoVars);
 
-// Operation ListRecentTickets: 
-const { data } = await ListRecentTickets(dataConnect);
+// Operation UpdateProducto:  For variables, look at type UpdateProductoVars in ../index.d.ts
+const { data } = await UpdateProducto(dataConnect, updateProductoVars);
 
 
 ```

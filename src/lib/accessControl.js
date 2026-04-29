@@ -10,6 +10,9 @@ export const PERMISSIONS = [
   { key: 'tickets.monitor', label: 'Monitor tickets' },
   { key: 'tickets.scan', label: 'Escaner' },
   { key: 'packages.manage', label: 'Paquetes' },
+  { key: 'inventory.manage', label: 'Inventario productos' },
+  { key: 'inventory.adjust', label: 'Ajustes stock' },
+  { key: 'sales.physical', label: 'Ventas fisicas caja' },
   { key: 'landing.manage', label: 'Landing' },
   { key: 'finance.view', label: 'Finanzas' },
   { key: 'admin.panel', label: 'Panel administracion' },
@@ -21,12 +24,21 @@ export const PERMISSIONS = [
 
 export const DEFAULT_ROLE_PERMISSIONS = {
   cliente: [],
-  trabajador: ['dashboard.manage', 'tickets.monitor', 'tickets.scan'],
+  trabajador: [
+    'dashboard.manage',
+    'tickets.monitor',
+    'tickets.scan',
+    'inventory.adjust',
+    'sales.physical'
+  ],
   jefe: [
     'dashboard.manage',
     'tickets.monitor',
     'tickets.scan',
     'packages.manage',
+    'inventory.manage',
+    'inventory.adjust',
+    'sales.physical',
     'landing.manage',
     'finance.view',
     'admin.panel'
@@ -175,7 +187,6 @@ export async function getUserAccess(user = auth.currentUser) {
 export async function syncFirestoreUserProfile(user, profile = {}) {
   if (!user) return;
   const ref = doc(db, 'users', user.uid);
-  const snap = await getDoc(ref);
   const bootstrapProgramador = isBootstrapProgramadorEmail(user.email || profile.email);
   const base = {
     email: user.email || profile.email || '',
@@ -186,23 +197,30 @@ export async function syncFirestoreUserProfile(user, profile = {}) {
     lastLoginAt: serverTimestamp()
   };
 
-  if (!snap.exists()) {
+  try {
+    const snap = await getDoc(ref);
+
+    if (!snap.exists()) {
+      await setDoc(ref, {
+        ...base,
+        rol: bootstrapProgramador ? 'programador' : 'cliente',
+        permissions: bootstrapProgramador ? PERMISSIONS.map((p) => p.key) : [],
+        createdAt: serverTimestamp()
+      });
+      return;
+    }
+
     await setDoc(ref, {
       ...base,
-      rol: bootstrapProgramador ? 'programador' : 'cliente',
-      permissions: bootstrapProgramador ? PERMISSIONS.map((p) => p.key) : [],
-      createdAt: serverTimestamp()
-    });
-    return;
+      ...(bootstrapProgramador
+        ? {
+            rol: 'programador',
+            permissions: PERMISSIONS.map((p) => p.key)
+          }
+        : {})
+    }, { merge: true });
+  } catch (error) {
+    if (isPermissionDenied(error)) return;
+    throw error;
   }
-
-  await setDoc(ref, {
-    ...base,
-    ...(bootstrapProgramador
-      ? {
-          rol: 'programador',
-          permissions: PERMISSIONS.map((p) => p.key)
-        }
-      : {})
-  }, { merge: true });
 }

@@ -107,3 +107,37 @@ query ListServiciosAdmin @auth(level: USER) {
     activo
   }
 }
+
+# Inventario para panel (jefe / trabajador)
+query ListProductosAdmin @auth(level: USER) {
+  productos(orderBy: [{ fechaCreacion: DESC }]) {
+    id
+    titulo
+    descripcion
+    imagenUrl
+    precio
+    stockActual
+    reservadoAprox
+    activo
+    fechaCreacion
+  }
+}
+
+query ListMovimientosInventario($productoId: UUID!) @auth(level: USER) {
+  movimientoInventarios(
+    where: { productoId: { eq: $productoId } }
+    orderBy: [{ fechaCreacion: DESC }]
+    limit: 30
+  ) {
+    id
+    tipo
+    cantidad
+    nota
+    fechaCreacion
+    creadoPor {
+      id
+      nombre
+      email
+    }
+  }
+}

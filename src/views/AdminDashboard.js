@@ -2,6 +2,12 @@ import { auth } from '../firebase-config.js';
 import {
   listRecentTickets,
   createPaquete,
+  listProductosAdmin,
+  listMovimientosInventario,
+  createProducto,
+  updateProducto,
+  updateProductoStock,
+  createMovimientoInventario,
   getLandingPage,
   listServiciosAdmin,
   upsertLandingPage,
@@ -124,6 +130,7 @@ const AdminDashboard = {
     const canLanding = access.can('landing.manage');
     const canScan = access.can('tickets.scan');
     const canAdminPanel = access.can('admin.panel');
+    const canInventoryView = access.can('inventory.manage') || access.can('inventory.adjust') || access.can('sales.physical');
     const avatar = access.photoURL
       ? `<img src="${escapeHtml(access.photoURL)}" alt="${escapeHtml(access.name)}" class="h-10 w-10 rounded-full object-cover" referrerpolicy="no-referrer" />`
       : `<span class="app-avatar-initials h-10 w-10">${escapeHtml(access.name.slice(0, 1).toUpperCase())}</span>`;
@@ -144,6 +151,7 @@ const AdminDashboard = {
                         ${icon('ticket', 'h-5 w-5')}
                         <span class="admin-sidebar-label">Gestion</span>
                     </button>
+                    ${canInventoryView ? `<button type="button" data-admin-section="inventario" class="admin-sidebar-item" title="Inventario y ventas">${icon('package', 'h-5 w-5')}<span class="admin-sidebar-label">Inventario / Ventas</span></button>` : ''}
                     ${canScan ? `<a href="/escaner" data-link class="admin-sidebar-item" title="Escaner">${icon('scan', 'h-5 w-5')}<span class="admin-sidebar-label">Escaner</span></a>` : ''}
                     ${canAdminPanel ? `<button type="button" data-admin-section="admin" class="admin-sidebar-item" title="Panel administracion">${icon('dashboard', 'h-5 w-5')}<span class="admin-sidebar-label">Panel administracion</span></button>` : ''}
                     ${canLanding ? `<button type="button" data-admin-section="sitio" class="admin-sidebar-item" title="Sitio / Landing">${icon('palette', 'h-5 w-5')}<span class="admin-sidebar-label">Sitio / Landing</span></button>` : ''}
@@ -209,6 +217,36 @@ const AdminDashboard = {
                 </div>
                 </div>
 
+                ${canInventoryView ? `<div id="admin-panel-inventario" class="hidden space-y-6">
+                  <div class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+                    <h2 class="text-2xl font-black text-slate-900">Inventario y ventas físicas</h2>
+                    <p class="mt-1 text-sm text-slate-600">Control de stock, reservados aproximados y ventas en caja.</p>
+                  </div>
+                  ${access.can('inventory.manage') ? `
+                  <div class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+                    <h3 class="font-bold text-lg mb-4">Crear producto</h3>
+                    <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <input id="prod-title" class="rounded border p-2" placeholder="Titulo" />
+                      <input id="prod-price" type="number" step="0.01" class="rounded border p-2" placeholder="Precio" />
+                      <input id="prod-image" class="rounded border p-2 sm:col-span-2" placeholder="URL imagen" />
+                      <textarea id="prod-desc" rows="2" class="rounded border p-2 sm:col-span-2" placeholder="Descripcion"></textarea>
+                      <input id="prod-stock" type="number" class="rounded border p-2" placeholder="Stock inicial" />
+                      <button id="btn-create-producto" class="rounded bg-emerald-600 px-4 py-2 font-semibold text-white hover:bg-emerald-700">Guardar producto</button>
+                    </div>
+                  </div>` : ''}
+                  <div class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+                    <div class="mb-4 flex items-center justify-between">
+                      <h3 class="font-bold text-lg">Productos</h3>
+                      <button type="button" id="btn-refresh-inventory" class="text-sm font-semibold text-blue-600 hover:underline">Actualizar</button>
+                    </div>
+                    <div id="inventario-productos" class="space-y-3"></div>
+                  </div>
+                  <div class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+                    <h3 class="font-bold text-lg mb-3">Movimientos recientes</h3>
+                    <div id="inventario-movimientos" class="space-y-2 text-sm text-slate-600">Selecciona un producto para ver historial.</div>
+                  </div>
+                </div>` : ''}
+
                 ${canAdminPanel ? `<div id="admin-panel-admin" class="hidden space-y-8">
                     <div class="admin-hero-panel">
                         <div>
@@ -228,6 +266,11 @@ const AdminDashboard = {
                             ${icon('package', 'h-6 w-6')}
                             <span>Paquetes</span>
                             <small>Altas rapidas de promociones y accesos.</small>
+                        </button>` : ''}
+                        ${canInventoryView ? `<button type="button" class="admin-resource-card" data-admin-section="inventario">
+                            ${icon('package', 'h-6 w-6')}
+                            <span>Inventario</span>
+                            <small>Productos, reservados aprox y ventas físicas.</small>
                         </button>` : ''}
                         ${canLanding ? `<button type="button" class="admin-resource-card" data-admin-section="sitio">
                             ${icon('map', 'h-6 w-6')}
@@ -341,6 +384,7 @@ const AdminDashboard = {
 
   mount: async () => {
     const panelTickets = document.getElementById('admin-panel-tickets');
+    const panelInventario = document.getElementById('admin-panel-inventario');
     const panelAdmin = document.getElementById('admin-panel-admin');
     const panelSitio = document.getElementById('admin-panel-sitio');
     const hint = document.getElementById('admin-rol-hint');
@@ -370,7 +414,9 @@ const AdminDashboard = {
     const showSection = (name) => {
       if (name === 'sitio' && !panelSitio) return;
       if (name === 'admin' && !panelAdmin) return;
+      if (name === 'inventario' && !panelInventario) return;
       if (panelTickets) panelTickets.classList.toggle('hidden', name !== 'tickets');
+      if (panelInventario) panelInventario.classList.toggle('hidden', name !== 'inventario');
       if (panelAdmin) panelAdmin.classList.toggle('hidden', name !== 'admin');
       if (panelSitio) panelSitio.classList.toggle('hidden', name !== 'sitio');
       document.querySelectorAll('[data-admin-section]').forEach((btn) => {
@@ -385,6 +431,7 @@ const AdminDashboard = {
         const sec = btn.getAttribute('data-admin-section') || 'tickets';
         showSection(sec);
         if (sec === 'sitio') initSitioPanel();
+        if (sec === 'inventario') initInventarioPanel();
       });
     });
     const requestedInitialSection = new URLSearchParams(window.location.search).get('section') || 'tickets';
@@ -589,13 +636,210 @@ const AdminDashboard = {
       sitioReady = true;
     };
 
+    let inventarioReady = false;
+    let selectedProductoId = null;
+
+    const initInventarioPanel = async () => {
+      if (inventarioReady) return;
+      inventarioReady = true;
+      const canManage = access.can('inventory.manage');
+      const canAdjust = access.can('inventory.adjust') || canManage;
+      const canSales = access.can('sales.physical') || canManage;
+      const wrap = document.getElementById('inventario-productos');
+      const mvWrap = document.getElementById('inventario-movimientos');
+      if (!wrap || !mvWrap) return;
+
+      const renderMovs = async (productoId) => {
+        if (!productoId) {
+          mvWrap.innerHTML = 'Selecciona un producto para ver historial.';
+          return;
+        }
+        selectedProductoId = productoId;
+        mvWrap.innerHTML = 'Cargando movimientos...';
+        try {
+          const res = await listMovimientosInventario({ productoId });
+          const rows = res.data?.movimientoInventarios || [];
+          if (!rows.length) {
+            mvWrap.innerHTML = 'Sin movimientos aún.';
+            return;
+          }
+          mvWrap.innerHTML = rows
+            .map((m) => `<div class="rounded border border-slate-200 bg-slate-50 px-3 py-2">
+              <div class="font-semibold">${escapeHtml(m.tipo)} · ${m.cantidad}</div>
+              <div class="text-xs text-slate-500">${escapeHtml(m.nota || '')}</div>
+              <div class="text-xs text-slate-400">${new Date(m.fechaCreacion).toLocaleString()}</div>
+            </div>`)
+            .join('');
+        } catch (e) {
+          console.error(e);
+          mvWrap.innerHTML = '<span class="text-rose-600">No se pudieron cargar movimientos.</span>';
+        }
+      };
+
+      const applyMovimiento = async (producto, tipo, cantidad, nota, deltaStock, deltaReservado) => {
+        if (!cantidad || cantidad < 0) return;
+        const nextStock = Math.max(0, (producto.stockActual || 0) + deltaStock);
+        const nextReservado = Math.max(0, (producto.reservadoAprox || 0) + deltaReservado);
+        await updateProductoStock({
+          id: producto.id,
+          stockActual: nextStock,
+          reservadoAprox: nextReservado
+        });
+        await createMovimientoInventario({
+          productoId: producto.id,
+          tipo,
+          cantidad,
+          nota
+        });
+      };
+
+      const loadProductos = async () => {
+        wrap.innerHTML = '<p class="text-slate-500">Cargando productos...</p>';
+        try {
+          const res = await listProductosAdmin();
+          const productos = res.data?.productos || [];
+          if (!productos.length) {
+            wrap.innerHTML = '<p class="text-slate-500">No hay productos aún.</p>';
+            return;
+          }
+          wrap.innerHTML = productos
+            .map((p) => `
+              <article class="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <h4 class="font-bold text-slate-900">${escapeHtml(p.titulo)}</h4>
+                    <p class="text-xs text-slate-500">${escapeHtml(p.descripcion || '')}</p>
+                    <p class="mt-1 text-sm font-semibold text-slate-700">$${(p.precio || 0).toFixed(2)}</p>
+                    <div class="mt-2 flex flex-wrap gap-2 text-xs">
+                      <span class="rounded-full bg-emerald-100 px-2 py-1 font-semibold text-emerald-800">Stock: ${p.stockActual}</span>
+                      <span class="rounded-full bg-amber-100 px-2 py-1 font-semibold text-amber-800">Reservados: ${p.reservadoAprox}</span>
+                    </div>
+                  </div>
+                  <div class="flex gap-2">
+                    <button data-prod-show-mov="${p.id}" class="rounded border border-slate-300 px-3 py-1 text-xs font-semibold hover:bg-white">Historial</button>
+                  </div>
+                </div>
+                <div class="mt-3 grid gap-2 sm:grid-cols-4">
+                  ${canAdjust ? `<input data-prod-in="${p.id}" type="number" min="1" class="rounded border p-1 text-sm" placeholder="+ stock" />` : ''}
+                  ${canAdjust ? `<input data-prod-res="${p.id}" type="number" min="1" class="rounded border p-1 text-sm" placeholder="reservar aprox" />` : ''}
+                  ${canSales ? `<input data-prod-sale="${p.id}" type="number" min="1" class="rounded border p-1 text-sm" placeholder="venta física" />` : ''}
+                  ${canManage ? `<input data-prod-note="${p.id}" class="rounded border p-1 text-sm sm:col-span-1" placeholder="nota" />` : '<input data-prod-note="' + p.id + '" class="rounded border p-1 text-sm sm:col-span-2" placeholder="nota" />'}
+                </div>
+                <div class="mt-2 flex flex-wrap gap-2">
+                  ${canAdjust ? `<button data-prod-btn-in="${p.id}" class="rounded bg-emerald-600 px-3 py-1 text-xs font-semibold text-white hover:bg-emerald-700">Agregar stock</button>` : ''}
+                  ${canAdjust ? `<button data-prod-btn-res="${p.id}" class="rounded bg-amber-500 px-3 py-1 text-xs font-semibold text-white hover:bg-amber-600">Reservar aprox</button>` : ''}
+                  ${canAdjust ? `<button data-prod-btn-rel="${p.id}" class="rounded bg-slate-500 px-3 py-1 text-xs font-semibold text-white hover:bg-slate-600">Liberar reserva</button>` : ''}
+                  ${canSales ? `<button data-prod-btn-sale="${p.id}" class="rounded bg-rose-600 px-3 py-1 text-xs font-semibold text-white hover:bg-rose-700">Registrar venta física</button>` : ''}
+                </div>
+              </article>
+            `)
+            .join('');
+
+          const byId = new Map(productos.map((p) => [p.id, p]));
+          const numFrom = (selector) => parseInt(document.querySelector(selector)?.value || '0', 10) || 0;
+          const noteFrom = (id) => document.querySelector(`[data-prod-note="${id}"]`)?.value || '';
+
+          document.querySelectorAll('[data-prod-show-mov]').forEach((btn) => {
+            btn.addEventListener('click', () => renderMovs(btn.getAttribute('data-prod-show-mov')));
+          });
+
+          if (canAdjust) {
+            document.querySelectorAll('[data-prod-btn-in]').forEach((btn) => btn.addEventListener('click', async () => {
+              const id = btn.getAttribute('data-prod-btn-in');
+              const p = byId.get(id);
+              const qty = numFrom(`[data-prod-in="${id}"]`);
+              if (!p || qty <= 0) return;
+              await applyMovimiento(p, 'entrada', qty, noteFrom(id), qty, 0);
+              await loadProductos();
+              if (selectedProductoId === id) await renderMovs(id);
+            }));
+            document.querySelectorAll('[data-prod-btn-res]').forEach((btn) => btn.addEventListener('click', async () => {
+              const id = btn.getAttribute('data-prod-btn-res');
+              const p = byId.get(id);
+              const qty = numFrom(`[data-prod-res="${id}"]`);
+              if (!p || qty <= 0) return;
+              await applyMovimiento(p, 'reserva_aprox', qty, noteFrom(id), 0, qty);
+              await loadProductos();
+              if (selectedProductoId === id) await renderMovs(id);
+            }));
+            document.querySelectorAll('[data-prod-btn-rel]').forEach((btn) => btn.addEventListener('click', async () => {
+              const id = btn.getAttribute('data-prod-btn-rel');
+              const p = byId.get(id);
+              const qty = numFrom(`[data-prod-res="${id}"]`);
+              if (!p || qty <= 0) return;
+              await applyMovimiento(p, 'liberar_reserva', qty, noteFrom(id), 0, -qty);
+              await loadProductos();
+              if (selectedProductoId === id) await renderMovs(id);
+            }));
+          }
+
+          if (canSales) {
+            document.querySelectorAll('[data-prod-btn-sale]').forEach((btn) => btn.addEventListener('click', async () => {
+              const id = btn.getAttribute('data-prod-btn-sale');
+              const p = byId.get(id);
+              const qty = numFrom(`[data-prod-sale="${id}"]`);
+              if (!p || qty <= 0) return;
+              await applyMovimiento(p, 'venta_fisica', qty, noteFrom(id), -qty, 0);
+              await loadProductos();
+              if (selectedProductoId === id) await renderMovs(id);
+            }));
+          }
+
+          if (selectedProductoId) renderMovs(selectedProductoId);
+        } catch (error) {
+          console.error(error);
+          wrap.innerHTML = '<p class="text-rose-600">Error cargando inventario.</p>';
+        }
+      };
+
+      document.getElementById('btn-create-producto')?.addEventListener('click', async () => {
+        if (!canManage) return;
+        const titulo = document.getElementById('prod-title')?.value?.trim();
+        const descripcion = document.getElementById('prod-desc')?.value?.trim() || '';
+        const imagenUrl = document.getElementById('prod-image')?.value?.trim() || '';
+        const precio = parseFloat(document.getElementById('prod-price')?.value || '0');
+        const stockActual = parseInt(document.getElementById('prod-stock')?.value || '0', 10) || 0;
+        if (!titulo || precio <= 0) {
+          await showAlert('Completa titulo y precio del producto.', { title: 'Producto', variant: 'warning' });
+          return;
+        }
+        try {
+          await createProducto({
+            titulo,
+            descripcion,
+            imagenUrl,
+            precio,
+            stockActual,
+            reservadoAprox: 0,
+            activo: true
+          });
+          document.getElementById('prod-title').value = '';
+          document.getElementById('prod-desc').value = '';
+          document.getElementById('prod-image').value = '';
+          document.getElementById('prod-price').value = '';
+          document.getElementById('prod-stock').value = '';
+          await loadProductos();
+          await showAlert('Producto creado correctamente.', { title: 'Inventario', variant: 'success' });
+        } catch (e) {
+          console.error(e);
+          await showAlert('No se pudo crear el producto.', { title: 'Error', variant: 'danger' });
+        }
+      });
+
+      document.getElementById('btn-refresh-inventory')?.addEventListener('click', loadProductos);
+      await loadProductos();
+    };
+
     const initialSection =
       requestedInitialSection === 'admin' && panelAdmin
         ? 'admin'
+        : requestedInitialSection === 'inventario' && panelInventario
+          ? 'inventario'
         : requestedInitialSection === 'sitio' && panelSitio
           ? 'sitio'
           : 'tickets';
     showSection(initialSection);
+    if (requestedInitialSection === 'inventario' && panelInventario) initInventarioPanel();
     if (requestedInitialSection === 'sitio' && panelSitio) initSitioPanel();
 
     const btnCreatePkg = document.getElementById('btn-create-pkg');

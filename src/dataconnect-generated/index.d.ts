@@ -27,6 +27,17 @@ export interface CreateAnonymousTicketVariables {
   precioTotal: number;
 }
 
+export interface CreateMovimientoInventarioData {
+  movimientoInventario_insert: MovimientoInventario_Key;
+}
+
+export interface CreateMovimientoInventarioVariables {
+  productoId: UUIDString;
+  tipo: string;
+  cantidad: number;
+  nota: string;
+}
+
 export interface CreatePaqueteData {
   paquete_insert: Paquete_Key;
 }
@@ -36,6 +47,20 @@ export interface CreatePaqueteVariables {
   descripcion: string;
   precioBase: number;
   incluyePersonas: number;
+}
+
+export interface CreateProductoData {
+  producto_insert: Producto_Key;
+}
+
+export interface CreateProductoVariables {
+  titulo: string;
+  descripcion: string;
+  imagenUrl: string;
+  precio: number;
+  stockActual: number;
+  reservadoAprox: number;
+  activo: boolean;
 }
 
 export interface CreateServicioData {
@@ -126,6 +151,25 @@ export interface LandingPage_Key {
   __typename?: 'LandingPage_Key';
 }
 
+export interface ListMovimientosInventarioData {
+  movimientoInventarios: ({
+    id: UUIDString;
+    tipo: string;
+    cantidad: number;
+    nota: string;
+    fechaCreacion: TimestampString;
+    creadoPor?: {
+      id: string;
+      nombre?: string | null;
+      email?: string | null;
+    } & User_Key;
+  } & MovimientoInventario_Key)[];
+}
+
+export interface ListMovimientosInventarioVariables {
+  productoId: UUIDString;
+}
+
 export interface ListPaquetesData {
   paquetes: ({
     id: UUIDString;
@@ -135,6 +179,20 @@ export interface ListPaquetesData {
     incluyePersonas: number;
     activo: boolean;
   } & Paquete_Key)[];
+}
+
+export interface ListProductosAdminData {
+  productos: ({
+    id: UUIDString;
+    titulo: string;
+    descripcion: string;
+    imagenUrl: string;
+    precio: number;
+    stockActual: number;
+    reservadoAprox: number;
+    activo: boolean;
+    fechaCreacion: TimestampString;
+  } & Producto_Key)[];
 }
 
 export interface ListRecentTicketsData {
@@ -187,9 +245,19 @@ export interface ListUserTicketsVariables {
   userId: string;
 }
 
+export interface MovimientoInventario_Key {
+  id: UUIDString;
+  __typename?: 'MovimientoInventario_Key';
+}
+
 export interface Paquete_Key {
   id: UUIDString;
   __typename?: 'Paquete_Key';
+}
+
+export interface Producto_Key {
+  id: UUIDString;
+  __typename?: 'Producto_Key';
 }
 
 export interface Servicio_Key {
@@ -200,6 +268,29 @@ export interface Servicio_Key {
 export interface Ticket_Key {
   id: UUIDString;
   __typename?: 'Ticket_Key';
+}
+
+export interface UpdateProductoData {
+  producto_update?: Producto_Key | null;
+}
+
+export interface UpdateProductoStockData {
+  producto_update?: Producto_Key | null;
+}
+
+export interface UpdateProductoStockVariables {
+  id: UUIDString;
+  stockActual: number;
+  reservadoAprox: number;
+}
+
+export interface UpdateProductoVariables {
+  id: UUIDString;
+  titulo: string;
+  descripcion: string;
+  imagenUrl: string;
+  precio: number;
+  activo: boolean;
 }
 
 export interface UpdateServicioData {
@@ -353,6 +444,54 @@ export const updateServicioRef: UpdateServicioRef;
 export function updateServicio(vars: UpdateServicioVariables): MutationPromise<UpdateServicioData, UpdateServicioVariables>;
 export function updateServicio(dc: DataConnect, vars: UpdateServicioVariables): MutationPromise<UpdateServicioData, UpdateServicioVariables>;
 
+interface CreateProductoRef {
+  /* Allow users to create refs without passing in DataConnect */
+  (vars: CreateProductoVariables): MutationRef<CreateProductoData, CreateProductoVariables>;
+  /* Allow users to pass in custom DataConnect instances */
+  (dc: DataConnect, vars: CreateProductoVariables): MutationRef<CreateProductoData, CreateProductoVariables>;
+  operationName: string;
+}
+export const createProductoRef: CreateProductoRef;
+
+export function createProducto(vars: CreateProductoVariables): MutationPromise<CreateProductoData, CreateProductoVariables>;
+export function createProducto(dc: DataConnect, vars: CreateProductoVariables): MutationPromise<CreateProductoData, CreateProductoVariables>;
+
+interface UpdateProductoRef {
+  /* Allow users to create refs without passing in DataConnect */
+  (vars: UpdateProductoVariables): MutationRef<UpdateProductoData, UpdateProductoVariables>;
+  /* Allow users to pass in custom DataConnect instances */
+  (dc: DataConnect, vars: UpdateProductoVariables): MutationRef<UpdateProductoData, UpdateProductoVariables>;
+  operationName: string;
+}
+export const updateProductoRef: UpdateProductoRef;
+
+export function updateProducto(vars: UpdateProductoVariables): MutationPromise<UpdateProductoData, UpdateProductoVariables>;
+export function updateProducto(dc: DataConnect, vars: UpdateProductoVariables): MutationPromise<UpdateProductoData, UpdateProductoVariables>;
+
+interface UpdateProductoStockRef {
+  /* Allow users to create refs without passing in DataConnect */
+  (vars: UpdateProductoStockVariables): MutationRef<UpdateProductoStockData, UpdateProductoStockVariables>;
+  /* Allow users to pass in custom DataConnect instances */
+  (dc: DataConnect, vars: UpdateProductoStockVariables): MutationRef<UpdateProductoStockData, UpdateProductoStockVariables>;
+  operationName: string;
+}
+export const updateProductoStockRef: UpdateProductoStockRef;
+
+export function updateProductoStock(vars: UpdateProductoStockVariables): MutationPromise<UpdateProductoStockData, UpdateProductoStockVariables>;
+export function updateProductoStock(dc: DataConnect, vars: UpdateProductoStockVariables): MutationPromise<UpdateProductoStockData, UpdateProductoStockVariables>;
+
+interface CreateMovimientoInventarioRef {
+  /* Allow users to create refs without passing in DataConnect */
+  (vars: CreateMovimientoInventarioVariables): MutationRef<CreateMovimientoInventarioData, CreateMovimientoInventarioVariables>;
+  /* Allow users to pass in custom DataConnect instances */
+  (dc: DataConnect, vars: CreateMovimientoInventarioVariables): MutationRef<CreateMovimientoInventarioData, CreateMovimientoInventarioVariables>;
+  operationName: string;
+}
+export const createMovimientoInventarioRef: CreateMovimientoInventarioRef;
+
+export function createMovimientoInventario(vars: CreateMovimientoInventarioVariables): MutationPromise<CreateMovimientoInventarioData, CreateMovimientoInventarioVariables>;
+export function createMovimientoInventario(dc: DataConnect, vars: CreateMovimientoInventarioVariables): MutationPromise<CreateMovimientoInventarioData, CreateMovimientoInventarioVariables>;
+
 interface GetTicketByIdRef {
   /* Allow users to create refs without passing in DataConnect */
   (vars: GetTicketByIdVariables): QueryRef<GetTicketByIdData, GetTicketByIdVariables>;
@@ -448,4 +587,28 @@ export const listServiciosAdminRef: ListServiciosAdminRef;
 
 export function listServiciosAdmin(options?: ExecuteQueryOptions): QueryPromise<ListServiciosAdminData, undefined>;
 export function listServiciosAdmin(dc: DataConnect, options?: ExecuteQueryOptions): QueryPromise<ListServiciosAdminData, undefined>;
+
+interface ListProductosAdminRef {
+  /* Allow users to create refs without passing in DataConnect */
+  (): QueryRef<ListProductosAdminData, undefined>;
+  /* Allow users to pass in custom DataConnect instances */
+  (dc: DataConnect): QueryRef<ListProductosAdminData, undefined>;
+  operationName: string;
+}
+export const listProductosAdminRef: ListProductosAdminRef;
+
+export function listProductosAdmin(options?: ExecuteQueryOptions): QueryPromise<ListProductosAdminData, undefined>;
+export function listProductosAdmin(dc: DataConnect, options?: ExecuteQueryOptions): QueryPromise<ListProductosAdminData, undefined>;
+
+interface ListMovimientosInventarioRef {
+  /* Allow users to create refs without passing in DataConnect */
+  (vars: ListMovimientosInventarioVariables): QueryRef<ListMovimientosInventarioData, ListMovimientosInventarioVariables>;
+  /* Allow users to pass in custom DataConnect instances */
+  (dc: DataConnect, vars: ListMovimientosInventarioVariables): QueryRef<ListMovimientosInventarioData, ListMovimientosInventarioVariables>;
+  operationName: string;
+}
+export const listMovimientosInventarioRef: ListMovimientosInventarioRef;
+
+export function listMovimientosInventario(vars: ListMovimientosInventarioVariables, options?: ExecuteQueryOptions): QueryPromise<ListMovimientosInventarioData, ListMovimientosInventarioVariables>;
+export function listMovimientosInventario(dc: DataConnect, vars: ListMovimientosInventarioVariables, options?: ExecuteQueryOptions): QueryPromise<ListMovimientosInventarioData, ListMovimientosInventarioVariables>;
 

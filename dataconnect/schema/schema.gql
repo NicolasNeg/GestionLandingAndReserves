@@ -24,6 +24,30 @@ type Paquete @table {
   activo: Boolean!
 }
 
+# Productos del inventario (snacks, bebidas, etc.)
+type Producto @table {
+  id: UUID! @default(expr: "uuidV4()")
+  titulo: String!
+  descripcion: String!
+  imagenUrl: String!
+  precio: Float!
+  stockActual: Int!
+  reservadoAprox: Int!
+  activo: Boolean!
+  fechaCreacion: Timestamp! @default(expr: "request.time")
+}
+
+# Movimientos de inventario y ventas en físico
+type MovimientoInventario @table {
+  id: UUID! @default(expr: "uuidV4()")
+  producto: Producto!
+  tipo: String! # "entrada" | "venta_fisica" | "reserva_aprox" | "liberar_reserva" | "ajuste"
+  cantidad: Int!
+  nota: String!
+  creadoPor: User
+  fechaCreacion: Timestamp! @default(expr: "request.time")
+}
+
 # Servicios mostrados en la landing (editables por personal)
 type Servicio @table {
   id: UUID! @default(expr: "uuidV4()")

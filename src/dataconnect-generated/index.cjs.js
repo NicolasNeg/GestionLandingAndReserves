@@ -119,6 +119,62 @@ exports.updateServicio = function updateServicio(dcOrVars, vars) {
 }
 ;
 
+const createProductoRef = (dcOrVars, vars) => {
+  const { dc: dcInstance, vars: inputVars} = validateArgs(connectorConfig, dcOrVars, vars, true);
+  dcInstance._useGeneratedSdk();
+  return mutationRef(dcInstance, 'CreateProducto', inputVars);
+}
+createProductoRef.operationName = 'CreateProducto';
+exports.createProductoRef = createProductoRef;
+
+exports.createProducto = function createProducto(dcOrVars, vars) {
+  const { dc: dcInstance, vars: inputVars } = validateArgs(connectorConfig, dcOrVars, vars, true);
+  return executeMutation(createProductoRef(dcInstance, inputVars));
+}
+;
+
+const updateProductoRef = (dcOrVars, vars) => {
+  const { dc: dcInstance, vars: inputVars} = validateArgs(connectorConfig, dcOrVars, vars, true);
+  dcInstance._useGeneratedSdk();
+  return mutationRef(dcInstance, 'UpdateProducto', inputVars);
+}
+updateProductoRef.operationName = 'UpdateProducto';
+exports.updateProductoRef = updateProductoRef;
+
+exports.updateProducto = function updateProducto(dcOrVars, vars) {
+  const { dc: dcInstance, vars: inputVars } = validateArgs(connectorConfig, dcOrVars, vars, true);
+  return executeMutation(updateProductoRef(dcInstance, inputVars));
+}
+;
+
+const updateProductoStockRef = (dcOrVars, vars) => {
+  const { dc: dcInstance, vars: inputVars} = validateArgs(connectorConfig, dcOrVars, vars, true);
+  dcInstance._useGeneratedSdk();
+  return mutationRef(dcInstance, 'UpdateProductoStock', inputVars);
+}
+updateProductoStockRef.operationName = 'UpdateProductoStock';
+exports.updateProductoStockRef = updateProductoStockRef;
+
+exports.updateProductoStock = function updateProductoStock(dcOrVars, vars) {
+  const { dc: dcInstance, vars: inputVars } = validateArgs(connectorConfig, dcOrVars, vars, true);
+  return executeMutation(updateProductoStockRef(dcInstance, inputVars));
+}
+;
+
+const createMovimientoInventarioRef = (dcOrVars, vars) => {
+  const { dc: dcInstance, vars: inputVars} = validateArgs(connectorConfig, dcOrVars, vars, true);
+  dcInstance._useGeneratedSdk();
+  return mutationRef(dcInstance, 'CreateMovimientoInventario', inputVars);
+}
+createMovimientoInventarioRef.operationName = 'CreateMovimientoInventario';
+exports.createMovimientoInventarioRef = createMovimientoInventarioRef;
+
+exports.createMovimientoInventario = function createMovimientoInventario(dcOrVars, vars) {
+  const { dc: dcInstance, vars: inputVars } = validateArgs(connectorConfig, dcOrVars, vars, true);
+  return executeMutation(createMovimientoInventarioRef(dcInstance, inputVars));
+}
+;
+
 const getTicketByIdRef = (dcOrVars, vars) => {
   const { dc: dcInstance, vars: inputVars} = validateArgs(connectorConfig, dcOrVars, vars, true);
   dcInstance._useGeneratedSdk();
@@ -236,5 +292,35 @@ exports.listServiciosAdmin = function listServiciosAdmin(dcOrOptions, options) {
   
   const { dc: dcInstance, vars: inputVars, options: inputOpts } = validateArgsWithOptions(connectorConfig, dcOrOptions, options, undefined,false, false);
   return executeQuery(listServiciosAdminRef(dcInstance, inputVars), inputOpts && inputOpts.fetchPolicy);
+}
+;
+
+const listProductosAdminRef = (dc) => {
+  const { dc: dcInstance} = validateArgs(connectorConfig, dc, undefined);
+  dcInstance._useGeneratedSdk();
+  return queryRef(dcInstance, 'ListProductosAdmin');
+}
+listProductosAdminRef.operationName = 'ListProductosAdmin';
+exports.listProductosAdminRef = listProductosAdminRef;
+
+exports.listProductosAdmin = function listProductosAdmin(dcOrOptions, options) {
+  
+  const { dc: dcInstance, vars: inputVars, options: inputOpts } = validateArgsWithOptions(connectorConfig, dcOrOptions, options, undefined,false, false);
+  return executeQuery(listProductosAdminRef(dcInstance, inputVars), inputOpts && inputOpts.fetchPolicy);
+}
+;
+
+const listMovimientosInventarioRef = (dcOrVars, vars) => {
+  const { dc: dcInstance, vars: inputVars} = validateArgs(connectorConfig, dcOrVars, vars, true);
+  dcInstance._useGeneratedSdk();
+  return queryRef(dcInstance, 'ListMovimientosInventario', inputVars);
+}
+listMovimientosInventarioRef.operationName = 'ListMovimientosInventario';
+exports.listMovimientosInventarioRef = listMovimientosInventarioRef;
+
+exports.listMovimientosInventario = function listMovimientosInventario(dcOrVars, varsOrOptions, options) {
+  
+  const { dc: dcInstance, vars: inputVars, options: inputOpts } = validateArgsWithOptions(connectorConfig, dcOrVars, varsOrOptions, options, true, true);
+  return executeQuery(listMovimientosInventarioRef(dcInstance, inputVars), inputOpts && inputOpts.fetchPolicy);
 }
 ;
