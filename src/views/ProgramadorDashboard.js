@@ -39,6 +39,9 @@ function setChecked(name, permissions) {
 const ProgramadorDashboard = {
   render: async () => {
     const access = await getUserAccess(auth.currentUser);
+    const avatar = access.photoURL
+      ? `<img src="${escapeHtml(access.photoURL)}" alt="${escapeHtml(access.name)}" class="h-10 w-10 rounded-full object-cover" referrerpolicy="no-referrer" />`
+      : `<span class="app-avatar-initials h-10 w-10">${escapeHtml(access.name.slice(0, 1).toUpperCase())}</span>`;
     return `
       <div class="programador-shell">
         <aside id="programador-sidebar" class="programador-sidebar">
@@ -66,7 +69,7 @@ const ProgramadorDashboard = {
             </button>
           </nav>
           <div class="programador-sidebar-footer">
-            <div class="app-avatar-initials h-10 w-10">${escapeHtml(access.name.slice(0, 1).toUpperCase())}</div>
+            ${avatar}
             <div class="min-w-0">
               <p class="truncate text-sm font-bold">${escapeHtml(access.name)}</p>
               <p class="truncate text-xs text-slate-500">${escapeHtml(access.roleLabel)}</p>
@@ -288,7 +291,7 @@ const ProgramadorDashboard = {
             <article class="programador-role-row">
               <div class="min-w-0">
                 <p class="truncate font-bold text-slate-900">${escapeHtml(role.name || labelRole(role.id))}</p>
-                <p class="truncate text-xs text-slate-500">${escapeHtml(role.id)} · ${permissions.length} permisos</p>
+                <p class="truncate text-xs text-slate-500">${escapeHtml(role.id)} - ${permissions.length} permisos</p>
               </div>
               <button type="button" class="programador-secondary-btn" data-role-edit="${escapeHtml(role.id)}" data-role-name="${escapeHtml(role.name || labelRole(role.id))}" data-role-permissions="${escapeHtml(JSON.stringify(permissions))}">
                 Editar

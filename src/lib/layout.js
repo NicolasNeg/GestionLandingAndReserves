@@ -85,7 +85,11 @@ function renderHeader(access, theme) {
             <div id="app-user-menu" class="app-user-menu hidden">
               <a href="/cliente/dashboard" data-link class="app-user-menu-item">
                 ${icon('settings', 'h-4 w-4')}
-                <span>Configuraciones</span>
+                <span>Mis tickets</span>
+              </a>
+              <a href="/home#contacto" data-link class="app-user-menu-item">
+                ${icon('info', 'h-4 w-4')}
+                <span>Ayuda y contacto</span>
               </a>
               <button type="button" class="app-user-menu-item text-rose-700" data-app-logout>
                 ${icon('logout', 'h-4 w-4')}

@@ -2,7 +2,9 @@ import { auth } from '../firebase-config.js';
 import { signOut } from 'firebase/auth';
 import { navigateTo } from '../router.js';
 import { listUserTickets, getUserProfile } from '../dataconnect-generated';
-import QRCode from 'qrcode'; // Usaremos la misma librería para QR si es necesario
+import QRCode from 'qrcode';
+import { downloadTicketPdf } from '../lib/ticketPdf.js';
+import { showAlert } from '../lib/appDialog.js';
 
 const ClienteDashboard = {
     render: () => `
@@ -81,6 +83,8 @@ const ClienteDashboard = {
         const pRole = document.getElementById('profile-role');
 
         let user = auth.currentUser;
+        /** @type {Map<string, object>} */
+        const ticketById = new Map();
 
         const loadProfile = async () => {
             if (!user) return;
@@ -93,7 +97,17 @@ const ClienteDashboard = {
                 pName.textContent = name;
                 pEmail.textContent = userData?.email || user.email;
                 pRole.textContent = userData?.rol || 'cliente';
-                pInitial.textContent = name.charAt(0).toUpperCase();
+                if (user.photoURL) {
+                    pInitial.textContent = '';
+                    const img = document.createElement('img');
+                    img.src = user.photoURL;
+                    img.alt = name;
+                    img.referrerPolicy = 'no-referrer';
+                    img.className = 'h-full w-full rounded-full object-cover';
+                    pInitial.appendChild(img);
+                } else {
+                    pInitial.textContent = name.charAt(0).toUpperCase();
+                }
 
                 loadTickets();
             } catch (error) {
@@ -121,41 +135,62 @@ const ClienteDashboard = {
                 }
 
                 let html = '';
+                ticketById.clear();
                 tickets.forEach(ticket => {
+                    ticketById.set(ticket.id, ticket);
                     const isValido = ticket.estadoTicket === 'valido';
+                    const isEscaneado = ticket.estadoTicket === 'escaneado';
                     const isPagado = ticket.estadoPago === 'pagado';
-                    
+
                     const borderCls = isValido ? 'border-blue-500' : 'border-gray-300';
-                    const statusText = isValido ? 'Válido' : 'Usado/Cancelado';
-                    const statusBg = isValido ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-600';
-                    
-                    const paymentText = isPagado ? 'Pagado Totalmente' : 'Pago Pendiente en Taquilla';
+                    let statusText = 'No válido';
+                    let statusBg = 'bg-gray-100 text-gray-600';
+                    if (isValido) {
+                        statusText = 'Vigente';
+                        statusBg = 'bg-emerald-100 text-emerald-800';
+                    } else if (isEscaneado) {
+                        statusText = 'Usado';
+                        statusBg = 'bg-slate-100 text-slate-700';
+                    }
+
+                    const paymentText = isPagado ? 'Pagado' : 'Pago pendiente en taquilla';
+                    const fechaEmision = new Date(ticket.fechaCreacion).toLocaleString();
+                    let usoHtml = '';
+                    if (isEscaneado && ticket.fechaEscaneo) {
+                        usoHtml = `<p><span class="font-medium">Utilizado el:</span> ${new Date(ticket.fechaEscaneo).toLocaleString()}</p>`;
+                    } else if (isEscaneado) {
+                        usoHtml = `<p><span class="font-medium">Entrada:</span> ya registrada</p>`;
+                    } else {
+                        usoHtml = `<p><span class="font-medium">Para el día / turno:</span> según tu compra (presenta el QR en taquilla).</p>`;
+                    }
 
                     html += `
                         <div class="bg-white rounded-xl shadow-sm border-l-4 ${borderCls} p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition hover:shadow-md">
                             <div>
-                                <div class="flex items-center gap-3 mb-1">
-                                    <h3 class="text-lg font-bold text-gray-800">Ticket de Entrada</h3>
+                                <div class="flex items-center gap-3 mb-1 flex-wrap">
+                                    <h3 class="text-lg font-bold text-gray-800">Ticket de entrada</h3>
                                     <span class="${statusBg} text-xs font-bold px-2 py-0.5 rounded">${statusText}</span>
                                 </div>
                                 <p class="text-gray-500 text-xs mb-3 font-mono">ID: #${ticket.id.substring(0, 8)}</p>
-                                
+
                                 <div class="space-y-1 text-sm text-gray-600">
-                                    <p><span class="font-medium">Fecha:</span> ${new Date(ticket.fechaCreacion).toLocaleDateString()}</p>
-                                    <p><span class="font-medium">Total:</span> $${ticket.precioTotal.toFixed(2)}</p>
-                                    <p><span class="font-medium text-amber-600">${paymentText}</span></p>
+                                    <p><span class="font-medium">Emitido:</span> ${fechaEmision}</p>
+                                    ${usoHtml}
+                                    <p><span class="font-medium">Total:</span> $${ticket.precioTotal.toFixed(2)} MXN</p>
+                                    <p><span class="font-medium text-amber-700">${paymentText}</span></p>
                                 </div>
                             </div>
-                            
-                            <div class="flex sm:flex-col gap-2">
+
+                            <div class="flex flex-col sm:items-stretch gap-2 min-w-[140px]">
+                                <button type="button" class="btn-download-pdf w-full bg-blue-600 text-white px-4 py-2 rounded-lg font-bold text-sm hover:bg-blue-700 transition" data-id="${ticket.id}">
+                                    <i class="fas fa-file-pdf mr-2"></i> Descargar PDF
+                                </button>
                                 ${isValido ? `
-                                    <button class="btn-show-qr w-full flex-1 bg-gray-900 text-white px-4 py-2 rounded-lg font-bold text-sm hover:bg-black transition" data-id="${ticket.id}">
+                                    <button type="button" class="btn-show-qr w-full bg-gray-900 text-white px-4 py-2 rounded-lg font-bold text-sm hover:bg-black transition" data-id="${ticket.id}">
                                         <i class="fas fa-qrcode mr-2"></i> Ver QR
                                     </button>
                                 ` : `
-                                    <button disabled class="w-full flex-1 bg-gray-100 text-gray-400 px-4 py-2 rounded-lg font-bold text-sm cursor-not-allowed">
-                                        Escaneado
-                                    </button>
+                                    <p class="text-center text-xs text-gray-400 py-1">QR no disponible (ticket usado o anulado)</p>
                                 `}
                             </div>
                         </div>
@@ -164,11 +199,38 @@ const ClienteDashboard = {
 
                 ticketsContainer.innerHTML = html;
 
-                // Bind QR buttons
                 document.querySelectorAll('.btn-show-qr').forEach(btn => {
                     btn.addEventListener('click', (e) => {
                         const id = e.currentTarget.dataset.id;
                         showQR(id);
+                    });
+                });
+
+                document.querySelectorAll('.btn-download-pdf').forEach(btn => {
+                    btn.addEventListener('click', async (e) => {
+                        const id = e.currentTarget.dataset.id;
+                        const t = ticketById.get(id);
+                        if (!t) return;
+                        btn.disabled = true;
+                        try {
+                            await downloadTicketPdf({
+                                ticketId: t.id,
+                                clienteNombre: t.clienteNombre,
+                                clienteEmail: t.clienteEmail || user.email || '',
+                                fechaCreacion: t.fechaCreacion,
+                                precioTotal: t.precioTotal,
+                                metodoPago: t.metodoPago || 'online',
+                                estadoPago: t.estadoPago
+                            });
+                        } catch (err) {
+                            console.error(err);
+                            await showAlert('No se pudo generar el PDF. Intenta de nuevo.', {
+                                title: 'Error',
+                                variant: 'danger'
+                            });
+                        } finally {
+                            btn.disabled = false;
+                        }
                     });
                 });
 

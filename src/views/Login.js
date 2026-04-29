@@ -11,6 +11,7 @@ import {
 } from 'firebase/auth';
 import { navigateTo } from '../router.js';
 import { getAuthActionParams } from '../lib/authUrlParams.js';
+import { syncFirestoreUserProfile } from '../lib/accessControl.js';
 import { getUserProfile, upsertUser } from '../dataconnect-generated';
 
 const Login = {
@@ -330,10 +331,12 @@ const Login = {
         })();
 
         const syncUserToDataConnect = async (user, displayName) => {
+            let profileUser = null;
             try {
                 // Verificar si el usuario ya existe para no sobrescribir su rol
                 const profileRes = await getUserProfile({ id: user.uid });
-                if (!profileRes.data || !profileRes.data.user) {
+                profileUser = profileRes.data?.user || null;
+                if (!profileUser) {
                     // Es un usuario nuevo, lo registramos como cliente
                     await upsertUser({
                         id: user.uid,
@@ -341,9 +344,22 @@ const Login = {
                         nombre: displayName || user.displayName || 'Usuario',
                         rol: 'cliente'
                     });
+                    profileUser = {
+                        email: user.email,
+                        nombre: displayName || user.displayName || 'Usuario',
+                        rol: 'cliente'
+                    };
                 }
             } catch (err) {
                 console.error("Error sincronizando Data Connect:", err);
+            }
+            try {
+                await syncFirestoreUserProfile(user, profileUser || {
+                    email: user.email,
+                    nombre: displayName || user.displayName || 'Usuario'
+                });
+            } catch (err) {
+                console.error("Error sincronizando Firestore:", err);
             }
         };
 

@@ -17,13 +17,19 @@ function safeColor(value, fallback) {
 }
 
 export function mergeTheme(data = {}) {
+  const envMarquee = import.meta.env.VITE_PROMO_MARQUEE;
+  const fromFirestore = data.promoText != null && String(data.promoText).trim() !== '';
   return {
     primary: safeColor(data.primary, DEFAULT_THEME.primary),
     primaryDark: safeColor(data.primaryDark, DEFAULT_THEME.primaryDark),
     accent: safeColor(data.accent, DEFAULT_THEME.accent),
     surface: safeColor(data.surface, DEFAULT_THEME.surface),
     text: safeColor(data.text, DEFAULT_THEME.text),
-    promoText: String(data.promoText || DEFAULT_THEME.promoText)
+    promoText: String(
+      fromFirestore
+        ? data.promoText
+        : (envMarquee && String(envMarquee).trim()) || DEFAULT_THEME.promoText
+    )
   };
 }
 

@@ -1,65 +1,161 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    
-    // Función auxiliar para determinar si el usuario autenticado tiene rol de admin
-    function isAdmin() {
-      return request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.rol == 'admin';
+    function signedIn() {
+      return request.auth != null;
     }
 
-    // Función auxiliar para personal del parque
-    function isStaffOrAdmin() {
-      return request.auth != null && 
-        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.rol == 'admin' || 
-         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.rol == 'staff');
+    function userDocExists() {
+      return signedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    function userData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function userRole() {
+      return userDocExists() && userData().rol is string ? userData().rol : 'cliente';
+    }
+
+    function userPermissions() {
+      return userDocExists() && userData().permissions is list ? userData().permissions : [];
+    }
+
+    function rolePermissions() {
+      return signedIn() &&
+        exists(/databases/$(database)/documents/roles/$(userRole())) &&
+        get(/databases/$(database)/documents/roles/$(userRole())).data.permissions is list
+          ? get(/databases/$(database)/documents/roles/$(userRole())).data.permissions
+          : [];
+    }
+
+    function directPermissions() {
+      return signedIn() &&
+        exists(/databases/$(database)/documents/userPermissions/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/userPermissions/$(request.auth.uid)).data.permissions is list
+          ? get(/databases/$(database)/documents/userPermissions/$(request.auth.uid)).data.permissions
+          : [];
+    }
+
+    function hasDefaultPermission(permission) {
+      return userRole() == 'programador' ||
+        (userRole() == 'trabajador' && [
+          'dashboard.manage',
+          'tickets.monitor',
+          'tickets.scan'
+        ].hasAny([permission])) ||
+        (userRole() == 'jefe' && [
+          'dashboard.manage',
+          'tickets.monitor',
+          'tickets.scan',
+          'packages.manage',
+          'landing.manage',
+          'finance.view',
+          'admin.panel'
+        ].hasAny([permission]));
+    }
+
+    function hasPermission(permission) {
+      return signedIn() && (
+        userRole() == 'programador' ||
+        hasDefaultPermission(permission) ||
+        userPermissions().hasAny([permission]) ||
+        rolePermissions().hasAny([permission]) ||
+        directPermissions().hasAny([permission])
+      );
+    }
+
+    function isOwnUser(userId) {
+      return signedIn() && request.auth.uid == userId;
+    }
+
+    function validOwnUserCreate(userId) {
+      return isOwnUser(userId) &&
+        request.resource.data.keys().hasOnly([
+          'email',
+          'nombre',
+          'photoURL',
+          'providerId',
+          'rol',
+          'permissions',
+          'createdAt',
+          'updatedAt',
+          'lastLoginAt'
+        ]) &&
+        request.resource.data.rol == 'cliente' &&
+        (!request.resource.data.keys().hasAny(['permissions']) || request.resource.data.permissions == []);
+    }
+
+    function validOwnUserUpdate(userId) {
+      return isOwnUser(userId) &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'email',
+          'nombre',
+          'photoURL',
+          'providerId',
+          'updatedAt',
+          'lastLoginAt'
+        ]);
     }
 
     match /users/{userId} {
-      allow read, write: if (request.auth != null && request.auth.uid == userId) || isAdmin();
+      allow read: if isOwnUser(userId) || hasPermission('users.permissions');
+      allow create: if validOwnUserCreate(userId) || hasPermission('users.permissions');
+      allow update: if validOwnUserUpdate(userId) || hasPermission('users.permissions');
+      allow delete: if hasPermission('users.permissions');
+    }
+
+    match /roles/{roleId} {
+      allow read: if signedIn();
+      allow write: if hasPermission('roles.manage');
+    }
+
+    match /userPermissions/{userId} {
+      allow read: if isOwnUser(userId) || hasPermission('users.permissions');
+      allow write: if hasPermission('users.permissions');
+    }
+
+    match /appConfig/{docId} {
+      allow read: if true;
+      allow write: if docId == 'theme' && hasPermission('theme.manage');
     }
 
     match /mesas/{mesaId} {
       allow read: if true;
-      allow update: if isAdmin() || (
-        request.auth != null && 
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['estado']) && 
+      allow update: if hasPermission('dashboard.manage') || (
+        signedIn() &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['estado']) &&
         resource.data.estado == 0 && request.resource.data.estado == 1
       );
-      allow create, delete: if isAdmin();
+      allow create, delete: if hasPermission('admin.panel');
     }
 
-    // Reservas legacy (si aún se usan)
     match /reservas/{reservaId} {
-      allow read: if (request.auth != null && resource.data.uid_cliente == request.auth.uid) || isAdmin();
-      allow create: if (request.auth != null && request.resource.data.uid_cliente == request.auth.uid) || isAdmin();
-      allow update, delete: if isAdmin();
+      allow read: if (signedIn() && resource.data.uid_cliente == request.auth.uid) || hasPermission('tickets.monitor');
+      allow create: if (signedIn() && request.resource.data.uid_cliente == request.auth.uid) || hasPermission('tickets.monitor');
+      allow update, delete: if hasPermission('tickets.monitor');
     }
-
-    // NUEVAS COLECCIONES - SISTEMA DE TICKETS
 
     match /configuracion/{docId} {
       allow read: if true;
-      allow write: if isAdmin();
+      allow write: if hasPermission('admin.panel');
     }
 
     match /paquetes/{paqueteId} {
       allow read: if true;
-      allow write: if isAdmin();
+      allow write: if hasPermission('packages.manage');
     }
 
     match /descuentos/{codigo} {
       allow read: if true;
-      allow write: if isAdmin();
+      allow write: if hasPermission('packages.manage');
     }
 
     match /tickets/{ticketId} {
-      // Cualquiera puede crear su ticket (checkout público o logueado)
-      allow create: if true; 
-      // El cliente dueño, o el staff pueden leerlo
-      allow read: if isStaffOrAdmin() || (request.auth != null && resource.data.cliente_uid == request.auth.uid);
-      // Solo el staff/admin puede actualizar (ej. marcar como 'escaneado' o 'pagado')
-      allow update: if isStaffOrAdmin();
-      allow delete: if isAdmin();
+      allow create: if true;
+      allow read: if hasPermission('tickets.monitor') || (signedIn() && resource.data.cliente_uid == request.auth.uid);
+      allow update: if hasPermission('tickets.scan') || hasPermission('tickets.monitor');
+      allow delete: if hasPermission('admin.panel');
     }
   }
 }

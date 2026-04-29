@@ -14,7 +14,7 @@ If a user is not using a supported framework, they can use the generated SDK dir
 Here's an example of how to use it with the first 5 operations:
 
 ```js
-import { createAnonymousTicket, createUserTicket, updateTicketStatus, createPaquete, upsertUser, getTicketById, listRecentTickets, getUserProfile, listUserTickets } from '@dataconnect/generated';
+import { createAnonymousTicket, createUserTicket, updateTicketStatus, createPaquete, upsertUser, upsertLandingPage, createServicio, updateServicio, getTicketById, listRecentTickets } from '@dataconnect/generated';
 
 
 // Operation CreateAnonymousTicket:  For variables, look at type CreateAnonymousTicketVars in ../index.d.ts
@@ -32,17 +32,20 @@ const { data } = await CreatePaquete(dataConnect, createPaqueteVars);
 // Operation UpsertUser:  For variables, look at type UpsertUserVars in ../index.d.ts
 const { data } = await UpsertUser(dataConnect, upsertUserVars);
 
+// Operation UpsertLandingPage:  For variables, look at type UpsertLandingPageVars in ../index.d.ts
+const { data } = await UpsertLandingPage(dataConnect, upsertLandingPageVars);
+
+// Operation CreateServicio:  For variables, look at type CreateServicioVars in ../index.d.ts
+const { data } = await CreateServicio(dataConnect, createServicioVars);
+
+// Operation UpdateServicio:  For variables, look at type UpdateServicioVars in ../index.d.ts
+const { data } = await UpdateServicio(dataConnect, updateServicioVars);
+
 // Operation GetTicketById:  For variables, look at type GetTicketByIdVars in ../index.d.ts
 const { data } = await GetTicketById(dataConnect, getTicketByIdVars);
 
 // Operation ListRecentTickets: 
 const { data } = await ListRecentTickets(dataConnect);
-
-// Operation GetUserProfile:  For variables, look at type GetUserProfileVars in ../index.d.ts
-const { data } = await GetUserProfile(dataConnect, getUserProfileVars);
-
-// Operation ListUserTickets:  For variables, look at type ListUserTicketsVars in ../index.d.ts
-const { data } = await ListUserTickets(dataConnect, listUserTicketsVars);
 
 
 ```

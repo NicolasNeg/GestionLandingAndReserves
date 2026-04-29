@@ -38,6 +38,17 @@ export interface CreatePaqueteVariables {
   incluyePersonas: number;
 }
 
+export interface CreateServicioData {
+  servicio_insert: Servicio_Key;
+}
+
+export interface CreateServicioVariables {
+  titulo: string;
+  descripcion: string;
+  orden: number;
+  activo: boolean;
+}
+
 export interface CreateUserTicketData {
   ticket_insert: Ticket_Key;
 }
@@ -53,6 +64,25 @@ export interface CreateUserTicketVariables {
 export interface Descuento_Key {
   id: UUIDString;
   __typename?: 'Descuento_Key';
+}
+
+export interface GetLandingPageData {
+  landingPage?: {
+    id: string;
+    descripcionParque: string;
+    mapaDistribucionJson: string;
+    imagenSatelitalUrl: string;
+    googleMapsUrl: string;
+    horariosTexto: string;
+    abiertoAhora: boolean;
+    ocupacionTexto: string;
+    estacionamientoTexto: string;
+    botonesJson: string;
+  } & LandingPage_Key;
+}
+
+export interface GetLandingPageVariables {
+  id: string;
 }
 
 export interface GetTicketByIdData {
@@ -91,16 +121,9 @@ export interface GetUserProfileVariables {
   id: string;
 }
 
-export interface ListRecentTicketsData {
-  tickets: ({
-    id: UUIDString;
-    clienteNombre: string;
-    clienteEmail: string;
-    estadoPago: string;
-    estadoTicket: string;
-    precioTotal: number;
-    fechaCreacion: TimestampString;
-  } & Ticket_Key)[];
+export interface LandingPage_Key {
+  id: string;
+  __typename?: 'LandingPage_Key';
 }
 
 export interface ListPaquetesData {
@@ -114,10 +137,11 @@ export interface ListPaquetesData {
   } & Paquete_Key)[];
 }
 
-export interface ListUserTicketsData {
+export interface ListRecentTicketsData {
   tickets: ({
     id: UUIDString;
     clienteNombre: string;
+    clienteEmail: string;
     estadoPago: string;
     estadoTicket: string;
     precioTotal: number;
@@ -125,73 +149,14 @@ export interface ListUserTicketsData {
   } & Ticket_Key)[];
 }
 
-export interface ListUserTicketsVariables {
-  userId: string;
-}
-
-export interface Paquete_Key {
-  id: UUIDString;
-  __typename?: 'Paquete_Key';
-}
-
-export interface Ticket_Key {
-  id: UUIDString;
-  __typename?: 'Ticket_Key';
-}
-
-export interface UpdateTicketStatusData {
-  ticket_update?: Ticket_Key | null;
-}
-
-export interface UpdateTicketStatusVariables {
-  id: UUIDString;
-  estadoTicket: string;
-  estadoPago: string;
-}
-
-export interface UpsertUserData {
-  user_upsert: User_Key;
-}
-
-export interface UpsertUserVariables {
-  id: string;
-  email: string;
-  nombre: string;
-  rol: string;
-}
-
-export interface User_Key {
-  id: string;
-  __typename?: 'User_Key';
-}
-
-export interface LandingPage_Key {
-  id: string;
-  __typename?: 'LandingPage_Key';
-}
-
-export interface Servicio_Key {
-  id: UUIDString;
-  __typename?: 'Servicio_Key';
-}
-
-export interface GetLandingPageData {
-  landingPage?: {
-    id: string;
-    descripcionParque: string;
-    mapaDistribucionJson: string;
-    imagenSatelitalUrl: string;
-    googleMapsUrl: string;
-    horariosTexto: string;
-    abiertoAhora: boolean;
-    ocupacionTexto: string;
-    estacionamientoTexto: string;
-    botonesJson: string;
-  } & LandingPage_Key;
-}
-
-export interface GetLandingPageVariables {
-  id: string;
+export interface ListServiciosAdminData {
+  servicios: ({
+    id: UUIDString;
+    titulo: string;
+    descripcion: string;
+    orden: number;
+    activo: boolean;
+  } & Servicio_Key)[];
 }
 
 export interface ListServiciosLandingData {
@@ -204,14 +169,59 @@ export interface ListServiciosLandingData {
   } & Servicio_Key)[];
 }
 
-export interface ListServiciosAdminData {
-  servicios: ({
+export interface ListUserTicketsData {
+  tickets: ({
     id: UUIDString;
-    titulo: string;
-    descripcion: string;
-    orden: number;
-    activo: boolean;
-  } & Servicio_Key)[];
+    clienteNombre: string;
+    clienteEmail: string;
+    metodoPago: string;
+    estadoPago: string;
+    estadoTicket: string;
+    precioTotal: number;
+    fechaCreacion: TimestampString;
+    fechaEscaneo?: TimestampString | null;
+  } & Ticket_Key)[];
+}
+
+export interface ListUserTicketsVariables {
+  userId: string;
+}
+
+export interface Paquete_Key {
+  id: UUIDString;
+  __typename?: 'Paquete_Key';
+}
+
+export interface Servicio_Key {
+  id: UUIDString;
+  __typename?: 'Servicio_Key';
+}
+
+export interface Ticket_Key {
+  id: UUIDString;
+  __typename?: 'Ticket_Key';
+}
+
+export interface UpdateServicioData {
+  servicio_update?: Servicio_Key | null;
+}
+
+export interface UpdateServicioVariables {
+  id: UUIDString;
+  titulo: string;
+  descripcion: string;
+  orden: number;
+  activo: boolean;
+}
+
+export interface UpdateTicketStatusData {
+  ticket_update?: Ticket_Key | null;
+}
+
+export interface UpdateTicketStatusVariables {
+  id: UUIDString;
+  estadoTicket: string;
+  estadoPago: string;
 }
 
 export interface UpsertLandingPageData {
@@ -231,27 +241,20 @@ export interface UpsertLandingPageVariables {
   botonesJson: string;
 }
 
-export interface CreateServicioData {
-  servicio_insert: Servicio_Key;
+export interface UpsertUserData {
+  user_upsert: User_Key;
 }
 
-export interface CreateServicioVariables {
-  titulo: string;
-  descripcion: string;
-  orden: number;
-  activo: boolean;
+export interface UpsertUserVariables {
+  id: string;
+  email: string;
+  nombre: string;
+  rol: string;
 }
 
-export interface UpdateServicioData {
-  servicio_update?: Servicio_Key | null;
-}
-
-export interface UpdateServicioVariables {
-  id: UUIDString;
-  titulo: string;
-  descripcion: string;
-  orden: number;
-  activo: boolean;
+export interface User_Key {
+  id: string;
+  __typename?: 'User_Key';
 }
 
 interface CreateAnonymousTicketRef {
@@ -314,6 +317,42 @@ export const upsertUserRef: UpsertUserRef;
 export function upsertUser(vars: UpsertUserVariables): MutationPromise<UpsertUserData, UpsertUserVariables>;
 export function upsertUser(dc: DataConnect, vars: UpsertUserVariables): MutationPromise<UpsertUserData, UpsertUserVariables>;
 
+interface UpsertLandingPageRef {
+  /* Allow users to create refs without passing in DataConnect */
+  (vars: UpsertLandingPageVariables): MutationRef<UpsertLandingPageData, UpsertLandingPageVariables>;
+  /* Allow users to pass in custom DataConnect instances */
+  (dc: DataConnect, vars: UpsertLandingPageVariables): MutationRef<UpsertLandingPageData, UpsertLandingPageVariables>;
+  operationName: string;
+}
+export const upsertLandingPageRef: UpsertLandingPageRef;
+
+export function upsertLandingPage(vars: UpsertLandingPageVariables): MutationPromise<UpsertLandingPageData, UpsertLandingPageVariables>;
+export function upsertLandingPage(dc: DataConnect, vars: UpsertLandingPageVariables): MutationPromise<UpsertLandingPageData, UpsertLandingPageVariables>;
+
+interface CreateServicioRef {
+  /* Allow users to create refs without passing in DataConnect */
+  (vars: CreateServicioVariables): MutationRef<CreateServicioData, CreateServicioVariables>;
+  /* Allow users to pass in custom DataConnect instances */
+  (dc: DataConnect, vars: CreateServicioVariables): MutationRef<CreateServicioData, CreateServicioVariables>;
+  operationName: string;
+}
+export const createServicioRef: CreateServicioRef;
+
+export function createServicio(vars: CreateServicioVariables): MutationPromise<CreateServicioData, CreateServicioVariables>;
+export function createServicio(dc: DataConnect, vars: CreateServicioVariables): MutationPromise<CreateServicioData, CreateServicioVariables>;
+
+interface UpdateServicioRef {
+  /* Allow users to create refs without passing in DataConnect */
+  (vars: UpdateServicioVariables): MutationRef<UpdateServicioData, UpdateServicioVariables>;
+  /* Allow users to pass in custom DataConnect instances */
+  (dc: DataConnect, vars: UpdateServicioVariables): MutationRef<UpdateServicioData, UpdateServicioVariables>;
+  operationName: string;
+}
+export const updateServicioRef: UpdateServicioRef;
+
+export function updateServicio(vars: UpdateServicioVariables): MutationPromise<UpdateServicioData, UpdateServicioVariables>;
+export function updateServicio(dc: DataConnect, vars: UpdateServicioVariables): MutationPromise<UpdateServicioData, UpdateServicioVariables>;
+
 interface GetTicketByIdRef {
   /* Allow users to create refs without passing in DataConnect */
   (vars: GetTicketByIdVariables): QueryRef<GetTicketByIdData, GetTicketByIdVariables>;
@@ -337,18 +376,6 @@ export const listRecentTicketsRef: ListRecentTicketsRef;
 
 export function listRecentTickets(options?: ExecuteQueryOptions): QueryPromise<ListRecentTicketsData, undefined>;
 export function listRecentTickets(dc: DataConnect, options?: ExecuteQueryOptions): QueryPromise<ListRecentTicketsData, undefined>;
-
-interface ListPaquetesRef {
-  /* Allow users to create refs without passing in DataConnect */
-  (): QueryRef<ListPaquetesData, undefined>;
-  /* Allow users to pass in custom DataConnect instances */
-  (dc: DataConnect): QueryRef<ListPaquetesData, undefined>;
-  operationName: string;
-}
-export const listPaquetesRef: ListPaquetesRef;
-
-export function listPaquetes(options?: ExecuteQueryOptions): QueryPromise<ListPaquetesData, undefined>;
-export function listPaquetes(dc: DataConnect, options?: ExecuteQueryOptions): QueryPromise<ListPaquetesData, undefined>;
 
 interface GetUserProfileRef {
   /* Allow users to create refs without passing in DataConnect */
@@ -374,8 +401,22 @@ export const listUserTicketsRef: ListUserTicketsRef;
 export function listUserTickets(vars: ListUserTicketsVariables, options?: ExecuteQueryOptions): QueryPromise<ListUserTicketsData, ListUserTicketsVariables>;
 export function listUserTickets(dc: DataConnect, vars: ListUserTicketsVariables, options?: ExecuteQueryOptions): QueryPromise<ListUserTicketsData, ListUserTicketsVariables>;
 
+interface ListPaquetesRef {
+  /* Allow users to create refs without passing in DataConnect */
+  (): QueryRef<ListPaquetesData, undefined>;
+  /* Allow users to pass in custom DataConnect instances */
+  (dc: DataConnect): QueryRef<ListPaquetesData, undefined>;
+  operationName: string;
+}
+export const listPaquetesRef: ListPaquetesRef;
+
+export function listPaquetes(options?: ExecuteQueryOptions): QueryPromise<ListPaquetesData, undefined>;
+export function listPaquetes(dc: DataConnect, options?: ExecuteQueryOptions): QueryPromise<ListPaquetesData, undefined>;
+
 interface GetLandingPageRef {
+  /* Allow users to create refs without passing in DataConnect */
   (vars: GetLandingPageVariables): QueryRef<GetLandingPageData, GetLandingPageVariables>;
+  /* Allow users to pass in custom DataConnect instances */
   (dc: DataConnect, vars: GetLandingPageVariables): QueryRef<GetLandingPageData, GetLandingPageVariables>;
   operationName: string;
 }
@@ -385,7 +426,9 @@ export function getLandingPage(vars: GetLandingPageVariables, options?: ExecuteQ
 export function getLandingPage(dc: DataConnect, vars: GetLandingPageVariables, options?: ExecuteQueryOptions): QueryPromise<GetLandingPageData, GetLandingPageVariables>;
 
 interface ListServiciosLandingRef {
+  /* Allow users to create refs without passing in DataConnect */
   (): QueryRef<ListServiciosLandingData, undefined>;
+  /* Allow users to pass in custom DataConnect instances */
   (dc: DataConnect): QueryRef<ListServiciosLandingData, undefined>;
   operationName: string;
 }
@@ -395,7 +438,9 @@ export function listServiciosLanding(options?: ExecuteQueryOptions): QueryPromis
 export function listServiciosLanding(dc: DataConnect, options?: ExecuteQueryOptions): QueryPromise<ListServiciosLandingData, undefined>;
 
 interface ListServiciosAdminRef {
+  /* Allow users to create refs without passing in DataConnect */
   (): QueryRef<ListServiciosAdminData, undefined>;
+  /* Allow users to pass in custom DataConnect instances */
   (dc: DataConnect): QueryRef<ListServiciosAdminData, undefined>;
   operationName: string;
 }
@@ -403,34 +448,4 @@ export const listServiciosAdminRef: ListServiciosAdminRef;
 
 export function listServiciosAdmin(options?: ExecuteQueryOptions): QueryPromise<ListServiciosAdminData, undefined>;
 export function listServiciosAdmin(dc: DataConnect, options?: ExecuteQueryOptions): QueryPromise<ListServiciosAdminData, undefined>;
-
-interface UpsertLandingPageRef {
-  (vars: UpsertLandingPageVariables): MutationRef<UpsertLandingPageData, UpsertLandingPageVariables>;
-  (dc: DataConnect, vars: UpsertLandingPageVariables): MutationRef<UpsertLandingPageData, UpsertLandingPageVariables>;
-  operationName: string;
-}
-export const upsertLandingPageRef: UpsertLandingPageRef;
-
-export function upsertLandingPage(vars: UpsertLandingPageVariables): MutationPromise<UpsertLandingPageData, UpsertLandingPageVariables>;
-export function upsertLandingPage(dc: DataConnect, vars: UpsertLandingPageVariables): MutationPromise<UpsertLandingPageData, UpsertLandingPageVariables>;
-
-interface CreateServicioRef {
-  (vars: CreateServicioVariables): MutationRef<CreateServicioData, CreateServicioVariables>;
-  (dc: DataConnect, vars: CreateServicioVariables): MutationRef<CreateServicioData, CreateServicioVariables>;
-  operationName: string;
-}
-export const createServicioRef: CreateServicioRef;
-
-export function createServicio(vars: CreateServicioVariables): MutationPromise<CreateServicioData, CreateServicioVariables>;
-export function createServicio(dc: DataConnect, vars: CreateServicioVariables): MutationPromise<CreateServicioData, CreateServicioVariables>;
-
-interface UpdateServicioRef {
-  (vars: UpdateServicioVariables): MutationRef<UpdateServicioData, UpdateServicioVariables>;
-  (dc: DataConnect, vars: UpdateServicioVariables): MutationRef<UpdateServicioData, UpdateServicioVariables>;
-  operationName: string;
-}
-export const updateServicioRef: UpdateServicioRef;
-
-export function updateServicio(vars: UpdateServicioVariables): MutationPromise<UpdateServicioData, UpdateServicioVariables>;
-export function updateServicio(dc: DataConnect, vars: UpdateServicioVariables): MutationPromise<UpdateServicioData, UpdateServicioVariables>;
 

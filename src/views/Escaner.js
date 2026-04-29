@@ -1,4 +1,5 @@
 import { getTicketById, updateTicketStatus } from '../dataconnect-generated';
+import { showAlert } from '../lib/appDialog.js';
 
 const Escaner = {
     render: () => `
@@ -71,7 +72,10 @@ const Escaner = {
 
         btnSimulate.addEventListener('click', async () => {
             const ticketId = inputId.value.trim();
-            if (!ticketId) return alert("Ingresa un ID válido");
+            if (!ticketId) {
+                await showAlert('Ingresa un ID válido.', { title: 'Ticket', variant: 'warning' });
+                return;
+            }
             
             btnSimulate.textContent = "Buscando en Base de Datos...";
             btnSimulate.disabled = true;
@@ -85,11 +89,17 @@ const Escaner = {
                     currentTicketId = res.data.ticket.id;
                     showTicketModal(currentTicketId, currentTicketData);
                 } else {
-                    alert("¡Alerta! El código QR (Ticket) NO existe en la base de datos o es falso.");
+                    await showAlert(
+                        'El código QR (ticket) no existe en la base de datos o no es válido.',
+                        { title: 'Ticket no encontrado', variant: 'danger' }
+                    );
                 }
             } catch (error) {
                 console.error("Error obteniendo ticket: ", error);
-                alert("Error al intentar comunicarse con el servidor. Verifica el formato del ID (UUID esperado) y tu conexión.");
+                await showAlert(
+                    'Error al comunicarse con el servidor. Verifica el formato del ID (UUID) y tu conexión.',
+                    { title: 'Error', variant: 'danger' }
+                );
             } finally {
                 btnSimulate.textContent = "Buscar Ticket por ID";
                 btnSimulate.disabled = false;
@@ -169,13 +179,19 @@ const Escaner = {
                     estadoPago: 'pagado'
                 });
 
-                alert("Ingreso registrado exitosamente en el sistema.");
+                await showAlert('Ingreso registrado exitosamente en el sistema.', {
+                    title: 'Listo',
+                    variant: 'success'
+                });
                 modal.classList.add('hidden');
                 inputId.value = ''; // limpiar
                 
             } catch (error) {
                 console.error("Error registrando ingreso:", error);
-                alert("Error al actualizar la base de datos (Faltan permisos o conexión lenta).");
+                await showAlert(
+                    'Error al actualizar la base de datos (permisos o conexión).',
+                    { title: 'Error', variant: 'danger' }
+                );
                 btnAction.textContent = "Reintentar";
                 btnAction.disabled = false;
             }

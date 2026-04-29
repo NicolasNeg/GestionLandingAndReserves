@@ -4,6 +4,8 @@ import {
   listServiciosLanding
 } from '../dataconnect-generated';
 import { drawDistribucionCanvas, DEFAULT_MAPA_JSON } from '../lib/distribucionMapa.js';
+import { getUserAccess, waitForAuthUser } from '../lib/accessControl.js';
+import { icon } from '../lib/icons.js';
 
 const LANDING_PAGE_ID = 'main';
 
@@ -124,24 +126,79 @@ const renderPaquetes = (paquetes) => {
 };
 
 const navItems = [
-  { id: 'inicio', label: 'Inicio' },
-  { id: 'descripcion', label: 'El parque' },
-  { id: 'servicios', label: 'Servicios' },
-  { id: 'estado', label: 'Horario y estado' },
-  { id: 'mapa', label: 'Mapa' },
-  { id: 'vista-aerea', label: 'Vista aerea' },
-  { id: 'paquetes', label: 'Paquetes' },
-  { id: 'contacto', label: 'Contacto' }
+  { id: 'inicio', label: 'Inicio', iconName: 'home' },
+  { id: 'descripcion', label: 'El parque', iconName: 'info' },
+  { id: 'servicios', label: 'Servicios', iconName: 'sparkles' },
+  { id: 'estado', label: 'Horario y estado', iconName: 'clock' },
+  { id: 'mapa', label: 'Mapa', iconName: 'map' },
+  { id: 'vista-aerea', label: 'Vista aerea', iconName: 'image' },
+  { id: 'paquetes', label: 'Paquetes', iconName: 'package' },
+  { id: 'contacto', label: 'Contacto', iconName: 'phone' }
 ];
+
+function renderHomeNavItems(access) {
+  const sectionItems = navItems
+    .map(
+      (n) =>
+        `<a href="#${n.id}" class="home-nav-link home-sidebar-item" title="${escapeHtml(n.label)}">
+          ${icon(n.iconName, 'home-sidebar-icon')}
+          <span class="home-sidebar-label">${escapeHtml(n.label)}</span>
+        </a>`
+    )
+    .join('');
+
+  const actionItems = [
+    access.can('dashboard.manage')
+      ? {
+          href: '/admin/dashboard?section=tickets',
+          label: 'Gestion',
+          iconName: 'briefcase',
+          badge: 'Personal'
+        }
+      : null,
+    access.can('admin.panel')
+      ? {
+          href: '/admin/dashboard?section=sitio',
+          label: 'Panel administracion',
+          iconName: 'dashboard',
+          badge: 'Jefe'
+        }
+      : null,
+    access.isProgramador
+      ? {
+          href: '/programador/theme',
+          label: 'Dashboard programador',
+          iconName: 'code',
+          badge: 'Dev'
+        }
+      : null
+  ].filter(Boolean);
+
+  const actions = actionItems.length
+    ? `
+      <div class="home-sidebar-separator"></div>
+      ${actionItems
+        .map(
+          (n) => `
+          <a href="${n.href}" data-link class="home-sidebar-item home-nav-route" title="${escapeHtml(n.label)}">
+            ${icon(n.iconName, 'home-sidebar-icon')}
+            <span class="home-sidebar-label">${escapeHtml(n.label)}</span>
+            <span class="home-sidebar-badge">${escapeHtml(n.badge)}</span>
+          </a>`
+        )
+        .join('')}
+    `
+    : '';
+
+  return `${sectionItems}${actions}`;
+}
 
 export default {
   async render() {
-    const navDesktop = navItems
-      .map(
-        (n) =>
-          `<a href="#${n.id}" class="home-nav-link block rounded-lg px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-blue-50 hover:text-blue-800">${n.label}</a>`
-      )
-      .join('');
+    const user = await waitForAuthUser();
+    const access = await getUserAccess(user);
+    const navDesktop = renderHomeNavItems(access);
+    const navMobile = renderHomeNavItems(access);
 
     return `
       <div class="relative flex min-h-[calc(100vh-64px)] w-full bg-slate-50 text-slate-900">
@@ -149,12 +206,17 @@ export default {
         <div id="home-nav-overlay" class="fixed inset-0 z-40 hidden bg-black/40 lg:hidden" aria-hidden="true"></div>
 
         <!-- Sidebar desktop -->
-        <aside class="sticky top-[64px] z-30 hidden h-[calc(100vh-64px)] w-56 shrink-0 flex-col border-r border-slate-200 bg-white lg:flex">
-          <div class="border-b border-slate-100 p-4">
-            <p class="text-xs font-bold uppercase tracking-wider text-blue-600">Explorar</p>
-            <p class="mt-1 text-sm text-slate-500">Navega por la pagina</p>
+        <aside id="home-sidebar" class="home-sidebar sticky top-[92px] z-30 hidden h-[calc(100vh-92px)] shrink-0 flex-col border-r border-slate-200 bg-white lg:flex">
+          <div class="home-sidebar-head">
+            <div class="min-w-0">
+              <p class="home-sidebar-kicker home-sidebar-label">Explorar</p>
+              <p class="home-sidebar-subtitle home-sidebar-label">Navega por la pagina</p>
+            </div>
+            <button type="button" id="home-nav-collapse" class="sidebar-icon-button" title="Contraer menu" aria-label="Contraer menu">
+              ${icon('collapse', 'h-5 w-5')}
+            </button>
           </div>
-          <nav class="flex flex-col gap-1 overflow-y-auto p-3" id="home-nav-desktop" aria-label="Secciones">
+          <nav class="home-sidebar-nav" id="home-nav-desktop" aria-label="Secciones">
             ${navDesktop}
           </nav>
         </aside>
@@ -165,12 +227,13 @@ export default {
             <p class="text-xs font-bold uppercase tracking-wider text-blue-600">Menu</p>
           </div>
           <nav class="flex flex-col gap-1 overflow-y-auto p-3" id="home-nav-mobile">
-            ${navDesktop}
+            ${navMobile}
           </nav>
         </aside>
 
         <div class="flex min-w-0 flex-1 flex-col">
           <button type="button" id="home-nav-toggle" class="fixed left-4 top-20 z-40 flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-800 shadow-md lg:hidden" aria-expanded="false" aria-controls="home-nav-drawer">
+            ${icon('menu', 'h-4 w-4')}
             <span>Menu</span>
           </button>
 
@@ -391,6 +454,21 @@ export default {
     const drawer = document.getElementById('home-nav-drawer');
     const overlay = document.getElementById('home-nav-overlay');
     const toggle = document.getElementById('home-nav-toggle');
+    const sidebar = document.getElementById('home-sidebar');
+    const collapse = document.getElementById('home-nav-collapse');
+    const setCollapsed = (collapsed) => {
+      sidebar?.classList.toggle('is-collapsed', collapsed);
+      if (collapse) {
+        collapse.innerHTML = icon(collapsed ? 'expand' : 'collapse', 'h-5 w-5');
+        collapse.title = collapsed ? 'Expandir menu' : 'Contraer menu';
+      }
+      localStorage.setItem('home-sidebar-collapsed', collapsed ? '1' : '0');
+    };
+    setCollapsed(localStorage.getItem('home-sidebar-collapsed') === '1');
+    collapse?.addEventListener('click', () => {
+      setCollapsed(!sidebar?.classList.contains('is-collapsed'));
+    });
+
     const closeNav = () => {
       drawer?.classList.add('-translate-x-full');
       overlay?.classList.add('hidden');

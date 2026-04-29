@@ -3,15 +3,26 @@ import {
   listRecentTickets,
   createPaquete,
   getLandingPage,
-  getUserProfile,
   listServiciosAdmin,
   upsertLandingPage,
   createServicio,
   updateServicio
 } from '../dataconnect-generated';
 import { createDistribucionEditor, DEFAULT_MAPA_JSON } from '../lib/distribucionMapa.js';
+import { getUserAccess } from '../lib/accessControl.js';
+import { icon } from '../lib/icons.js';
+import { showAlert } from '../lib/appDialog.js';
 
 const LANDING_PAGE_ID = 'main';
+
+function escapeHtml(text) {
+  return String(text ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
 
 const defaultLandingForm = () => ({
   descripcionParque:
@@ -107,16 +118,43 @@ function collectBotonesFromDom() {
 }
 
 const AdminDashboard = {
-  render: () => `
-        <div class="flex h-full bg-gray-100">
-            <div class="w-64 shrink-0 bg-slate-800 text-white min-h-[calc(100vh-64px)] p-6">
-                <h2 class="font-bold text-xl mb-6">Panel</h2>
-                <ul class="space-y-2">
-                    <li><button type="button" data-admin-section="tickets" class="w-full rounded-lg px-3 py-2 text-left font-semibold text-white bg-slate-700">Monitor y paquetes</button></li>
-                    <li><button type="button" data-admin-section="sitio" class="w-full rounded-lg px-3 py-2 text-left font-semibold text-slate-200 hover:bg-slate-700">Sitio / Landing</button></li>
-                </ul>
-                <p class="mt-8 text-xs text-slate-400">Los cambios de la landing se reflejan en <a href="/home" data-link class="underline">/home</a>.</p>
-            </div>
+  render: async () => {
+    const access = await getUserAccess(auth.currentUser);
+    const canPackages = access.can('packages.manage');
+    const canLanding = access.can('landing.manage');
+    const canScan = access.can('tickets.scan');
+    const avatar = access.photoURL
+      ? `<img src="${escapeHtml(access.photoURL)}" alt="${escapeHtml(access.name)}" class="h-10 w-10 rounded-full object-cover" referrerpolicy="no-referrer" />`
+      : `<span class="app-avatar-initials h-10 w-10">${escapeHtml(access.name.slice(0, 1).toUpperCase())}</span>`;
+    return `
+        <div class="admin-shell">
+            <aside id="admin-sidebar" class="admin-sidebar">
+                <div class="admin-sidebar-head">
+                    <div class="min-w-0">
+                        <p class="admin-kicker">Panel</p>
+                        <h2 class="admin-title">Gestion</h2>
+                    </div>
+                    <button type="button" id="admin-sidebar-collapse" class="sidebar-icon-button" title="Contraer menu" aria-label="Contraer menu">
+                        ${icon('collapse', 'h-5 w-5')}
+                    </button>
+                </div>
+                <nav class="admin-sidebar-nav" aria-label="Panel de gestion">
+                    <button type="button" data-admin-section="tickets" class="admin-sidebar-item is-active" title="Gestion">
+                        ${icon('ticket', 'h-5 w-5')}
+                        <span class="admin-sidebar-label">Gestion</span>
+                    </button>
+                    ${canScan ? `<a href="/escaner" data-link class="admin-sidebar-item" title="Escaner">${icon('scan', 'h-5 w-5')}<span class="admin-sidebar-label">Escaner</span></a>` : ''}
+                    ${canLanding ? `<button type="button" data-admin-section="sitio" class="admin-sidebar-item" title="Sitio / Landing">${icon('dashboard', 'h-5 w-5')}<span class="admin-sidebar-label">Panel administracion</span></button>` : ''}
+                    ${access.isProgramador ? `<a href="/programador/theme" data-link class="admin-sidebar-item" title="Programador">${icon('code', 'h-5 w-5')}<span class="admin-sidebar-label">Programador</span></a>` : ''}
+                </nav>
+                <div class="admin-sidebar-footer">
+                    ${avatar}
+                    <div class="admin-sidebar-user">
+                        <p class="truncate text-sm font-bold">${escapeHtml(access.name)}</p>
+                        <p class="truncate text-xs text-slate-400">${escapeHtml(access.roleLabel)}</p>
+                    </div>
+                </div>
+            </aside>
 
             <div class="flex-grow overflow-y-auto p-6 sm:p-8">
                 <div id="admin-panel-tickets">
@@ -134,7 +172,7 @@ const AdminDashboard = {
                     </div>
                 </div>
 
-                <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden mb-8 p-6">
+                ${canPackages ? `<div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden mb-8 p-6">
                     <h2 class="font-bold text-lg mb-4">Crear paquete especial</h2>
                     <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
                         <input type="text" id="pkg-name" placeholder="Nombre" class="border p-2 rounded">
@@ -143,7 +181,7 @@ const AdminDashboard = {
                         <input type="text" id="pkg-desc" placeholder="Descripcion" class="border p-2 rounded">
                     </div>
                     <button id="btn-create-pkg" class="mt-4 bg-blue-600 text-white px-4 py-2 rounded shadow hover:bg-blue-700">Guardar paquete</button>
-                </div>
+                </div>` : ''}
 
                 <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
                     <div class="p-6 border-b border-gray-200 flex justify-between items-center">
@@ -169,7 +207,7 @@ const AdminDashboard = {
                 </div>
                 </div>
 
-                <div id="admin-panel-sitio" class="hidden space-y-8">
+                ${canLanding ? `<div id="admin-panel-sitio" class="hidden space-y-8">
                     <h1 class="text-3xl font-bold text-gray-800">Contenido del sitio (/home)</h1>
                     <p class="text-sm text-slate-600">Textos, horarios, estado, mapa tipo lienzo, vista aerea, Google Maps y botones de contacto. Guarda al final.</p>
 
@@ -246,44 +284,49 @@ const AdminDashboard = {
 
                     <button type="button" id="lp-save" class="rounded-xl bg-slate-900 px-6 py-3 font-bold text-white shadow hover:bg-slate-800">Guardar contenido del sitio</button>
                     <p id="lp-save-msg" class="text-sm text-slate-500"></p>
-                </div>
+                </div>` : ''}
             </div>
         </div>
-    `,
+    `;
+  },
 
   mount: async () => {
     const panelTickets = document.getElementById('admin-panel-tickets');
     const panelSitio = document.getElementById('admin-panel-sitio');
     const hint = document.getElementById('admin-rol-hint');
     const statsWrap = document.getElementById('admin-stats-wrap');
+    const sidebar = document.getElementById('admin-sidebar');
+    const collapse = document.getElementById('admin-sidebar-collapse');
+    const access = await getUserAccess(auth.currentUser);
 
-    let rol = 'cliente';
-    const u = auth.currentUser;
-    if (u) {
-      try {
-        const pr = await getUserProfile({ id: u.uid });
-        rol = pr.data?.user?.rol || 'cliente';
-      } catch {
-        /* ignore */
+    const setCollapsed = (collapsed) => {
+      sidebar?.classList.toggle('is-collapsed', collapsed);
+      if (collapse) {
+        collapse.innerHTML = icon(collapsed ? 'expand' : 'collapse', 'h-5 w-5');
+        collapse.title = collapsed ? 'Expandir menu' : 'Contraer menu';
       }
-    }
-    const canFinanzas = ['jefe', 'programador'].includes(rol);
-    if (hint) hint.textContent = `Sesion: rol "${rol}".`;
+      localStorage.setItem('admin-sidebar-collapsed', collapsed ? '1' : '0');
+    };
+    setCollapsed(localStorage.getItem('admin-sidebar-collapsed') === '1');
+    collapse?.addEventListener('click', () => setCollapsed(!sidebar?.classList.contains('is-collapsed')));
+
+    const canFinanzas = access.can('finance.view');
+    if (hint) hint.textContent = `Sesion: ${access.roleLabel}.`;
     if (!canFinanzas && statsWrap) {
       statsWrap.innerHTML =
         '<div class="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">Resumen financiero visible solo para jefe o programador.</div>';
     }
 
     const showSection = (name) => {
+      if (name === 'sitio' && !panelSitio) return;
       const tickets = name === 'tickets';
       if (panelTickets) panelTickets.classList.toggle('hidden', !tickets);
       if (panelSitio) panelSitio.classList.toggle('hidden', tickets);
       document.querySelectorAll('[data-admin-section]').forEach((btn) => {
         const on = btn.getAttribute('data-admin-section') === name;
-        btn.classList.toggle('bg-slate-700', on);
-        btn.classList.toggle('text-white', on);
-        btn.classList.toggle('text-slate-200', !on);
+        btn.classList.toggle('is-active', on);
       });
+      window.history.replaceState(null, '', `/admin/dashboard?section=${name}`);
     };
 
     document.querySelectorAll('[data-admin-section]').forEach((btn) => {
@@ -293,7 +336,7 @@ const AdminDashboard = {
         if (sec === 'sitio') initSitioPanel();
       });
     });
-    showSection('tickets');
+    const requestedInitialSection = new URLSearchParams(window.location.search).get('section') || 'tickets';
 
     let mapEditor = null;
     let sitioReady = false;
@@ -428,7 +471,7 @@ const AdminDashboard = {
                 if (msg) msg.textContent = 'Servicio actualizado.';
               } catch (err) {
                 console.error(err);
-                alert('No se pudo guardar el servicio.');
+                await showAlert('No se pudo guardar el servicio.', { title: 'Error', variant: 'danger' });
               } finally {
                 btn.removeAttribute('disabled');
               }
@@ -444,7 +487,10 @@ const AdminDashboard = {
         const titulo = document.getElementById('svc-new-title')?.value?.trim();
         const descripcion = document.getElementById('svc-new-desc')?.value?.trim() || '';
         const orden = parseInt(document.getElementById('svc-new-order')?.value || '0', 10) || 0;
-        if (!titulo) return alert('Titulo requerido.');
+        if (!titulo) {
+          await showAlert('Titulo requerido.', { title: 'Campo obligatorio', variant: 'warning' });
+          return;
+        }
         try {
           await createServicio({ titulo, descripcion, orden, activo: true });
           document.getElementById('svc-new-title').value = '';
@@ -453,7 +499,7 @@ const AdminDashboard = {
           await loadServicios();
         } catch (err) {
           console.error(err);
-          alert('No se pudo crear el servicio.');
+          await showAlert('No se pudo crear el servicio.', { title: 'Error', variant: 'danger' });
         }
       });
 
@@ -482,12 +528,18 @@ const AdminDashboard = {
         } catch (err) {
           console.error(err);
           if (msg) msg.textContent = '';
-          alert('Error al guardar. Verifica que Data Connect este desplegado con el esquema nuevo.');
+          await showAlert(
+            'Error al guardar. Verifica que Data Connect este desplegado con el esquema nuevo.',
+            { title: 'Error', variant: 'danger' }
+          );
         }
       });
 
       sitioReady = true;
     };
+
+    showSection(requestedInitialSection === 'sitio' && panelSitio ? 'sitio' : 'tickets');
+    if (requestedInitialSection === 'sitio' && panelSitio) initSitioPanel();
 
     const btnCreatePkg = document.getElementById('btn-create-pkg');
     const btnRefresh = document.getElementById('btn-refresh');
@@ -559,7 +611,10 @@ const AdminDashboard = {
       const cap = document.getElementById('pkg-capacity')?.value;
       const desc = document.getElementById('pkg-desc')?.value;
 
-      if (!name || !price || !cap) return alert('Llena nombre, precio y capacidad.');
+      if (!name || !price || !cap) {
+        await showAlert('Llena nombre, precio y capacidad.', { title: 'Faltan datos', variant: 'warning' });
+        return;
+      }
 
       btnCreatePkg.disabled = true;
       btnCreatePkg.textContent = 'Guardando...';
@@ -571,14 +626,14 @@ const AdminDashboard = {
           precioBase: parseFloat(price),
           incluyePersonas: parseInt(cap, 10)
         });
-        alert('Paquete creado.');
+        await showAlert('Paquete creado.', { title: 'Listo', variant: 'success' });
         document.getElementById('pkg-name').value = '';
         document.getElementById('pkg-price').value = '';
         document.getElementById('pkg-capacity').value = '';
         document.getElementById('pkg-desc').value = '';
       } catch (error) {
         console.error(error);
-        alert('Error al guardar paquete.');
+        await showAlert('Error al guardar paquete.', { title: 'Error', variant: 'danger' });
       } finally {
         btnCreatePkg.disabled = false;
         btnCreatePkg.textContent = 'Guardar paquete';

@@ -48,10 +48,13 @@ query ListUserTickets($userId: String!) @auth(level: USER) {
   tickets(where: { userId: { eq: $userId } }, orderBy: [{fechaCreacion: DESC}]) {
     id
     clienteNombre
+    clienteEmail
+    metodoPago
     estadoPago
     estadoTicket
     precioTotal
     fechaCreacion
+    fechaEscaneo
   }
 }
 
