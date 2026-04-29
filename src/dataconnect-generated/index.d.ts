@@ -98,6 +98,8 @@ export interface CreateServicioData {
 export interface CreateServicioVariables {
   titulo: string;
   descripcion: string;
+  imagenUrl: string;
+  precio: number;
   orden: number;
   activo: boolean;
 }
@@ -114,6 +116,22 @@ export interface CreateUserTicketVariables {
   precioTotal: number;
 }
 
+export interface DeleteProductoData {
+  producto_delete?: Producto_Key | null;
+}
+
+export interface DeleteProductoVariables {
+  id: UUIDString;
+}
+
+export interface DeleteServicioData {
+  servicio_delete?: Servicio_Key | null;
+}
+
+export interface DeleteServicioVariables {
+  id: UUIDString;
+}
+
 export interface Descuento_Key {
   id: UUIDString;
   __typename?: 'Descuento_Key';
@@ -124,6 +142,8 @@ export interface GetLandingPageData {
     id: string;
     descripcionParque: string;
     mapaDistribucionJson: string;
+    mapaMesasJson: string;
+    mapaEstacionamientoJson: string;
     imagenSatelitalUrl: string;
     googleMapsUrl: string;
     horariosTexto: string;
@@ -281,6 +301,8 @@ export interface ListServiciosAdminData {
     id: UUIDString;
     titulo: string;
     descripcion: string;
+    imagenUrl: string;
+    precio: number;
     orden: number;
     activo: boolean;
   } & Servicio_Key)[];
@@ -291,6 +313,8 @@ export interface ListServiciosLandingData {
     id: UUIDString;
     titulo: string;
     descripcion: string;
+    imagenUrl: string;
+    precio: number;
     orden: number;
     activo: boolean;
   } & Servicio_Key)[];
@@ -375,6 +399,8 @@ export interface UpdateServicioVariables {
   id: UUIDString;
   titulo: string;
   descripcion: string;
+  imagenUrl: string;
+  precio: number;
   orden: number;
   activo: boolean;
 }
@@ -397,6 +423,8 @@ export interface UpsertLandingPageVariables {
   id: string;
   descripcionParque: string;
   mapaDistribucionJson: string;
+  mapaMesasJson: string;
+  mapaEstacionamientoJson: string;
   imagenSatelitalUrl: string;
   googleMapsUrl: string;
   horariosTexto: string;
@@ -589,6 +617,30 @@ export const cancelarMesaReservaRef: CancelarMesaReservaRef;
 
 export function cancelarMesaReserva(vars: CancelarMesaReservaVariables): MutationPromise<CancelarMesaReservaData, CancelarMesaReservaVariables>;
 export function cancelarMesaReserva(dc: DataConnect, vars: CancelarMesaReservaVariables): MutationPromise<CancelarMesaReservaData, CancelarMesaReservaVariables>;
+
+interface DeleteServicioRef {
+  /* Allow users to create refs without passing in DataConnect */
+  (vars: DeleteServicioVariables): MutationRef<DeleteServicioData, DeleteServicioVariables>;
+  /* Allow users to pass in custom DataConnect instances */
+  (dc: DataConnect, vars: DeleteServicioVariables): MutationRef<DeleteServicioData, DeleteServicioVariables>;
+  operationName: string;
+}
+export const deleteServicioRef: DeleteServicioRef;
+
+export function deleteServicio(vars: DeleteServicioVariables): MutationPromise<DeleteServicioData, DeleteServicioVariables>;
+export function deleteServicio(dc: DataConnect, vars: DeleteServicioVariables): MutationPromise<DeleteServicioData, DeleteServicioVariables>;
+
+interface DeleteProductoRef {
+  /* Allow users to create refs without passing in DataConnect */
+  (vars: DeleteProductoVariables): MutationRef<DeleteProductoData, DeleteProductoVariables>;
+  /* Allow users to pass in custom DataConnect instances */
+  (dc: DataConnect, vars: DeleteProductoVariables): MutationRef<DeleteProductoData, DeleteProductoVariables>;
+  operationName: string;
+}
+export const deleteProductoRef: DeleteProductoRef;
+
+export function deleteProducto(vars: DeleteProductoVariables): MutationPromise<DeleteProductoData, DeleteProductoVariables>;
+export function deleteProducto(dc: DataConnect, vars: DeleteProductoVariables): MutationPromise<DeleteProductoData, DeleteProductoVariables>;
 
 interface GetTicketByIdRef {
   /* Allow users to create refs without passing in DataConnect */

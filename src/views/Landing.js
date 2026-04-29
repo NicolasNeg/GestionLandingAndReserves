@@ -26,6 +26,8 @@ const defaultLanding = () => ({
   descripcionParque:
     'Balneario San Antonio Texas: espacios para la familia, albercas, areas verdes y atencion cercana. Configura este texto desde el panel de personal.',
   mapaDistribucionJson: DEFAULT_MAPA_JSON,
+  mapaMesasJson: DEFAULT_MAPA_JSON,
+  mapaEstacionamientoJson: DEFAULT_MAPA_JSON,
   imagenSatelitalUrl: '',
   googleMapsUrl: '',
   horariosTexto: 'Horario habitual: consulta en taquilla o actualiza este texto desde el panel.',
@@ -587,7 +589,10 @@ export default {
                 <p class="mt-2 text-sm text-slate-500">Visualiza spots libres, reservados y ocupados.</p>
                 <div class="mt-4 rounded-xl border border-slate-200 bg-white p-4">
                   <div class="mb-2 text-sm text-slate-600" id="parking-summary">Cargando spots...</div>
-                  <div id="landing-parking-map" class="relative h-[360px] overflow-hidden rounded-lg border border-slate-200 bg-slate-100"></div>
+                  <div class="relative h-[360px] overflow-hidden rounded-lg border border-slate-200 bg-slate-100">
+                    <canvas id="landing-parking-canvas" width="800" height="440" class="absolute inset-0 h-full w-full"></canvas>
+                    <div id="landing-parking-map" class="absolute inset-0"></div>
+                  </div>
                 </div>
               </div>
             </section>
@@ -614,6 +619,8 @@ export default {
       return {
         descripcionParque: row.descripcionParque ?? d.descripcionParque,
         mapaDistribucionJson: row.mapaDistribucionJson || d.mapaDistribucionJson,
+        mapaMesasJson: row.mapaMesasJson || row.mapaDistribucionJson || d.mapaMesasJson,
+        mapaEstacionamientoJson: row.mapaEstacionamientoJson || row.mapaDistribucionJson || d.mapaEstacionamientoJson,
         imagenSatelitalUrl: row.imagenSatelitalUrl ?? '',
         googleMapsUrl: row.googleMapsUrl ?? '',
         horariosTexto: row.horariosTexto ?? d.horariosTexto,
@@ -675,6 +682,12 @@ export default {
 
     const mapCanvas = document.getElementById('landing-mapa-canvas');
     if (mapCanvas) drawDistribucionCanvas(mapCanvas, landing.mapaDistribucionJson);
+
+    const parkingMapCanvas = document.getElementById('landing-parking-canvas');
+    if (parkingMapCanvas) {
+      const parkingJson = landing.mapaEstacionamientoJson || landing.mapaDistribucionJson;
+      drawDistribucionCanvas(parkingMapCanvas, parkingJson);
+    }
 
     const mapEditWrap = document.getElementById('landing-mapa-edit-wrap');
     if (mapEditWrap && auth.currentUser) {

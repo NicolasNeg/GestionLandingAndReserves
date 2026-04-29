@@ -173,6 +173,30 @@ export function cancelarMesaReserva(dcOrVars, vars) {
   return executeMutation(cancelarMesaReservaRef(dcInstance, inputVars));
 }
 
+export const deleteServicioRef = (dcOrVars, vars) => {
+  const { dc: dcInstance, vars: inputVars} = validateArgs(connectorConfig, dcOrVars, vars, true);
+  dcInstance._useGeneratedSdk();
+  return mutationRef(dcInstance, 'DeleteServicio', inputVars);
+}
+deleteServicioRef.operationName = 'DeleteServicio';
+
+export function deleteServicio(dcOrVars, vars) {
+  const { dc: dcInstance, vars: inputVars } = validateArgs(connectorConfig, dcOrVars, vars, true);
+  return executeMutation(deleteServicioRef(dcInstance, inputVars));
+}
+
+export const deleteProductoRef = (dcOrVars, vars) => {
+  const { dc: dcInstance, vars: inputVars} = validateArgs(connectorConfig, dcOrVars, vars, true);
+  dcInstance._useGeneratedSdk();
+  return mutationRef(dcInstance, 'DeleteProducto', inputVars);
+}
+deleteProductoRef.operationName = 'DeleteProducto';
+
+export function deleteProducto(dcOrVars, vars) {
+  const { dc: dcInstance, vars: inputVars } = validateArgs(connectorConfig, dcOrVars, vars, true);
+  return executeMutation(deleteProductoRef(dcInstance, inputVars));
+}
+
 export const getTicketByIdRef = (dcOrVars, vars) => {
   const { dc: dcInstance, vars: inputVars} = validateArgs(connectorConfig, dcOrVars, vars, true);
   dcInstance._useGeneratedSdk();

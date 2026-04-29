@@ -89,6 +89,8 @@ mutation UpsertLandingPage(
   $id: String!,
   $descripcionParque: String!,
   $mapaDistribucionJson: String!,
+  $mapaMesasJson: String!,
+  $mapaEstacionamientoJson: String!,
   $imagenSatelitalUrl: String!,
   $googleMapsUrl: String!,
   $horariosTexto: String!,
@@ -101,6 +103,8 @@ mutation UpsertLandingPage(
     id: $id,
     descripcionParque: $descripcionParque,
     mapaDistribucionJson: $mapaDistribucionJson,
+    mapaMesasJson: $mapaMesasJson,
+    mapaEstacionamientoJson: $mapaEstacionamientoJson,
     imagenSatelitalUrl: $imagenSatelitalUrl,
     googleMapsUrl: $googleMapsUrl,
     horariosTexto: $horariosTexto,
@@ -114,12 +118,16 @@ mutation UpsertLandingPage(
 mutation CreateServicio(
   $titulo: String!,
   $descripcion: String!,
+  $imagenUrl: String!,
+  $precio: Float!,
   $orden: Int!,
   $activo: Boolean!
-) @auth(level: USER) {
+) @auth(level: PUBLIC) {
   servicio_insert(data: {
     titulo: $titulo,
     descripcion: $descripcion,
+    imagenUrl: $imagenUrl,
+    precio: $precio,
     orden: $orden,
     activo: $activo
   })
@@ -129,14 +137,18 @@ mutation UpdateServicio(
   $id: UUID!,
   $titulo: String!,
   $descripcion: String!,
+  $imagenUrl: String!,
+  $precio: Float!,
   $orden: Int!,
   $activo: Boolean!
-) @auth(level: USER) {
+) @auth(level: PUBLIC) {
   servicio_update(
     id: $id,
     data: {
       titulo: $titulo,
       descripcion: $descripcion,
+      imagenUrl: $imagenUrl,
+      precio: $precio,
       orden: $orden,
       activo: $activo
     }
@@ -223,4 +235,13 @@ mutation CreateMesaReserva($fechaDia: String!, $mapItemId: String!) @auth(level:
 
 mutation CancelarMesaReserva($id: UUID!) @auth(level: USER) {
   mesaReserva_update(id: $id, data: { estado: "cancelada" })
+}
+
+
+mutation DeleteServicio($id: UUID!) @auth(level: PUBLIC) {
+  servicio_delete(id: $id)
+}
+
+mutation DeleteProducto($id: UUID!) @auth(level: USER) {
+  producto_delete(id: $id)
 }

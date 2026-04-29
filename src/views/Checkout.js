@@ -102,6 +102,14 @@ const Checkout = {
                 </div>
             </div>
 
+            <div id="purchase-confirm" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-950/70 p-4">
+                <div class="w-full max-w-md rounded-2xl bg-white p-6 text-center shadow-2xl">
+                    <h3 class="text-2xl font-black text-emerald-700">Compra confirmada</h3>
+                    <p id="purchase-confirm-msg" class="mt-2 text-sm font-semibold text-slate-600">Redirigiendo a inicio en 3s...</p>
+                    <p class="mt-3 text-xs text-slate-500">Si no llega el correo, podrás descargar el PDF desde Mis tickets.</p>
+                </div>
+            </div>
+
         </div>
     `,
     mount: () => {
@@ -115,6 +123,8 @@ const Checkout = {
         const totalText = document.getElementById('total-text');
 
         const modalInvite = document.getElementById('modal-invite');
+        const purchaseConfirm = document.getElementById('purchase-confirm');
+        const purchaseConfirmMsg = document.getElementById('purchase-confirm-msg');
 
         let selectedPayment = 'online';
         let cartItems = listCartItems();
@@ -255,15 +265,25 @@ const Checkout = {
 
                 const estadoPago = variables.estadoPago;
 
-                await downloadTicketPdf({
+                const emailResult = await sendTicketEmailCopy({
+                    toEmail: email,
                     ticketId,
-                    clienteNombre: name,
-                    clienteEmail: email,
-                    fechaCreacion: new Date(),
-                    precioTotal: totalCarrito,
-                    metodoPago: selectedPayment,
-                    estadoPago
+                    clienteNombre: name
                 });
+
+                let downloadedPdf = false;
+                if (!emailResult.sent) {
+                    await downloadTicketPdf({
+                        ticketId,
+                        clienteNombre: name,
+                        clienteEmail: email,
+                        fechaCreacion: new Date(),
+                        precioTotal: totalCarrito,
+                        metodoPago: selectedPayment,
+                        estadoPago
+                    });
+                    downloadedPdf = true;
+                }
 
                 if (isAuthed) {
                     try {
@@ -295,24 +315,16 @@ const Checkout = {
                     }
                 }
 
-                const emailResult = await sendTicketEmailCopy({
-                    toEmail: email,
-                    ticketId,
-                    clienteNombre: name
-                });
-
+                const msg = emailResult.sent
+                    ? 'Ticket enviado al correo. También disponible en Mis tickets.'
+                    : downloadedPdf
+                        ? 'No se pudo enviar correo; descargamos el PDF como respaldo. Disponible también en Mis tickets.'
+                        : 'Ticket generado. Revisar Mis tickets.';
                 if (isAuthed) {
-                    let msg =
-                        'Tu ticket se generó y el PDF se descargó. También está disponible en Mis tickets.';
-                    if (emailResult.sent) {
-                        msg += ' Te enviamos una copia por correo.';
-                    } else if (emailResult.reason === 'request_failed') {
-                        msg +=
-                            ' No pudimos enviar el correo ahora; puedes volver a descargar el PDF desde Mis tickets.';
-                    }
-                    await showAlert(msg, { title: 'Compra exitosa', variant: 'success' });
                     clearCart();
-                    navigateTo('/cliente/dashboard');
+                    if (purchaseConfirmMsg) purchaseConfirmMsg.textContent = `${msg} Redirigiendo a inicio en 3s...`;
+                    purchaseConfirm?.classList.remove('hidden');
+                    setTimeout(() => navigateTo('/home'), 3000);
                 } else {
                     clearCart();
                     modalInvite.classList.remove('hidden');

@@ -76,6 +76,8 @@ query GetLandingPage($id: String!) @auth(level: PUBLIC) {
     id
     descripcionParque
     mapaDistribucionJson
+    mapaMesasJson
+    mapaEstacionamientoJson
     imagenSatelitalUrl
     googleMapsUrl
     horariosTexto
@@ -92,6 +94,8 @@ query ListServiciosLanding @auth(level: PUBLIC) {
     id
     titulo
     descripcion
+    imagenUrl
+    precio
     orden
     activo
   }
@@ -103,6 +107,8 @@ query ListServiciosAdmin @auth(level: USER) {
     id
     titulo
     descripcion
+    imagenUrl
+    precio
     orden
     activo
   }

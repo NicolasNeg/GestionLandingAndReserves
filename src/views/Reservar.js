@@ -103,7 +103,8 @@ export default {
 
     try {
       const lp = await getLandingPage({ id: LANDING_PAGE_ID });
-      mapJson = lp.data?.landingPage?.mapaDistribucionJson || '';
+      const landing = lp.data?.landingPage;
+      mapJson = landing?.mapaMesasJson || landing?.mapaDistribucionJson || '';
     } catch (e) {
       console.warn(e);
       mapJson = '';

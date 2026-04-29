@@ -53,6 +53,8 @@ type Servicio @table {
   id: UUID! @default(expr: "uuidV4()")
   titulo: String!
   descripcion: String!
+  imagenUrl: String!
+  precio: Float!
   orden: Int!
   activo: Boolean!
 }
@@ -62,6 +64,8 @@ type LandingPage @table {
   id: String!
   descripcionParque: String!
   mapaDistribucionJson: String!
+  mapaMesasJson: String!
+  mapaEstacionamientoJson: String!
   imagenSatelitalUrl: String!
   googleMapsUrl: String!
   horariosTexto: String!

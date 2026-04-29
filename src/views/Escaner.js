@@ -1,5 +1,5 @@
 import { Html5Qrcode } from 'html5-qrcode';
-import { getTicketById, updateTicketStatus } from '../dataconnect-generated';
+import { getTicketById, updateTicketStatus, listRecentTickets } from '../dataconnect-generated';
 import { auth } from '../firebase-config.js';
 import { getUserAccess } from '../lib/accessControl.js';
 import { icon } from '../lib/icons.js';
@@ -38,6 +38,29 @@ function extractTicketId(value) {
 
 function formatMoney(value) {
     return `$${Number(value || 0).toFixed(2)}`;
+}
+
+
+function playTone(ok = true) {
+    try {
+        const Ctx = window.AudioContext || window.webkitAudioContext;
+        if (!Ctx) return;
+        const ctx = new Ctx();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.value = ok ? 920 : 280;
+        gain.gain.value = 0.0001;
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        const now = ctx.currentTime;
+        gain.gain.exponentialRampToValueAtTime(0.18, now + 0.01);
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + (ok ? 0.16 : 0.26));
+        osc.start(now);
+        osc.stop(now + (ok ? 0.18 : 0.28));
+    } catch {
+        // noop
+    }
 }
 
 const Escaner = {
@@ -248,6 +271,7 @@ const Escaner = {
             currentTicketId = null;
             currentTicketData = null;
             showScannerStatus('danger', 'BOLETO INVALIDO', message);
+            playTone(false);
             if (navigator.vibrate) navigator.vibrate([90, 40, 90]);
         };
 
@@ -293,11 +317,23 @@ const Escaner = {
 
             try {
                 const res = await getTicketById({ id: ticketId });
-                const ticket = res.data?.ticket;
+                let ticket = res.data?.ticket;
 
                 if (!ticket) {
-                    showInvalidScan('El ID leído no existe en la base de datos. Coméntale al cliente que este boleto es inválido.');
-                    return;
+                    if (ticketId.length === 8) {
+                        try {
+                            const recent = await listRecentTickets();
+                            const alt = (recent.data?.tickets || []).find((t) => String(t.id || '').toLowerCase().startsWith(ticketId));
+                            if (alt?.id) {
+                                const byAlt = await getTicketById({ id: alt.id });
+                                ticket = byAlt.data?.ticket || null;
+                            }
+                        } catch {}
+                    }
+                    if (!ticket) {
+                        showInvalidScan('El ID leído no existe en la base de datos. Coméntale al cliente que este boleto es inválido.');
+                        return;
+                    }
                 }
 
                 currentTicketData = ticket;
@@ -464,6 +500,8 @@ const Escaner = {
                     btnAction.textContent = currentActionLabel;
                     btnAction.className = "w-full bg-gray-900 text-white font-bold py-4 rounded-xl text-lg hover:bg-black transition shadow-lg";
                     showScannerStatus('success', 'BOLETO VALIDO', 'Pago confirmado. Puedes aceptar el ingreso y marcar el boleto como usado.');
+                playTone(true);
+                if (navigator.vibrate) navigator.vibrate([25, 20, 45]);
                 } else {
                     // Válido pero Pago Pendiente (Taquilla)
                     tIcon.classList.add('bg-amber-500', 'text-white');
@@ -476,6 +514,8 @@ const Escaner = {
                     btnAction.textContent = currentActionLabel;
                     btnAction.className = "w-full bg-amber-500 text-white font-bold py-4 rounded-xl text-lg hover:bg-amber-600 transition shadow-lg";
                     showScannerStatus('warning', 'PAGO PENDIENTE', 'El boleto existe, pero primero debe cobrarse en taquilla.');
+                    playTone(false);
+                    if (navigator.vibrate) navigator.vibrate([70]);
                 }
             } else {
                 // Cancelado u otro
@@ -514,6 +554,8 @@ const Escaner = {
                 });
 
                 showScannerStatus('success', 'INGRESO REGISTRADO', 'El boleto quedó marcado como usado en el sistema.');
+                playTone(true);
+                if (navigator.vibrate) navigator.vibrate([45, 20, 45]);
                 await showAlert('Ingreso registrado exitosamente en el sistema.', {
                     title: 'Listo',
                     variant: 'success'

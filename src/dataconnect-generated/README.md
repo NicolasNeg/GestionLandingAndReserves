@@ -37,6 +37,8 @@ This README will guide you through the process of using the generated JavaScript
   - [*CreateMovimientoInventario*](#createmovimientoinventario)
   - [*CreateMesaReserva*](#createmesareserva)
   - [*CancelarMesaReserva*](#cancelarmesareserva)
+  - [*DeleteServicio*](#deleteservicio)
+  - [*DeleteProducto*](#deleteproducto)
 
 # Accessing the connector
 A connector is a collection of Queries and Mutations. One SDK is generated for each connector - this SDK is generated for the connector `example`. You can find more information about connectors in the [Data Connect documentation](https://firebase.google.com/docs/data-connect#how-does).
@@ -684,6 +686,8 @@ export interface GetLandingPageData {
     id: string;
     descripcionParque: string;
     mapaDistribucionJson: string;
+    mapaMesasJson: string;
+    mapaEstacionamientoJson: string;
     imagenSatelitalUrl: string;
     googleMapsUrl: string;
     horariosTexto: string;
@@ -798,6 +802,8 @@ export interface ListServiciosLandingData {
     id: UUIDString;
     titulo: string;
     descripcion: string;
+    imagenUrl: string;
+    precio: number;
     orden: number;
     activo: boolean;
   } & Servicio_Key)[];
@@ -895,6 +901,8 @@ export interface ListServiciosAdminData {
     id: UUIDString;
     titulo: string;
     descripcion: string;
+    imagenUrl: string;
+    precio: number;
     orden: number;
     activo: boolean;
   } & Servicio_Key)[];
@@ -2261,6 +2269,8 @@ export interface UpsertLandingPageVariables {
   id: string;
   descripcionParque: string;
   mapaDistribucionJson: string;
+  mapaMesasJson: string;
+  mapaEstacionamientoJson: string;
   imagenSatelitalUrl: string;
   googleMapsUrl: string;
   horariosTexto: string;
@@ -2290,6 +2300,8 @@ const upsertLandingPageVars: UpsertLandingPageVariables = {
   id: ..., 
   descripcionParque: ..., 
   mapaDistribucionJson: ..., 
+  mapaMesasJson: ..., 
+  mapaEstacionamientoJson: ..., 
   imagenSatelitalUrl: ..., 
   googleMapsUrl: ..., 
   horariosTexto: ..., 
@@ -2303,7 +2315,7 @@ const upsertLandingPageVars: UpsertLandingPageVariables = {
 // You can use the `await` keyword to wait for the promise to resolve.
 const { data } = await upsertLandingPage(upsertLandingPageVars);
 // Variables can be defined inline as well.
-const { data } = await upsertLandingPage({ id: ..., descripcionParque: ..., mapaDistribucionJson: ..., imagenSatelitalUrl: ..., googleMapsUrl: ..., horariosTexto: ..., abiertoAhora: ..., ocupacionTexto: ..., estacionamientoTexto: ..., botonesJson: ..., });
+const { data } = await upsertLandingPage({ id: ..., descripcionParque: ..., mapaDistribucionJson: ..., mapaMesasJson: ..., mapaEstacionamientoJson: ..., imagenSatelitalUrl: ..., googleMapsUrl: ..., horariosTexto: ..., abiertoAhora: ..., ocupacionTexto: ..., estacionamientoTexto: ..., botonesJson: ..., });
 
 // You can also pass in a `DataConnect` instance to the action shortcut function.
 const dataConnect = getDataConnect(connectorConfig);
@@ -2329,6 +2341,8 @@ const upsertLandingPageVars: UpsertLandingPageVariables = {
   id: ..., 
   descripcionParque: ..., 
   mapaDistribucionJson: ..., 
+  mapaMesasJson: ..., 
+  mapaEstacionamientoJson: ..., 
   imagenSatelitalUrl: ..., 
   googleMapsUrl: ..., 
   horariosTexto: ..., 
@@ -2341,7 +2355,7 @@ const upsertLandingPageVars: UpsertLandingPageVariables = {
 // Call the `upsertLandingPageRef()` function to get a reference to the mutation.
 const ref = upsertLandingPageRef(upsertLandingPageVars);
 // Variables can be defined inline as well.
-const ref = upsertLandingPageRef({ id: ..., descripcionParque: ..., mapaDistribucionJson: ..., imagenSatelitalUrl: ..., googleMapsUrl: ..., horariosTexto: ..., abiertoAhora: ..., ocupacionTexto: ..., estacionamientoTexto: ..., botonesJson: ..., });
+const ref = upsertLandingPageRef({ id: ..., descripcionParque: ..., mapaDistribucionJson: ..., mapaMesasJson: ..., mapaEstacionamientoJson: ..., imagenSatelitalUrl: ..., googleMapsUrl: ..., horariosTexto: ..., abiertoAhora: ..., ocupacionTexto: ..., estacionamientoTexto: ..., botonesJson: ..., });
 
 // You can also pass in a `DataConnect` instance to the `MutationRef` function.
 const dataConnect = getDataConnect(connectorConfig);
@@ -2396,6 +2410,8 @@ The `CreateServicio` mutation requires an argument of type `CreateServicioVariab
 export interface CreateServicioVariables {
   titulo: string;
   descripcion: string;
+  imagenUrl: string;
+  precio: number;
   orden: number;
   activo: boolean;
 }
@@ -2419,6 +2435,8 @@ import { connectorConfig, createServicio, CreateServicioVariables } from '@datac
 const createServicioVars: CreateServicioVariables = {
   titulo: ..., 
   descripcion: ..., 
+  imagenUrl: ..., 
+  precio: ..., 
   orden: ..., 
   activo: ..., 
 };
@@ -2427,7 +2445,7 @@ const createServicioVars: CreateServicioVariables = {
 // You can use the `await` keyword to wait for the promise to resolve.
 const { data } = await createServicio(createServicioVars);
 // Variables can be defined inline as well.
-const { data } = await createServicio({ titulo: ..., descripcion: ..., orden: ..., activo: ..., });
+const { data } = await createServicio({ titulo: ..., descripcion: ..., imagenUrl: ..., precio: ..., orden: ..., activo: ..., });
 
 // You can also pass in a `DataConnect` instance to the action shortcut function.
 const dataConnect = getDataConnect(connectorConfig);
@@ -2452,6 +2470,8 @@ import { connectorConfig, createServicioRef, CreateServicioVariables } from '@da
 const createServicioVars: CreateServicioVariables = {
   titulo: ..., 
   descripcion: ..., 
+  imagenUrl: ..., 
+  precio: ..., 
   orden: ..., 
   activo: ..., 
 };
@@ -2459,7 +2479,7 @@ const createServicioVars: CreateServicioVariables = {
 // Call the `createServicioRef()` function to get a reference to the mutation.
 const ref = createServicioRef(createServicioVars);
 // Variables can be defined inline as well.
-const ref = createServicioRef({ titulo: ..., descripcion: ..., orden: ..., activo: ..., });
+const ref = createServicioRef({ titulo: ..., descripcion: ..., imagenUrl: ..., precio: ..., orden: ..., activo: ..., });
 
 // You can also pass in a `DataConnect` instance to the `MutationRef` function.
 const dataConnect = getDataConnect(connectorConfig);
@@ -2515,6 +2535,8 @@ export interface UpdateServicioVariables {
   id: UUIDString;
   titulo: string;
   descripcion: string;
+  imagenUrl: string;
+  precio: number;
   orden: number;
   activo: boolean;
 }
@@ -2539,6 +2561,8 @@ const updateServicioVars: UpdateServicioVariables = {
   id: ..., 
   titulo: ..., 
   descripcion: ..., 
+  imagenUrl: ..., 
+  precio: ..., 
   orden: ..., 
   activo: ..., 
 };
@@ -2547,7 +2571,7 @@ const updateServicioVars: UpdateServicioVariables = {
 // You can use the `await` keyword to wait for the promise to resolve.
 const { data } = await updateServicio(updateServicioVars);
 // Variables can be defined inline as well.
-const { data } = await updateServicio({ id: ..., titulo: ..., descripcion: ..., orden: ..., activo: ..., });
+const { data } = await updateServicio({ id: ..., titulo: ..., descripcion: ..., imagenUrl: ..., precio: ..., orden: ..., activo: ..., });
 
 // You can also pass in a `DataConnect` instance to the action shortcut function.
 const dataConnect = getDataConnect(connectorConfig);
@@ -2573,6 +2597,8 @@ const updateServicioVars: UpdateServicioVariables = {
   id: ..., 
   titulo: ..., 
   descripcion: ..., 
+  imagenUrl: ..., 
+  precio: ..., 
   orden: ..., 
   activo: ..., 
 };
@@ -2580,7 +2606,7 @@ const updateServicioVars: UpdateServicioVariables = {
 // Call the `updateServicioRef()` function to get a reference to the mutation.
 const ref = updateServicioRef(updateServicioVars);
 // Variables can be defined inline as well.
-const ref = updateServicioRef({ id: ..., titulo: ..., descripcion: ..., orden: ..., activo: ..., });
+const ref = updateServicioRef({ id: ..., titulo: ..., descripcion: ..., imagenUrl: ..., precio: ..., orden: ..., activo: ..., });
 
 // You can also pass in a `DataConnect` instance to the `MutationRef` function.
 const dataConnect = getDataConnect(connectorConfig);
@@ -3301,6 +3327,224 @@ console.log(data.mesaReserva_update);
 executeMutation(ref).then((response) => {
   const data = response.data;
   console.log(data.mesaReserva_update);
+});
+```
+
+## DeleteServicio
+You can execute the `DeleteServicio` mutation using the following action shortcut function, or by calling `executeMutation()` after calling the following `MutationRef` function, both of which are defined in [dataconnect-generated/index.d.ts](./index.d.ts):
+```typescript
+deleteServicio(vars: DeleteServicioVariables): MutationPromise<DeleteServicioData, DeleteServicioVariables>;
+
+interface DeleteServicioRef {
+  ...
+  /* Allow users to create refs without passing in DataConnect */
+  (vars: DeleteServicioVariables): MutationRef<DeleteServicioData, DeleteServicioVariables>;
+}
+export const deleteServicioRef: DeleteServicioRef;
+```
+You can also pass in a `DataConnect` instance to the action shortcut function or `MutationRef` function.
+```typescript
+deleteServicio(dc: DataConnect, vars: DeleteServicioVariables): MutationPromise<DeleteServicioData, DeleteServicioVariables>;
+
+interface DeleteServicioRef {
+  ...
+  (dc: DataConnect, vars: DeleteServicioVariables): MutationRef<DeleteServicioData, DeleteServicioVariables>;
+}
+export const deleteServicioRef: DeleteServicioRef;
+```
+
+If you need the name of the operation without creating a ref, you can retrieve the operation name by calling the `operationName` property on the deleteServicioRef:
+```typescript
+const name = deleteServicioRef.operationName;
+console.log(name);
+```
+
+### Variables
+The `DeleteServicio` mutation requires an argument of type `DeleteServicioVariables`, which is defined in [dataconnect-generated/index.d.ts](./index.d.ts). It has the following fields:
+
+```typescript
+export interface DeleteServicioVariables {
+  id: UUIDString;
+}
+```
+### Return Type
+Recall that executing the `DeleteServicio` mutation returns a `MutationPromise` that resolves to an object with a `data` property.
+
+The `data` property is an object of type `DeleteServicioData`, which is defined in [dataconnect-generated/index.d.ts](./index.d.ts). It has the following fields:
+```typescript
+export interface DeleteServicioData {
+  servicio_delete?: Servicio_Key | null;
+}
+```
+### Using `DeleteServicio`'s action shortcut function
+
+```typescript
+import { getDataConnect } from 'firebase/data-connect';
+import { connectorConfig, deleteServicio, DeleteServicioVariables } from '@dataconnect/generated';
+
+// The `DeleteServicio` mutation requires an argument of type `DeleteServicioVariables`:
+const deleteServicioVars: DeleteServicioVariables = {
+  id: ..., 
+};
+
+// Call the `deleteServicio()` function to execute the mutation.
+// You can use the `await` keyword to wait for the promise to resolve.
+const { data } = await deleteServicio(deleteServicioVars);
+// Variables can be defined inline as well.
+const { data } = await deleteServicio({ id: ..., });
+
+// You can also pass in a `DataConnect` instance to the action shortcut function.
+const dataConnect = getDataConnect(connectorConfig);
+const { data } = await deleteServicio(dataConnect, deleteServicioVars);
+
+console.log(data.servicio_delete);
+
+// Or, you can use the `Promise` API.
+deleteServicio(deleteServicioVars).then((response) => {
+  const data = response.data;
+  console.log(data.servicio_delete);
+});
+```
+
+### Using `DeleteServicio`'s `MutationRef` function
+
+```typescript
+import { getDataConnect, executeMutation } from 'firebase/data-connect';
+import { connectorConfig, deleteServicioRef, DeleteServicioVariables } from '@dataconnect/generated';
+
+// The `DeleteServicio` mutation requires an argument of type `DeleteServicioVariables`:
+const deleteServicioVars: DeleteServicioVariables = {
+  id: ..., 
+};
+
+// Call the `deleteServicioRef()` function to get a reference to the mutation.
+const ref = deleteServicioRef(deleteServicioVars);
+// Variables can be defined inline as well.
+const ref = deleteServicioRef({ id: ..., });
+
+// You can also pass in a `DataConnect` instance to the `MutationRef` function.
+const dataConnect = getDataConnect(connectorConfig);
+const ref = deleteServicioRef(dataConnect, deleteServicioVars);
+
+// Call `executeMutation()` on the reference to execute the mutation.
+// You can use the `await` keyword to wait for the promise to resolve.
+const { data } = await executeMutation(ref);
+
+console.log(data.servicio_delete);
+
+// Or, you can use the `Promise` API.
+executeMutation(ref).then((response) => {
+  const data = response.data;
+  console.log(data.servicio_delete);
+});
+```
+
+## DeleteProducto
+You can execute the `DeleteProducto` mutation using the following action shortcut function, or by calling `executeMutation()` after calling the following `MutationRef` function, both of which are defined in [dataconnect-generated/index.d.ts](./index.d.ts):
+```typescript
+deleteProducto(vars: DeleteProductoVariables): MutationPromise<DeleteProductoData, DeleteProductoVariables>;
+
+interface DeleteProductoRef {
+  ...
+  /* Allow users to create refs without passing in DataConnect */
+  (vars: DeleteProductoVariables): MutationRef<DeleteProductoData, DeleteProductoVariables>;
+}
+export const deleteProductoRef: DeleteProductoRef;
+```
+You can also pass in a `DataConnect` instance to the action shortcut function or `MutationRef` function.
+```typescript
+deleteProducto(dc: DataConnect, vars: DeleteProductoVariables): MutationPromise<DeleteProductoData, DeleteProductoVariables>;
+
+interface DeleteProductoRef {
+  ...
+  (dc: DataConnect, vars: DeleteProductoVariables): MutationRef<DeleteProductoData, DeleteProductoVariables>;
+}
+export const deleteProductoRef: DeleteProductoRef;
+```
+
+If you need the name of the operation without creating a ref, you can retrieve the operation name by calling the `operationName` property on the deleteProductoRef:
+```typescript
+const name = deleteProductoRef.operationName;
+console.log(name);
+```
+
+### Variables
+The `DeleteProducto` mutation requires an argument of type `DeleteProductoVariables`, which is defined in [dataconnect-generated/index.d.ts](./index.d.ts). It has the following fields:
+
+```typescript
+export interface DeleteProductoVariables {
+  id: UUIDString;
+}
+```
+### Return Type
+Recall that executing the `DeleteProducto` mutation returns a `MutationPromise` that resolves to an object with a `data` property.
+
+The `data` property is an object of type `DeleteProductoData`, which is defined in [dataconnect-generated/index.d.ts](./index.d.ts). It has the following fields:
+```typescript
+export interface DeleteProductoData {
+  producto_delete?: Producto_Key | null;
+}
+```
+### Using `DeleteProducto`'s action shortcut function
+
+```typescript
+import { getDataConnect } from 'firebase/data-connect';
+import { connectorConfig, deleteProducto, DeleteProductoVariables } from '@dataconnect/generated';
+
+// The `DeleteProducto` mutation requires an argument of type `DeleteProductoVariables`:
+const deleteProductoVars: DeleteProductoVariables = {
+  id: ..., 
+};
+
+// Call the `deleteProducto()` function to execute the mutation.
+// You can use the `await` keyword to wait for the promise to resolve.
+const { data } = await deleteProducto(deleteProductoVars);
+// Variables can be defined inline as well.
+const { data } = await deleteProducto({ id: ..., });
+
+// You can also pass in a `DataConnect` instance to the action shortcut function.
+const dataConnect = getDataConnect(connectorConfig);
+const { data } = await deleteProducto(dataConnect, deleteProductoVars);
+
+console.log(data.producto_delete);
+
+// Or, you can use the `Promise` API.
+deleteProducto(deleteProductoVars).then((response) => {
+  const data = response.data;
+  console.log(data.producto_delete);
+});
+```
+
+### Using `DeleteProducto`'s `MutationRef` function
+
+```typescript
+import { getDataConnect, executeMutation } from 'firebase/data-connect';
+import { connectorConfig, deleteProductoRef, DeleteProductoVariables } from '@dataconnect/generated';
+
+// The `DeleteProducto` mutation requires an argument of type `DeleteProductoVariables`:
+const deleteProductoVars: DeleteProductoVariables = {
+  id: ..., 
+};
+
+// Call the `deleteProductoRef()` function to get a reference to the mutation.
+const ref = deleteProductoRef(deleteProductoVars);
+// Variables can be defined inline as well.
+const ref = deleteProductoRef({ id: ..., });
+
+// You can also pass in a `DataConnect` instance to the `MutationRef` function.
+const dataConnect = getDataConnect(connectorConfig);
+const ref = deleteProductoRef(dataConnect, deleteProductoVars);
+
+// Call `executeMutation()` on the reference to execute the mutation.
+// You can use the `await` keyword to wait for the promise to resolve.
+const { data } = await executeMutation(ref);
+
+console.log(data.producto_delete);
+
+// Or, you can use the `Promise` API.
+executeMutation(ref).then((response) => {
+  const data = response.data;
+  console.log(data.producto_delete);
 });
 ```
 

@@ -12,7 +12,9 @@ import {
   listServiciosAdmin,
   upsertLandingPage,
   createServicio,
-  updateServicio
+  updateServicio,
+  deleteServicio,
+  deleteProducto
 } from '../dataconnect-generated';
 import {
   createDistribucionEditor,
@@ -28,7 +30,7 @@ import { subscribeParkingSpots, upsertParkingSpot, updateParkingSpot, removePark
 import { defaultScheduleConfig, parseScheduleConfig, serializeScheduleConfig, scheduleDays } from '../lib/schedule.js';
 import { publishAppUpdate } from '../lib/realtimeSync.js';
 import { openImageCropModal } from '../lib/imageCropModal.js';
-import { uploadProductImage } from '../lib/uploadProductImage.js';
+import { uploadProductImage, uploadServiceImage } from '../lib/uploadProductImage.js';
 
 const LANDING_PAGE_ID = 'main';
 
@@ -50,6 +52,8 @@ const defaultLandingForm = () => ({
   descripcionParque:
     'Describe aqui tu parque: instalaciones, reglas breves y ambiente. Este texto se muestra en /home.',
   mapaDistribucionJson: DEFAULT_MAPA_JSON,
+  mapaMesasJson: DEFAULT_MAPA_JSON,
+  mapaEstacionamientoJson: DEFAULT_MAPA_JSON,
   imagenSatelitalUrl: '',
   googleMapsUrl: '',
   horariosTexto: 'Ejemplo: Lunes a domingo 9:00 - 18:00',
@@ -74,6 +78,8 @@ function mergeLandingRow(row) {
   return {
     descripcionParque: row.descripcionParque ?? d.descripcionParque,
     mapaDistribucionJson: row.mapaDistribucionJson || d.mapaDistribucionJson,
+    mapaMesasJson: row.mapaMesasJson || row.mapaDistribucionJson || d.mapaMesasJson,
+    mapaEstacionamientoJson: row.mapaEstacionamientoJson || row.mapaDistribucionJson || d.mapaEstacionamientoJson,
     imagenSatelitalUrl: row.imagenSatelitalUrl ?? '',
     googleMapsUrl: row.googleMapsUrl ?? '',
     horariosTexto: row.horariosTexto ?? d.horariosTexto,
@@ -263,8 +269,8 @@ const AdminDashboard = {
                   </div>
                   ${access.can('inventory.manage') ? `
                   <div class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-                    <h3 class="font-bold text-lg mb-4">Crear producto</h3>
-                    <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <div class="flex items-center justify-between"><h3 class="font-bold text-lg">Crear producto</h3><button type="button" id="prod-toggle-create" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-bold hover:bg-slate-50">+ Nuevo</button></div>
+                    <div id="prod-create-wrap" class="hidden grid grid-cols-1 gap-3 sm:grid-cols-2">
                       <input id="prod-title" class="rounded border p-2" placeholder="Titulo" />
                       <input id="prod-price" type="number" step="0.01" class="rounded border p-2" placeholder="Precio" />
                       <div class="sm:col-span-2 rounded-xl border border-slate-200 bg-slate-50 p-4">
@@ -527,16 +533,24 @@ const AdminDashboard = {
                     <div class="rounded-xl border border-gray-200 bg-white p-6 shadow-sm space-y-4">
                         <h2 class="font-bold text-lg">Servicios en la landing</h2>
                         <div class="overflow-x-auto">
-                          <table class="w-full text-left text-sm border-collapse min-w-[520px]">
+                          <table class="w-full text-left text-sm border-collapse min-w-[680px]">
                             <thead><tr class="bg-gray-50 text-gray-500">
-                              <th class="p-2 border-b">Titulo</th><th class="p-2 border-b">Orden</th><th class="p-2 border-b">Activo</th><th class="p-2 border-b"></th>
+                              <th class="p-2 border-b">Imagen</th><th class="p-2 border-b">Titulo</th><th class="p-2 border-b">Precio</th><th class="p-2 border-b">Orden</th><th class="p-2 border-b">Activo</th><th class="p-2 border-b"></th>
                             </tr></thead>
                             <tbody id="servicios-admin-body"></tbody>
                           </table>
                         </div>
-                        <div class="grid gap-3 rounded-lg border border-dashed border-slate-200 p-4 sm:grid-cols-2">
+                        <button type="button" id="svc-toggle-create" class="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-bold hover:bg-slate-50">+ Crear servicio</button>
+                        <div id="svc-create-wrap" class="hidden grid gap-3 rounded-lg border border-dashed border-slate-200 p-4 sm:grid-cols-2">
                           <input type="text" id="svc-new-title" placeholder="Nuevo servicio - titulo" class="rounded border p-2" />
+                          <input type="number" id="svc-new-price" placeholder="Precio" class="rounded border p-2" step="0.01" />
                           <input type="number" id="svc-new-order" placeholder="Orden" class="rounded border p-2" />
+                          <div class="flex items-center gap-2">
+                            <input id="svc-new-image-file" type="file" accept="image/jpeg,image/png,image/webp" class="hidden" />
+                            <button type="button" id="svc-new-image-pick" class="rounded border px-3 py-2 text-xs font-semibold">Elegir imagen</button>
+                            <button type="button" id="svc-new-image-clear" class="hidden text-xs font-semibold text-rose-600">Quitar</button>
+                            <img id="svc-new-image-preview" class="hidden h-12 w-12 rounded object-cover border" alt="" />
+                          </div>
                           <textarea id="svc-new-desc" rows="2" placeholder="Descripcion" class="sm:col-span-2 rounded border p-2"></textarea>
                           <button type="button" id="svc-new-btn" class="rounded bg-emerald-600 px-4 py-2 font-semibold text-white hover:bg-emerald-700 sm:col-span-2">Crear servicio</button>
                         </div>
@@ -725,7 +739,14 @@ const AdminDashboard = {
       setVal('lp-estacionamiento', landing.estacionamientoTexto);
       setVal('lp-satelite', landing.imagenSatelitalUrl);
       setVal('lp-maps', landing.googleMapsUrl);
-      const parsedMapDims = parseDistribucionJson(landing.mapaDistribucionJson);
+      let mapContext = 'parque';
+      const getMapByContext = () =>
+        mapContext === 'mesas'
+          ? (landing.mapaMesasJson || landing.mapaDistribucionJson)
+          : mapContext === 'estacionamiento'
+            ? (landing.mapaEstacionamientoJson || landing.mapaDistribucionJson)
+            : landing.mapaDistribucionJson;
+      const parsedMapDims = parseDistribucionJson(getMapByContext());
       setVal('mapa-doc-w', parsedMapDims.w);
       setVal('mapa-doc-h', parsedMapDims.h);
       const abierto = document.getElementById('lp-abierto');
@@ -841,9 +862,30 @@ const AdminDashboard = {
       const canvas = document.getElementById('admin-mapa-canvas');
       if (canvas) {
         if (mapEditor) mapEditor.destroy();
-        mapEditor = createDistribucionEditor(canvas, landing.mapaDistribucionJson, () => {});
+        mapEditor = createDistribucionEditor(canvas, getMapByContext(), () => {});
         wireMapEditorUi();
       }
+
+      const mapContextSelect = document.getElementById('map-context-select');
+      mapContextSelect?.addEventListener('change', () => {
+        if (mapEditor) {
+          const prev = mapEditor.getJson();
+          if (mapContext === 'parque') landing.mapaDistribucionJson = prev;
+          if (mapContext === 'mesas') landing.mapaMesasJson = prev;
+          if (mapContext === 'estacionamiento') landing.mapaEstacionamientoJson = prev;
+        }
+        mapContext = mapContextSelect.value || 'parque';
+        const nextJson = getMapByContext();
+        mapEditor?.destroy();
+        const canvas = document.getElementById('admin-mapa-canvas');
+        if (canvas) {
+          mapEditor = createDistribucionEditor(canvas, nextJson, () => {});
+          wireMapEditorUi();
+          const dims = parseDistribucionJson(nextJson);
+          setVal('mapa-doc-w', dims.w);
+          setVal('mapa-doc-h', dims.h);
+        }
+      });
 
       document.getElementById('btn-add-wa')?.addEventListener('click', () => {
         const wrap = document.getElementById('lp-botones-rows');
@@ -944,15 +986,18 @@ const AdminDashboard = {
             .map(
               (s) => `
             <tr class="border-b border-slate-100" data-svc-id="${s.id}">
+              <td class="p-2">${s.imagenUrl ? `<img src="${escapeHtml(s.imagenUrl)}" class="h-10 w-10 rounded object-cover border" alt=""/>` : '<span class="text-xs text-slate-400">Sin imagen</span>'}</td>
               <td class="p-2"><input data-svc-field="titulo" class="w-full rounded border p-1 text-xs" value="${String(s.titulo).replace(/"/g, '&quot;')}" /></td>
+              <td class="p-2 w-24"><input data-svc-field="precio" type="number" step="0.01" class="w-full rounded border p-1 text-xs" value="${Number(s.precio || 0).toFixed(2)}" /></td>
               <td class="p-2 w-24"><input data-svc-field="orden" type="number" class="w-full rounded border p-1 text-xs" value="${s.orden}" /></td>
               <td class="p-2"><input data-svc-field="activo" type="checkbox" ${s.activo ? 'checked' : ''} /></td>
               <td class="p-2 whitespace-nowrap">
                 <button type="button" data-svc-save class="text-blue-600 text-xs font-bold hover:underline">Guardar</button>
+                <button type="button" data-svc-del class="ml-2 text-rose-600 text-xs font-bold hover:underline">Eliminar</button>
               </td>
             </tr>
             <tr class="border-b border-slate-200 bg-slate-50/80" data-svc-id="${s.id}">
-              <td colspan="4" class="p-2 pb-4"><textarea data-svc-field="descripcion" rows="2" class="w-full rounded border p-1 text-xs">${String(s.descripcion).replace(/</g, '&lt;')}</textarea></td>
+              <td colspan="6" class="p-2 pb-4"><textarea data-svc-field="descripcion" rows="2" class="w-full rounded border p-1 text-xs">${String(s.descripcion).replace(/</g, '&lt;')}</textarea></td>
             </tr>`
             )
             .join('');
@@ -964,15 +1009,19 @@ const AdminDashboard = {
               if (!id) return;
               const nextRow = row.nextElementSibling;
               const titulo = row.querySelector('[data-svc-field="titulo"]')?.value || '';
+              const precio = parseFloat(row.querySelector('[data-svc-field="precio"]')?.value || '0') || 0;
               const orden = parseInt(row.querySelector('[data-svc-field="orden"]')?.value || '0', 10);
               const activo = row.querySelector('[data-svc-field="activo"]')?.checked ?? true;
               const descripcion = nextRow?.querySelector('[data-svc-field="descripcion"]')?.value || '';
               btn.setAttribute('disabled', 'true');
               try {
+                const source = list.find((x) => x.id === id);
                 await updateServicio({
                   id,
                   titulo,
                   descripcion,
+                  imagenUrl: source?.imagenUrl || '',
+                  precio,
                   orden,
                   activo
                 });
@@ -987,22 +1036,65 @@ const AdminDashboard = {
               }
             });
           });
+          body.querySelectorAll('[data-svc-del]').forEach((btn) => {
+            btn.addEventListener('click', async () => {
+              const row = btn.closest('tr');
+              const id = row?.getAttribute('data-svc-id');
+              if (!id) return;
+              if (!window.confirm('Eliminar servicio?')) return;
+              await deleteServicio({ id });
+              await publishAppUpdate('landing', 'Servicio eliminado');
+              await loadServicios();
+            });
+          });
         } catch (e) {
           console.error(e);
           body.innerHTML = '<tr><td colspan="4" class="p-3 text-rose-600">Error cargando servicios.</td></tr>';
         }
       };
 
+      let croppedServiceFile = null;
+      const svcPick = document.getElementById('svc-new-image-pick');
+      const svcFile = document.getElementById('svc-new-image-file');
+      const svcClear = document.getElementById('svc-new-image-clear');
+      const svcPrev = document.getElementById('svc-new-image-preview');
+      const svcToggleCreate = document.getElementById('svc-toggle-create');
+      const svcCreateWrap = document.getElementById('svc-create-wrap');
+      svcToggleCreate?.addEventListener('click', () => svcCreateWrap?.classList.toggle('hidden'));
+      svcPick?.addEventListener('click', () => svcFile?.click());
+      svcFile?.addEventListener('change', async () => {
+        const f = svcFile?.files?.[0];
+        if (!f) return;
+        try {
+          const blob = await openImageCropModal({ file: f, aspectRatio: Number.NaN, title: 'Recortar imagen del servicio' });
+          croppedServiceFile = new File([blob], 'servicio.jpg', { type: 'image/jpeg' });
+          svcPrev.src = URL.createObjectURL(croppedServiceFile);
+          svcPrev.classList.remove('hidden');
+          svcClear?.classList.remove('hidden');
+        } catch {}
+      });
+      svcClear?.addEventListener('click', () => {
+        croppedServiceFile = null;
+        if (svcFile) svcFile.value = '';
+        svcPrev?.classList.add('hidden');
+        svcClear?.classList.add('hidden');
+      });
+
       document.getElementById('svc-new-btn')?.addEventListener('click', async () => {
         const titulo = document.getElementById('svc-new-title')?.value?.trim();
         const descripcion = document.getElementById('svc-new-desc')?.value?.trim() || '';
+        const precio = parseFloat(document.getElementById('svc-new-price')?.value || '0') || 0;
         const orden = parseInt(document.getElementById('svc-new-order')?.value || '0', 10) || 0;
         if (!titulo) {
           await showAlert('Titulo requerido.', { title: 'Campo obligatorio', variant: 'warning' });
           return;
         }
         try {
-          await createServicio({ titulo, descripcion, orden, activo: true });
+          const user = auth.currentUser;
+          if (!user?.uid) throw new Error('Sesion no valida.');
+          let imagenUrl = '';
+          if (croppedServiceFile) imagenUrl = await uploadServiceImage(croppedServiceFile, user.uid);
+          await createServicio({ titulo, descripcion, imagenUrl, precio, orden, activo: true });
           await publishAppUpdate('landing', 'Servicio creado');
           document.getElementById('svc-new-title').value = '';
           document.getElementById('svc-new-desc').value = '';
@@ -1018,12 +1110,17 @@ const AdminDashboard = {
 
       document.getElementById('lp-save')?.addEventListener('click', async () => {
         const msg = document.getElementById('lp-save-msg');
-        const mapJson = mapEditor ? mapEditor.getJson() : landing.mapaDistribucionJson;
+        const editedMapJson = mapEditor ? mapEditor.getJson() : getMapByContext();
+        if (mapContext === 'parque') landing.mapaDistribucionJson = editedMapJson;
+        if (mapContext === 'mesas') landing.mapaMesasJson = editedMapJson;
+        if (mapContext === 'estacionamiento') landing.mapaEstacionamientoJson = editedMapJson;
         const botonesJson = JSON.stringify(collectBotonesFromDom());
         const payload = {
           id: LANDING_PAGE_ID,
           descripcionParque: document.getElementById('lp-descripcion')?.value || '',
-          mapaDistribucionJson: mapJson,
+          mapaDistribucionJson: landing.mapaDistribucionJson || DEFAULT_MAPA_JSON,
+          mapaMesasJson: landing.mapaMesasJson || landing.mapaDistribucionJson || DEFAULT_MAPA_JSON,
+          mapaEstacionamientoJson: landing.mapaEstacionamientoJson || landing.mapaDistribucionJson || DEFAULT_MAPA_JSON,
           imagenSatelitalUrl: document.getElementById('lp-satelite')?.value?.trim() || '',
           googleMapsUrl: document.getElementById('lp-maps')?.value?.trim() || '',
           horariosTexto: serializeScheduleConfig(scheduleConfig),
@@ -1252,6 +1349,8 @@ const AdminDashboard = {
                   </div>
                   <div class="flex gap-2">
                     <button data-prod-show-mov="${p.id}" class="rounded border border-slate-300 px-3 py-1 text-xs font-semibold hover:bg-white">Historial</button>
+                    ${canManage ? `<button data-prod-edit="${p.id}" class="rounded border border-cyan-300 px-3 py-1 text-xs font-semibold text-cyan-700 hover:bg-cyan-50">Editar</button>` : ""}
+                    ${canManage ? `<button data-prod-del="${p.id}" class="rounded border border-rose-300 px-3 py-1 text-xs font-semibold text-rose-700 hover:bg-rose-50">Eliminar</button>` : ""}
                   </div>
                 </div>
                 <div class="mt-3 grid gap-2 sm:grid-cols-4">
@@ -1277,6 +1376,35 @@ const AdminDashboard = {
           document.querySelectorAll('[data-prod-show-mov]').forEach((btn) => {
             btn.addEventListener('click', () => renderMovs(btn.getAttribute('data-prod-show-mov')));
           });
+          if (canManage) {
+            document.querySelectorAll('[data-prod-edit]').forEach((btn) => btn.addEventListener('click', async () => {
+              const id = btn.getAttribute('data-prod-edit');
+              const p = byId.get(id);
+              if (!p) return;
+              const titulo = window.prompt('Titulo', p.titulo || '');
+              if (titulo == null) return;
+              const descripcionPrompt = window.prompt('Descripcion', p.descripcion || '');
+              const descripcion = descripcionPrompt == null ? (p.descripcion || '') : descripcionPrompt;
+              const precioRaw = window.prompt('Precio', String(p.precio || 0));
+              if (precioRaw == null) return;
+              const precio = Number(precioRaw);
+              if (!titulo.trim() || !(precio > 0)) {
+                await showAlert('Titulo y precio valido son obligatorios.', { title: 'Producto', variant: 'warning' });
+                return;
+              }
+              await updateProducto({ id, titulo: titulo.trim(), descripcion, imagenUrl: p.imagenUrl || '', precio, activo: Boolean(p.activo) });
+              await publishAppUpdate('inventory', `Producto ${id} editado`);
+              await loadProductos();
+            }));
+            document.querySelectorAll('[data-prod-del]').forEach((btn) => btn.addEventListener('click', async () => {
+              const id = btn.getAttribute('data-prod-del');
+              if (!id) return;
+              if (!window.confirm('Eliminar producto? Esta accion no se puede deshacer.')) return;
+              await deleteProducto({ id });
+              await publishAppUpdate('inventory', `Producto ${id} eliminado`);
+              await loadProductos();
+            }));
+          }
 
           if (canAdjust) {
             document.querySelectorAll('[data-prod-btn-in]').forEach((btn) => btn.addEventListener('click', async () => {
@@ -1333,6 +1461,9 @@ const AdminDashboard = {
 
       const fileInput = document.getElementById('prod-image-file');
       const pickBtn = document.getElementById('prod-image-pick');
+      const prodToggleCreate = document.getElementById('prod-toggle-create');
+      const prodCreateWrap = document.getElementById('prod-create-wrap');
+      prodToggleCreate?.addEventListener('click', () => prodCreateWrap?.classList.toggle('hidden'));
       const clearBtn = document.getElementById('prod-image-clear');
       const previewWrap = document.getElementById('prod-image-preview-wrap');
       const previewImg = document.getElementById('prod-image-preview');
@@ -1369,6 +1500,17 @@ const AdminDashboard = {
             file: f,
             aspectRatio: Number.NaN,
             title: 'Recortar imagen del producto'
+          });
+          body.querySelectorAll('[data-svc-del]').forEach((btn) => {
+            btn.addEventListener('click', async () => {
+              const row = btn.closest('tr');
+              const id = row?.getAttribute('data-svc-id');
+              if (!id) return;
+              if (!window.confirm('Eliminar servicio?')) return;
+              await deleteServicio({ id });
+              await publishAppUpdate('landing', 'Servicio eliminado');
+              await loadServicios();
+            });
           });
         } catch (e) {
           if (e?.name === 'AbortError') {
