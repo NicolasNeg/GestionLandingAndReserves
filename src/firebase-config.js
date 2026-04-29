@@ -2,14 +2,27 @@ import { initializeApp } from "firebase/app";
 import { getFirestore } from "firebase/firestore";
 import { getAuth, GoogleAuthProvider, FacebookAuthProvider, OAuthProvider } from "firebase/auth";
 
-// TODO: Reemplaza config con las credenciales de Firebase de tu proyecto
+const requiredEnvVars = [
+  "VITE_FIREBASE_API_KEY",
+  "VITE_FIREBASE_AUTH_DOMAIN",
+  "VITE_FIREBASE_PROJECT_ID",
+  "VITE_FIREBASE_STORAGE_BUCKET",
+  "VITE_FIREBASE_MESSAGING_SENDER_ID",
+  "VITE_FIREBASE_APP_ID"
+];
+
+const missingEnvVars = requiredEnvVars.filter((key) => !import.meta.env[key]);
+if (missingEnvVars.length > 0) {
+  throw new Error(`Faltan variables de entorno Firebase: ${missingEnvVars.join(", ")}`);
+}
+
 const firebaseConfig = {
-  apiKey: "AIzaSyBk_A5U37Surm-K1PxZnNbzN-htyrnNmVc",
-  authDomain: "mex-mapa-bjx.firebaseapp.com",
-  projectId: "mex-mapa-bjx",
-  storageBucket: "mex-mapa-bjx.firebasestorage.app",
-  messagingSenderId: "35913204070",
-  appId: "1:35913204070:web:f9326191724b23c7bd08a7"
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID
 };
 
 // Inicializar la aplicación principal de Firebase

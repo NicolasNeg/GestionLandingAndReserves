@@ -66,3 +66,41 @@ query ListPaquetes @auth(level: PUBLIC) {
     activo
   }
 }
+
+# Contenido público de la landing (fila id = main)
+query GetLandingPage($id: String!) @auth(level: PUBLIC) {
+  landingPage(id: $id) {
+    id
+    descripcionParque
+    mapaDistribucionJson
+    imagenSatelitalUrl
+    googleMapsUrl
+    horariosTexto
+    abiertoAhora
+    ocupacionTexto
+    estacionamientoTexto
+    botonesJson
+  }
+}
+
+# Servicios activos ordenados para la landing
+query ListServiciosLanding @auth(level: PUBLIC) {
+  servicios(where: { activo: { eq: true } }, orderBy: [{ orden: ASC }]) {
+    id
+    titulo
+    descripcion
+    orden
+    activo
+  }
+}
+
+# Todos los servicios (panel admin / trabajador)
+query ListServiciosAdmin @auth(level: USER) {
+  servicios(orderBy: [{ orden: ASC }]) {
+    id
+    titulo
+    descripcion
+    orden
+    activo
+  }
+}

@@ -83,3 +83,62 @@ mutation UpsertUser(
     rol: $rol
   })
 }
+
+# Contenido de la landing (personal autenticado)
+mutation UpsertLandingPage(
+  $id: String!,
+  $descripcionParque: String!,
+  $mapaDistribucionJson: String!,
+  $imagenSatelitalUrl: String!,
+  $googleMapsUrl: String!,
+  $horariosTexto: String!,
+  $abiertoAhora: Boolean!,
+  $ocupacionTexto: String!,
+  $estacionamientoTexto: String!,
+  $botonesJson: String!
+) @auth(level: USER) {
+  landingPage_upsert(data: {
+    id: $id,
+    descripcionParque: $descripcionParque,
+    mapaDistribucionJson: $mapaDistribucionJson,
+    imagenSatelitalUrl: $imagenSatelitalUrl,
+    googleMapsUrl: $googleMapsUrl,
+    horariosTexto: $horariosTexto,
+    abiertoAhora: $abiertoAhora,
+    ocupacionTexto: $ocupacionTexto,
+    estacionamientoTexto: $estacionamientoTexto,
+    botonesJson: $botonesJson
+  })
+}
+
+mutation CreateServicio(
+  $titulo: String!,
+  $descripcion: String!,
+  $orden: Int!,
+  $activo: Boolean!
+) @auth(level: USER) {
+  servicio_insert(data: {
+    titulo: $titulo,
+    descripcion: $descripcion,
+    orden: $orden,
+    activo: $activo
+  })
+}
+
+mutation UpdateServicio(
+  $id: UUID!,
+  $titulo: String!,
+  $descripcion: String!,
+  $orden: Int!,
+  $activo: Boolean!
+) @auth(level: USER) {
+  servicio_update(
+    id: $id,
+    data: {
+      titulo: $titulo,
+      descripcion: $descripcion,
+      orden: $orden,
+      activo: $activo
+    }
+  )
+}

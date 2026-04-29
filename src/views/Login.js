@@ -1,10 +1,11 @@
 import { auth, googleProvider, facebookProvider, appleProvider } from '../firebase-config.js';
-import { 
-    signInWithPopup, 
-    signInWithEmailAndPassword, 
-    createUserWithEmailAndPassword, 
-    sendEmailVerification, 
-    signOut 
+import {
+    signInWithPopup,
+    signInWithEmailAndPassword,
+    createUserWithEmailAndPassword,
+    sendEmailVerification,
+    signOut,
+    applyActionCode
 } from 'firebase/auth';
 import { navigateTo } from '../router.js';
 import { getUserProfile, upsertUser } from '../dataconnect-generated';
@@ -35,6 +36,12 @@ const Login = {
                         </div>
                         <button type="submit" id="btn-submit" class="w-full bg-blue-600 text-white font-bold py-3 rounded-xl hover:bg-blue-700 transition shadow-lg mt-2">Entrar</button>
                     </form>
+
+                    <div id="resend-verification-wrap" class="hidden mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+                        <p class="font-semibold mb-2">¿No llegó el correo o está en spam?</p>
+                        <p class="mb-3 text-amber-800">Deja el mismo correo y contraseña arriba y pulsa reenviar (Firebase envía un <strong>enlace</strong>, no un código numérico).</p>
+                        <button type="button" id="btn-resend-verification" class="w-full rounded-lg bg-amber-600 px-4 py-2 font-bold text-white hover:bg-amber-700">Reenviar correo de verificación</button>
+                    </div>
 
                     <div class="mt-6 flex items-center justify-center">
                         <span class="text-gray-500 text-sm" id="toggle-text">¿No tienes cuenta?</span>
@@ -70,6 +77,16 @@ const Login = {
     mount: () => {
         let isRegistering = false;
 
+        const getActionCodeSettings = () => {
+            const fallback = `${window.location.origin}/login`;
+            const fromEnv = import.meta.env.VITE_AUTH_CONTINUE_URL;
+            const url = (typeof fromEnv === 'string' && fromEnv.trim()) ? fromEnv.trim() : fallback;
+            return {
+                url,
+                handleCodeInApp: false
+            };
+        };
+
         const form = document.getElementById('auth-form');
         const emailInput = document.getElementById('email');
         const passwordInput = document.getElementById('password');
@@ -82,17 +99,20 @@ const Login = {
         const formSubtitle = document.getElementById('form-subtitle');
         const errorMsg = document.getElementById('error-message');
         const successMsg = document.getElementById('success-message');
+        const resendWrap = document.getElementById('resend-verification-wrap');
 
         const showError = (msg) => {
             errorMsg.textContent = msg;
             errorMsg.classList.remove('hidden');
             successMsg.classList.add('hidden');
+            if (resendWrap && !msg.includes('verifica')) resendWrap.classList.add('hidden');
         };
 
         const showSuccess = (msg) => {
             successMsg.textContent = msg;
             successMsg.classList.remove('hidden');
             errorMsg.classList.add('hidden');
+            if (resendWrap) resendWrap.classList.add('hidden');
         };
 
         const toggleMode = () => {
@@ -114,9 +134,31 @@ const Login = {
             }
             errorMsg.classList.add('hidden');
             successMsg.classList.add('hidden');
+            if (resendWrap) resendWrap.classList.add('hidden');
         };
 
         btnToggleMode.addEventListener('click', toggleMode);
+
+        (async () => {
+            const params = new URLSearchParams(window.location.search);
+            const mode = params.get('mode');
+            const oobCode = params.get('oobCode');
+            if (mode === 'verifyEmail' && oobCode) {
+                try {
+                    await applyActionCode(auth, oobCode);
+                    showSuccess('Correo verificado correctamente. Ya puedes iniciar sesión con tu correo y contraseña.');
+                } catch (err) {
+                    console.error(err);
+                    showError('El enlace de verificación expiró o ya fue usado. Inicia sesión e intenta "Reenviar correo de verificación".');
+                }
+                window.history.replaceState({}, '', window.location.pathname);
+                return;
+            }
+            if (params.get('verified') === '1') {
+                showSuccess('Correo verificado. Inicia sesión cuando quieras.');
+                window.history.replaceState({}, '', window.location.pathname);
+            }
+        })();
 
         const syncUserToDataConnect = async (user, displayName) => {
             try {
@@ -146,21 +188,22 @@ const Login = {
             try {
                 if (isRegistering) {
                     const userCredential = await createUserWithEmailAndPassword(auth, emailInput.value, passwordInput.value);
-                    await sendEmailVerification(userCredential.user);
+                    await sendEmailVerification(userCredential.user, getActionCodeSettings());
                     
                     // Sincronizar pre-verificación (opcional) o dejarlo para el login
                     await syncUserToDataConnect(userCredential.user, nameInput.value);
                     
                     await signOut(auth); // Forzar que no entre hasta que verifique
                     
-                    showSuccess("¡Cuenta creada! Hemos enviado un enlace de verificación a tu correo. Por favor, verifícalo antes de iniciar sesión.");
+                    showSuccess('¡Cuenta creada! Te enviamos un correo con un enlace para verificar tu dirección (revisa spam). Después podrás iniciar sesión.');
                     toggleMode(); // Cambiar a login
                 } else {
                     const userCredential = await signInWithEmailAndPassword(auth, emailInput.value, passwordInput.value);
-                    
+
                     if (!userCredential.user.emailVerified) {
                         await signOut(auth);
-                        throw new Error("Por favor, verifica tu correo electrónico antes de continuar. Revisa tu bandeja de entrada o spam.");
+                        if (resendWrap) resendWrap.classList.remove('hidden');
+                        throw new Error('Por favor, verifica tu correo electrónico antes de continuar. Revisa tu bandeja de entrada o spam.');
                     }
 
                     await syncUserToDataConnect(userCredential.user, userCredential.user.displayName);
@@ -187,6 +230,32 @@ const Login = {
         document.getElementById('btn-google').addEventListener('click', () => handleSSO(googleProvider));
         document.getElementById('btn-facebook').addEventListener('click', () => handleSSO(facebookProvider));
         document.getElementById('btn-apple').addEventListener('click', () => handleSSO(appleProvider));
+
+        document.getElementById('btn-resend-verification')?.addEventListener('click', async () => {
+            const btn = document.getElementById('btn-resend-verification');
+            const email = emailInput.value.trim();
+            const password = passwordInput.value;
+            if (!email || !password) {
+                showError('Ingresa correo y contraseña para poder reenviar el correo de verificación.');
+                return;
+            }
+            btn.disabled = true;
+            btn.textContent = 'Enviando...';
+            errorMsg.classList.add('hidden');
+            successMsg.classList.add('hidden');
+            try {
+                const cred = await signInWithEmailAndPassword(auth, email, password);
+                await sendEmailVerification(cred.user, getActionCodeSettings());
+                await signOut(auth);
+                showSuccess('Te enviamos otro correo de verificación. Revisa también la carpeta de spam.');
+                if (resendWrap) resendWrap.classList.add('hidden');
+            } catch (err) {
+                showError(err.message.replace('Firebase: ', ''));
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Reenviar correo de verificación';
+            }
+        });
     }
 };
 

@@ -24,6 +24,29 @@ type Paquete @table {
   activo: Boolean!
 }
 
+# Servicios mostrados en la landing (editables por personal)
+type Servicio @table {
+  id: UUID! @default(expr: "uuidV4()")
+  titulo: String!
+  descripcion: String!
+  orden: Int!
+  activo: Boolean!
+}
+
+# Contenido singleton de la landing (id fijo "main")
+type LandingPage @table {
+  id: String!
+  descripcionParque: String!
+  mapaDistribucionJson: String!
+  imagenSatelitalUrl: String!
+  googleMapsUrl: String!
+  horariosTexto: String!
+  abiertoAhora: Boolean!
+  ocupacionTexto: String!
+  estacionamientoTexto: String!
+  botonesJson: String!
+}
+
 # Códigos de Descuento
 type Descuento @table {
   id: UUID! @default(expr: "uuidV4()")

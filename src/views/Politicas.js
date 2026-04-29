@@ -39,7 +39,7 @@ const Politicas = {
                 </div>
 
                 <div class="mt-10 border-t pt-6 text-center">
-                    <a href="/" data-link class="text-blue-600 font-bold hover:underline">Volver al Inicio</a>
+                    <a href="/home" data-link class="text-blue-600 font-bold hover:underline">Volver al Inicio</a>
                 </div>
             </div>
         </div>

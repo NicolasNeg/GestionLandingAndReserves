@@ -122,6 +122,93 @@ exports.listPaquetes = function listPaquetes(dcOrOptions, options) {
 }
 ;
 
+const getLandingPageRef = (dcOrVars, vars) => {
+  const { dc: dcInstance, vars: inputVars} = validateArgs(connectorConfig, dcOrVars, vars, true);
+  dcInstance._useGeneratedSdk();
+  return queryRef(dcInstance, 'GetLandingPage', inputVars);
+}
+getLandingPageRef.operationName = 'GetLandingPage';
+exports.getLandingPageRef = getLandingPageRef;
+
+exports.getLandingPage = function getLandingPage(dcOrVars, varsOrOptions, options) {
+  
+  const { dc: dcInstance, vars: inputVars, options: inputOpts } = validateArgsWithOptions(connectorConfig, dcOrVars, varsOrOptions, options, true, true);
+  return executeQuery(getLandingPageRef(dcInstance, inputVars), inputOpts && inputOpts.fetchPolicy);
+}
+;
+
+const listServiciosLandingRef = (dc) => {
+  const { dc: dcInstance} = validateArgs(connectorConfig, dc, undefined);
+  dcInstance._useGeneratedSdk();
+  return queryRef(dcInstance, 'ListServiciosLanding');
+}
+listServiciosLandingRef.operationName = 'ListServiciosLanding';
+exports.listServiciosLandingRef = listServiciosLandingRef;
+
+exports.listServiciosLanding = function listServiciosLanding(dcOrOptions, options) {
+  
+  const { dc: dcInstance, vars: inputVars, options: inputOpts } = validateArgsWithOptions(connectorConfig, dcOrOptions, options, undefined,false, false);
+  return executeQuery(listServiciosLandingRef(dcInstance, inputVars), inputOpts && inputOpts.fetchPolicy);
+}
+;
+
+const listServiciosAdminRef = (dc) => {
+  const { dc: dcInstance} = validateArgs(connectorConfig, dc, undefined);
+  dcInstance._useGeneratedSdk();
+  return queryRef(dcInstance, 'ListServiciosAdmin');
+}
+listServiciosAdminRef.operationName = 'ListServiciosAdmin';
+exports.listServiciosAdminRef = listServiciosAdminRef;
+
+exports.listServiciosAdmin = function listServiciosAdmin(dcOrOptions, options) {
+  
+  const { dc: dcInstance, vars: inputVars, options: inputOpts } = validateArgsWithOptions(connectorConfig, dcOrOptions, options, undefined,false, false);
+  return executeQuery(listServiciosAdminRef(dcInstance, inputVars), inputOpts && inputOpts.fetchPolicy);
+}
+;
+
+const upsertLandingPageRef = (dcOrVars, vars) => {
+  const { dc: dcInstance, vars: inputVars} = validateArgs(connectorConfig, dcOrVars, vars, true);
+  dcInstance._useGeneratedSdk();
+  return mutationRef(dcInstance, 'UpsertLandingPage', inputVars);
+}
+upsertLandingPageRef.operationName = 'UpsertLandingPage';
+exports.upsertLandingPageRef = upsertLandingPageRef;
+
+exports.upsertLandingPage = function upsertLandingPage(dcOrVars, vars) {
+  const { dc: dcInstance, vars: inputVars } = validateArgs(connectorConfig, dcOrVars, vars, true);
+  return executeMutation(upsertLandingPageRef(dcInstance, inputVars));
+}
+;
+
+const createServicioRef = (dcOrVars, vars) => {
+  const { dc: dcInstance, vars: inputVars} = validateArgs(connectorConfig, dcOrVars, vars, true);
+  dcInstance._useGeneratedSdk();
+  return mutationRef(dcInstance, 'CreateServicio', inputVars);
+}
+createServicioRef.operationName = 'CreateServicio';
+exports.createServicioRef = createServicioRef;
+
+exports.createServicio = function createServicio(dcOrVars, vars) {
+  const { dc: dcInstance, vars: inputVars } = validateArgs(connectorConfig, dcOrVars, vars, true);
+  return executeMutation(createServicioRef(dcInstance, inputVars));
+}
+;
+
+const updateServicioRef = (dcOrVars, vars) => {
+  const { dc: dcInstance, vars: inputVars} = validateArgs(connectorConfig, dcOrVars, vars, true);
+  dcInstance._useGeneratedSdk();
+  return mutationRef(dcInstance, 'UpdateServicio', inputVars);
+}
+updateServicioRef.operationName = 'UpdateServicio';
+exports.updateServicioRef = updateServicioRef;
+
+exports.updateServicio = function updateServicio(dcOrVars, vars) {
+  const { dc: dcInstance, vars: inputVars } = validateArgs(connectorConfig, dcOrVars, vars, true);
+  return executeMutation(updateServicioRef(dcInstance, inputVars));
+}
+;
+
 const getUserProfileRef = (dcOrVars, vars) => {
   const { dc: dcInstance, vars: inputVars} = validateArgs(connectorConfig, dcOrVars, vars, true);
   dcInstance._useGeneratedSdk();

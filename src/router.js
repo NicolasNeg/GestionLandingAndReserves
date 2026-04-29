@@ -9,7 +9,7 @@ import Politicas from './views/Politicas.js';
 
 // Listado de rutas mapeadas a componentes/funciones
 const routes = {
-    '/': Landing,
+    '/home': Landing,
     '/login': Login,
     '/reservar': Reservar,
     '/checkout': Checkout,
@@ -43,7 +43,11 @@ const requireRole = async (user, allowedRoles) => {
 };
 
 const router = async () => {
-    const path = window.location.pathname;
+    let path = window.location.pathname;
+    if (path === '/') {
+        window.history.replaceState(null, '', '/home');
+        path = '/home';
+    }
     let view = routes[path] || NotFound;
     
     // Auth Guards
@@ -66,10 +70,10 @@ const router = async () => {
 
         // Si va a rutas administrativas, verificar rol
         if (path === '/admin/dashboard') {
-            const isAllowed = await requireRole(user, ['programador', 'jefe']);
+            const isAllowed = await requireRole(user, ['programador', 'jefe', 'trabajador']);
             if (!isAllowed) {
-                alert("Acceso denegado. Se requiere rol de Jefe o Programador.");
-                navigateTo('/');
+                alert("Acceso denegado. Se requiere rol de personal del balneario.");
+                navigateTo('/home');
                 return;
             }
         }
@@ -78,7 +82,7 @@ const router = async () => {
             const isAllowed = await requireRole(user, ['programador', 'jefe', 'trabajador']);
             if (!isAllowed) {
                 alert("Acceso denegado. Área exclusiva para personal del balneario.");
-                navigateTo('/');
+                navigateTo('/home');
                 return;
             }
         }
@@ -111,8 +115,12 @@ export const initRouter = () => {
         // Encontrar si el click provino de un enlace con atributo [data-link]
         const link = e.target.closest('[data-link]');
         if (link) {
+            const raw = link.getAttribute('href');
+            if (!raw) return;
+            const url = new URL(raw, window.location.origin);
+            if (url.origin !== window.location.origin) return;
             e.preventDefault();
-            navigateTo(link.href);
+            navigateTo(`${url.pathname}${url.search}${url.hash}`);
         }
     });
     router();
