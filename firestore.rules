@@ -49,7 +49,10 @@ service cloud.firestore {
         (userRole() == 'trabajador' && [
           'dashboard.manage',
           'tickets.monitor',
-          'tickets.scan'
+          'tickets.scan',
+          'inventory.adjust',
+          'sales.physical',
+          'parking.manage'
         ].hasAny([permission])) ||
         (userRole() == 'jefe' && [
           'dashboard.manage',
@@ -58,7 +61,11 @@ service cloud.firestore {
           'packages.manage',
           'landing.manage',
           'finance.view',
-          'admin.panel'
+          'admin.panel',
+          'inventory.manage',
+          'inventory.adjust',
+          'sales.physical',
+          'parking.manage'
         ].hasAny([permission]));
     }
 
@@ -181,6 +188,20 @@ service cloud.firestore {
       allow read: if hasPermission('tickets.monitor') || (signedIn() && resource.data.cliente_uid == request.auth.uid);
       allow update: if hasPermission('tickets.scan') || hasPermission('tickets.monitor');
       allow delete: if hasPermission('admin.panel');
+    }
+
+    // Estacionamiento: lectura publica (landing), escritura solo personal autorizado
+    match /parkingSpots/{spotId} {
+      allow read: if true;
+      allow create, update, delete: if signedIn() && hasPermission('parking.manage');
+    }
+
+    // Canal ligero para refrescar vistas tras cambios en panel (lectura publica)
+    match /appRealtime/{docId} {
+      allow read: if true;
+      allow create, update: if signedIn() &&
+        docId == 'global' &&
+        request.resource.data.updatedBy == request.auth.uid;
     }
   }
 }

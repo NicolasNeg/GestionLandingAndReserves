@@ -4,14 +4,14 @@ import {
   getLandingPage,
   listServiciosLanding
 } from '../dataconnect-generated';
-import { drawDistribucionCanvas, DEFAULT_MAPA_JSON } from '../lib/distribucionMapa.js';
+import { drawDistribucionCanvas, DEFAULT_MAPA_JSON, MAP_ITEM_KINDS } from '../lib/distribucionMapa.js';
 import { getUserAccess, waitForAuthUser } from '../lib/accessControl.js';
 import { icon } from '../lib/icons.js';
 import heroImageUrl from '../assets/hero.png';
 import { addToCart } from '../lib/cart.js';
 import { showAlert } from '../lib/appDialog.js';
 import { subscribeParkingSpots } from '../lib/parkingRealtime.js';
-import { parseScheduleConfig, renderScheduleText } from '../lib/schedule.js';
+import { parseScheduleConfig, scheduleDays } from '../lib/schedule.js';
 
 const LANDING_PAGE_ID = 'main';
 
@@ -70,6 +70,108 @@ function buildButtonHref(btn) {
     return href;
   }
   return '#';
+}
+
+function todayIsoLocal() {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, '0');
+  const d = String(now.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+function todaySchedule(schedule) {
+  const jsDayToKey = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+  const todayKey = jsDayToKey[new Date().getDay()];
+  const todaySpecial = (schedule.specials || []).find((s) => s.date === todayIsoLocal());
+  const todayDay = scheduleDays().find((d) => d.key === todayKey);
+  const slot = todaySpecial || schedule.days?.[todayKey] || {};
+  return {
+    key: todayKey,
+    label: todaySpecial?.label || todayDay?.label || 'Hoy',
+    open: slot.open || '09:00',
+    close: slot.close || '18:00',
+    closed: Boolean(slot.closed),
+    special: Boolean(todaySpecial)
+  };
+}
+
+function renderScheduleRows(schedule) {
+  const today = todaySchedule(schedule);
+  const rows = scheduleDays()
+    .map((day) => {
+      const item = schedule.days?.[day.key] || {};
+      const isToday = day.key === today.key && !today.special;
+      const closed = Boolean(item.closed);
+      const hours = closed ? 'Cerrado' : `${item.open || '09:00'} - ${item.close || '18:00'}`;
+      return `
+        <div class="flex items-center justify-between gap-3 rounded-xl px-3 py-2 ${isToday ? 'bg-cyan-50 ring-1 ring-cyan-200' : 'bg-white/70'}">
+          <span class="min-w-0 font-bold text-slate-800">${escapeHtml(day.label)}</span>
+          <span class="shrink-0 rounded-full px-3 py-1 text-xs font-black ${closed ? 'bg-rose-50 text-rose-700' : 'bg-emerald-50 text-emerald-700'}">${escapeHtml(hours)}</span>
+        </div>
+      `;
+    })
+    .join('');
+
+  const specials = (schedule.specials || [])
+    .filter((s) => s.date)
+    .slice(0, 3)
+    .map((s) => {
+      const hours = s.closed ? 'Cerrado' : `${s.open || '09:00'} - ${s.close || '18:00'}`;
+      return `
+        <div class="flex items-center justify-between gap-3 rounded-xl bg-amber-50 px-3 py-2 ring-1 ring-amber-100">
+          <span class="min-w-0 text-xs font-black text-amber-900">${escapeHtml(s.date)}${s.label ? ` - ${escapeHtml(s.label)}` : ''}</span>
+          <span class="shrink-0 text-xs font-black text-amber-800">${escapeHtml(hours)}</span>
+        </div>
+      `;
+    })
+    .join('');
+
+  return `${rows}${specials ? `<div class="mt-3 space-y-2">${specials}</div>` : ''}`;
+}
+
+function renderMapLegend() {
+  return MAP_ITEM_KINDS.map(
+    (kind) => `
+      <span class="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-black text-slate-700">
+        <span class="h-3 w-3 rounded-sm border" style="background:${escapeHtml(kind.fill)}; border-color:${escapeHtml(kind.stroke)}"></span>
+        ${escapeHtml(kind.label)}
+      </span>
+    `
+  ).join('');
+}
+
+function googleMapsEmbedUrl(rawUrl) {
+  const raw = String(rawUrl || '').trim();
+  if (!raw) return '';
+
+  try {
+    const parsed = new URL(raw);
+    if (parsed.pathname.includes('/maps/embed')) return raw;
+    if (/maps\.app\.goo\.gl|goo\.gl\/maps/i.test(`${parsed.hostname}${parsed.pathname}`)) {
+      return `https://www.google.com/maps?q=${encodeURIComponent('Balneario San Antonio Texas')}&output=embed`;
+    }
+
+    const queryParam = parsed.searchParams.get('q') || parsed.searchParams.get('query');
+    const coordMatch = raw.match(/@(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)(?:,(\d+(?:\.\d+)?)z)?/i);
+    if (coordMatch) {
+      const [, lat, lng, zoom] = coordMatch;
+      return `https://www.google.com/maps?q=${lat},${lng}&z=${zoom || '17'}&output=embed`;
+    }
+
+    if (queryParam) {
+      return `https://www.google.com/maps?q=${encodeURIComponent(queryParam)}&output=embed`;
+    }
+
+    const placeMatch = decodeURIComponent(parsed.pathname).match(/\/place\/([^/]+)/);
+    if (placeMatch?.[1]) {
+      return `https://www.google.com/maps?q=${encodeURIComponent(placeMatch[1].replace(/\+/g, ' '))}&output=embed`;
+    }
+  } catch {
+    // Si el panel guarda solo una direccion o nombre, tambien se puede buscar.
+  }
+
+  return `https://www.google.com/maps?q=${encodeURIComponent(raw)}&output=embed`;
 }
 
 function renderBotones(botones) {
@@ -230,12 +332,38 @@ function renderHomeNavItems(access) {
   return `${sectionItems}${actions}`;
 }
 
+function renderHomeMobileQuickNav() {
+  const quickItems = [
+    { id: 'inicio', label: 'Inicio', iconName: 'home' },
+    { id: 'estado', label: 'Estado', iconName: 'clock' },
+    { id: 'mapa', label: 'Mapa', iconName: 'map' },
+    { id: 'paquetes', label: 'Paquetes', iconName: 'package' }
+  ];
+
+  return `
+    ${quickItems
+      .map(
+        (item) => `
+        <a href="#${item.id}" class="home-mobile-nav-link flex min-w-0 flex-col items-center justify-center gap-1 rounded-2xl px-2 py-2 text-[0.68rem] font-black text-slate-600 transition hover:bg-cyan-50 hover:text-cyan-800" title="${escapeHtml(item.label)}">
+          ${icon(item.iconName, 'h-5 w-5')}
+          <span class="truncate">${escapeHtml(item.label)}</span>
+        </a>`
+      )
+      .join('')}
+    <button type="button" id="home-nav-more" class="flex min-w-0 flex-col items-center justify-center gap-1 rounded-2xl px-2 py-2 text-[0.68rem] font-black text-slate-600 transition hover:bg-cyan-50 hover:text-cyan-800" aria-expanded="false" aria-controls="home-nav-drawer">
+      ${icon('menu', 'h-5 w-5')}
+      <span>Mas</span>
+    </button>
+  `;
+}
+
 export default {
   async render() {
     const user = await waitForAuthUser();
     const access = await getUserAccess(user);
     const navDesktop = renderHomeNavItems(access);
     const navMobile = renderHomeNavItems(access);
+    const navQuickMobile = renderHomeMobileQuickNav();
 
     return `
       <div class="relative flex min-h-[calc(100vh-64px)] w-full bg-slate-50 text-slate-900">
@@ -259,9 +387,10 @@ export default {
         </aside>
 
         <!-- Sidebar mobile drawer -->
-        <aside id="home-nav-drawer" class="fixed left-0 top-[64px] z-50 h-[calc(100vh-64px)] w-72 max-w-[85vw] -translate-x-full transform border-r border-slate-200 bg-white shadow-xl transition-transform duration-200 lg:hidden" aria-hidden="true">
+        <aside id="home-nav-drawer" class="fixed left-0 top-[92px] z-50 h-[calc(100vh-92px)] w-72 max-w-[85vw] -translate-x-full transform border-r border-slate-200 bg-white shadow-xl transition-transform duration-200 lg:hidden" aria-hidden="true">
           <div class="border-b border-slate-100 p-4">
-            <p class="text-xs font-bold uppercase tracking-wider text-blue-600">Menu</p>
+            <p class="text-xs font-black uppercase tracking-wider text-cyan-700">Menu</p>
+            <p class="text-sm font-semibold text-slate-500">Navegacion de la landing</p>
           </div>
           <nav class="flex flex-col gap-1 overflow-y-auto p-3" id="home-nav-mobile">
             ${navMobile}
@@ -269,12 +398,16 @@ export default {
         </aside>
 
         <div class="flex min-w-0 flex-1 flex-col">
-          <button type="button" id="home-nav-toggle" class="fixed left-4 top-20 z-40 flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-800 shadow-md lg:hidden" aria-expanded="false" aria-controls="home-nav-drawer">
+          <button type="button" id="home-nav-toggle" class="fixed left-4 top-[5.5rem] z-40 flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-black text-slate-800 shadow-md lg:hidden" aria-expanded="false" aria-controls="home-nav-drawer">
             ${icon('menu', 'h-4 w-4')}
             <span>Menu</span>
           </button>
 
-          <main class="flex-1 pb-16 pt-14 lg:pt-6">
+          <nav id="home-mobile-quicknav" class="fixed inset-x-3 bottom-[calc(0.75rem+env(safe-area-inset-bottom))] z-30 grid grid-cols-5 gap-1 rounded-3xl border border-slate-200 bg-white/95 p-2 shadow-2xl shadow-slate-900/15 backdrop-blur lg:hidden" aria-label="Navegacion rapida">
+            ${navQuickMobile}
+          </nav>
+
+          <main class="flex-1 pb-28 pt-14 lg:pb-16 lg:pt-6">
             <section id="inicio" class="landing-hero scroll-mt-24 px-4 py-16 text-white sm:px-8" style="background-image: linear-gradient(115deg, rgba(12, 74, 110, 0.92), rgba(13, 148, 136, 0.76)), url('${heroImageUrl}')">
               <div class="landing-hero-content mx-auto max-w-5xl">
                 <p class="mb-3 text-xs font-bold uppercase tracking-widest text-amber-200/90">Balneario San Antonio Texas</p>
@@ -314,23 +447,58 @@ export default {
 
             <section id="estado" class="scroll-mt-24 border-y border-slate-200 bg-white px-4 py-14 sm:px-8">
               <div class="mx-auto max-w-5xl">
-                <h2 class="text-2xl font-black text-slate-900 sm:text-3xl">Horario y estado</h2>
-                <div class="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                  <div class="rounded-2xl border border-slate-100 bg-slate-50 p-5 shadow-sm">
-                    <p class="text-xs font-bold uppercase text-slate-500">Horarios</p>
-                    <p id="landing-horarios" class="mt-2 text-sm font-medium text-slate-800 whitespace-pre-wrap"></p>
+                <div class="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+                  <div>
+                    <p class="flex items-center gap-2 text-xs font-black uppercase tracking-wide text-cyan-700">${icon('clock', 'h-4 w-4')} Estado del dia</p>
+                    <h2 class="text-2xl font-black text-slate-900 sm:text-3xl">Horario y estado</h2>
                   </div>
-                  <div class="rounded-2xl border border-slate-100 bg-slate-50 p-5 shadow-sm">
-                    <p class="text-xs font-bold uppercase text-slate-500">Abierto ahora</p>
-                    <p id="landing-abierto" class="mt-2 text-lg font-black"></p>
-                  </div>
-                  <div class="rounded-2xl border border-slate-100 bg-slate-50 p-5 shadow-sm">
-                    <p class="text-xs font-bold uppercase text-slate-500">Ocupacion</p>
-                    <p id="landing-ocupacion" class="mt-2 text-sm font-medium text-slate-800 whitespace-pre-wrap"></p>
-                  </div>
-                  <div class="rounded-2xl border border-slate-100 bg-slate-50 p-5 shadow-sm">
-                    <p class="text-xs font-bold uppercase text-slate-500">Estacionamiento</p>
-                    <p id="landing-estacionamiento" class="mt-2 text-sm font-medium text-slate-800 whitespace-pre-wrap"></p>
+                  <p id="landing-today-pill" class="inline-flex w-fit items-center gap-2 rounded-full border border-cyan-200 bg-cyan-50 px-4 py-2 text-sm font-black text-cyan-900">
+                    ${icon('info', 'h-4 w-4')} Cargando horario
+                  </p>
+                </div>
+                <div class="mt-8 grid gap-4 lg:grid-cols-[minmax(0,1.35fr)_minmax(18rem,0.65fr)]">
+                  <article class="rounded-3xl border border-cyan-100 bg-gradient-to-br from-cyan-50 via-white to-white p-5 shadow-sm">
+                    <div class="mb-4 flex items-center justify-between gap-3">
+                      <div>
+                        <p class="text-xs font-black uppercase tracking-wide text-cyan-700">Horarios</p>
+                        <h3 class="text-lg font-black text-slate-900">Semana operativa</h3>
+                      </div>
+                      <div class="grid h-11 w-11 place-items-center rounded-2xl bg-white text-cyan-700 shadow-sm ring-1 ring-cyan-100">
+                        ${icon('waves', 'h-6 w-6')}
+                      </div>
+                    </div>
+                    <div id="landing-horarios" class="space-y-2 text-sm"></div>
+                  </article>
+
+                  <div class="grid gap-4">
+                    <article id="landing-open-card" class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+                      <div class="flex items-start justify-between gap-3">
+                        <div>
+                          <p class="text-xs font-black uppercase tracking-wide text-slate-500">Abierto ahora</p>
+                          <p id="landing-abierto" class="mt-2 text-2xl font-black"></p>
+                          <p id="landing-abierto-detalle" class="mt-1 text-sm font-semibold text-slate-500"></p>
+                        </div>
+                        <div id="landing-open-icon" class="grid h-11 w-11 place-items-center rounded-2xl bg-slate-100 text-slate-600">
+                          ${icon('clock', 'h-6 w-6')}
+                        </div>
+                      </div>
+                    </article>
+
+                    <article class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+                      <div class="mb-3 flex items-center gap-3">
+                        <div class="grid h-10 w-10 place-items-center rounded-2xl bg-blue-50 text-blue-700">${icon('users', 'h-5 w-5')}</div>
+                        <p class="text-xs font-black uppercase tracking-wide text-slate-500">Ocupacion</p>
+                      </div>
+                      <p id="landing-ocupacion" class="text-sm font-semibold leading-6 text-slate-700 whitespace-pre-wrap"></p>
+                    </article>
+
+                    <article class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+                      <div class="mb-3 flex items-center gap-3">
+                        <div class="grid h-10 w-10 place-items-center rounded-2xl bg-amber-50 text-amber-700">${icon('parking', 'h-5 w-5')}</div>
+                        <p class="text-xs font-black uppercase tracking-wide text-slate-500">Estacionamiento</p>
+                      </div>
+                      <p id="landing-estacionamiento" class="text-sm font-semibold leading-6 text-slate-700 whitespace-pre-wrap"></p>
+                    </article>
                   </div>
                 </div>
               </div>
@@ -338,23 +506,47 @@ export default {
 
             <section id="mapa" class="scroll-mt-24 bg-slate-50 px-4 py-14 sm:px-8">
               <div class="mx-auto max-w-5xl">
-                <h2 class="text-2xl font-black text-slate-900 sm:text-3xl">Distribucion del parque</h2>
-                <p class="mt-2 max-w-2xl text-sm text-slate-600">Mapa editable por el personal (zonas rectangulares). Proximamente mas automatizacion.</p>
-                <div class="mt-8 overflow-x-auto rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                  <canvas id="landing-mapa-canvas" width="800" height="440" class="mx-auto block max-w-full rounded-lg border border-slate-100"></canvas>
+                <div class="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+                  <div>
+                    <p class="flex items-center gap-2 text-xs font-black uppercase tracking-wide text-cyan-700">${icon('map', 'h-4 w-4')} Plano del parque</p>
+                    <h2 class="text-2xl font-black text-slate-900 sm:text-3xl">Distribucion del parque</h2>
+                    <p class="mt-2 max-w-2xl text-sm text-slate-600">Zonas, mesas, albercas, palapas, servicios y accesos publicados por el personal.</p>
+                  </div>
+                  <p class="inline-flex w-fit items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-black text-slate-700">
+                    ${icon('settings', 'h-4 w-4')} Editable desde panel
+                  </p>
+                </div>
+                <div class="mt-8 overflow-hidden rounded-3xl border border-cyan-100 bg-white shadow-sm">
+                  <div class="flex flex-col gap-3 border-b border-slate-100 bg-gradient-to-r from-cyan-50 to-blue-50 p-4">
+                    <p class="text-sm font-black text-slate-800">Leyenda de espacios</p>
+                    <div class="flex flex-wrap gap-2">${renderMapLegend()}</div>
+                  </div>
+                  <div class="overflow-x-auto p-4">
+                    <canvas id="landing-mapa-canvas" width="800" height="440" class="mx-auto block max-w-full rounded-2xl border border-cyan-100 shadow-inner"></canvas>
+                  </div>
                 </div>
               </div>
             </section>
 
             <section id="vista-aerea" class="scroll-mt-24 bg-white px-4 py-14 sm:px-8">
               <div class="mx-auto max-w-5xl">
-                <h2 class="text-2xl font-black text-slate-900 sm:text-3xl">Vista aerea</h2>
-                <p class="mt-2 text-sm text-slate-500">Imagen satelital o aerea y enlace a Google Maps (actualizables desde el panel).</p>
-                <div id="landing-satelite-wrap" class="mt-8 hidden">
-                  <img id="landing-satelite-img" src="" alt="Vista aerea del parque" class="max-h-[480px] w-full rounded-2xl border border-slate-200 object-cover shadow-md" loading="lazy" />
+                <div class="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+                  <div>
+                    <p class="flex items-center gap-2 text-xs font-black uppercase tracking-wide text-cyan-700">${icon('compass', 'h-4 w-4')} Ubicacion</p>
+                    <h2 class="text-2xl font-black text-slate-900 sm:text-3xl">Vista aerea</h2>
+                    <p class="mt-2 text-sm text-slate-500">Mapa embebido y vista satelital configurables desde el panel.</p>
+                  </div>
+                  <p id="landing-maps-link-wrap" class="hidden text-sm font-black text-cyan-700">
+                    <a id="landing-maps-link" href="#" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-2 rounded-full border border-cyan-200 bg-cyan-50 px-4 py-2 transition hover:bg-cyan-100">
+                      ${icon('map', 'h-4 w-4')} Abrir en Google Maps
+                    </a>
+                  </p>
                 </div>
-                <div id="landing-maps-link-wrap" class="mt-6 hidden">
-                  <a id="landing-maps-link" href="#" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-3 font-semibold text-white transition hover:bg-blue-700">Abrir en Google Maps</a>
+                <div id="landing-maps-embed-wrap" class="mt-8 hidden overflow-hidden rounded-3xl border border-slate-200 bg-slate-100 shadow-md">
+                  <iframe id="landing-maps-iframe" title="Mapa de Google Maps del balneario" class="h-[420px] w-full" loading="lazy" referrerpolicy="no-referrer-when-downgrade" allowfullscreen></iframe>
+                </div>
+                <div id="landing-satelite-wrap" class="mt-5 hidden overflow-hidden rounded-3xl border border-slate-200 bg-slate-100 shadow-sm">
+                  <img id="landing-satelite-img" src="" alt="Vista aerea del parque" class="max-h-[460px] w-full object-cover" loading="lazy" />
                 </div>
                 <p id="landing-satelite-placeholder" class="mt-8 rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-8 text-center text-sm text-slate-500">
                   Aun no hay imagen ni enlace configurados. El personal puede agregarlos desde el panel.
@@ -436,15 +628,35 @@ export default {
     if (descEl) descEl.textContent = landing.descripcionParque;
 
     const horarios = document.getElementById('landing-horarios');
+    let today = null;
     if (horarios) {
       const schedule = parseScheduleConfig(landing.horariosTexto);
-      horarios.textContent = renderScheduleText(schedule);
+      today = todaySchedule(schedule);
+      horarios.innerHTML = renderScheduleRows(schedule);
+      const todayPill = document.getElementById('landing-today-pill');
+      if (todayPill) {
+        const todayHours = today.closed ? 'Cerrado' : `${today.open} - ${today.close}`;
+        todayPill.innerHTML = `${icon(today.closed ? 'x' : 'check', 'h-4 w-4')} Hoy: ${escapeHtml(today.label)} - ${escapeHtml(todayHours)}`;
+      }
     }
 
     const abierto = document.getElementById('landing-abierto');
     if (abierto) {
       abierto.textContent = landing.abiertoAhora ? 'Si, abierto' : 'Cerrado por hoy';
-      abierto.className = `mt-2 text-lg font-black ${landing.abiertoAhora ? 'text-emerald-600' : 'text-rose-600'}`;
+      abierto.className = `mt-2 text-2xl font-black ${landing.abiertoAhora ? 'text-emerald-700' : 'text-rose-700'}`;
+      const openCard = document.getElementById('landing-open-card');
+      const openIcon = document.getElementById('landing-open-icon');
+      const openDetail = document.getElementById('landing-abierto-detalle');
+      if (openCard) {
+        openCard.className = `rounded-3xl border p-5 shadow-sm ${landing.abiertoAhora ? 'border-emerald-200 bg-emerald-50' : 'border-rose-200 bg-rose-50'}`;
+      }
+      if (openIcon) {
+        openIcon.className = `grid h-11 w-11 place-items-center rounded-2xl ${landing.abiertoAhora ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`;
+        openIcon.innerHTML = icon(landing.abiertoAhora ? 'check' : 'x', 'h-6 w-6');
+      }
+      if (openDetail && today) {
+        openDetail.textContent = today.closed ? 'Sin horario de apertura para hoy.' : `Horario de hoy: ${today.open} - ${today.close}`;
+      }
     }
 
     const oc = document.getElementById('landing-ocupacion');
@@ -461,8 +673,15 @@ export default {
     const ph = document.getElementById('landing-satelite-placeholder');
     const mapsWrap = document.getElementById('landing-maps-link-wrap');
     const mapsLink = document.getElementById('landing-maps-link');
+    const mapsEmbedWrap = document.getElementById('landing-maps-embed-wrap');
+    const mapsIframe = document.getElementById('landing-maps-iframe');
     const urlSat = (landing.imagenSatelitalUrl || '').trim();
     const urlMaps = (landing.googleMapsUrl || '').trim();
+    if (urlMaps && mapsIframe && mapsEmbedWrap) {
+      mapsIframe.src = googleMapsEmbedUrl(urlMaps);
+      mapsEmbedWrap.classList.remove('hidden');
+      ph?.classList.add('hidden');
+    }
     if (urlSat && satImg && satWrap) {
       satImg.src = urlSat;
       satWrap.classList.remove('hidden');
@@ -525,8 +744,19 @@ export default {
         const productos = res.data?.productos || [];
         productosWrap.innerHTML = renderProductos(productos);
       } catch (e) {
-        console.error('Productos landing:', e);
-        productosWrap.innerHTML = '<p class="text-sm text-rose-600">No se pudieron cargar productos.</p>';
+        const msg = e?.message || '';
+        const notDeployed =
+          msg.includes('not found') ||
+          msg.includes('NOT_FOUND') ||
+          msg.includes('ListProductosPublic');
+        if (notDeployed) {
+          productosWrap.innerHTML =
+            '<p class="text-sm text-slate-600">Los productos del catalogo estaran visibles despues de desplegar Data Connect en Firebase (<code class="text-xs">firebase deploy --only dataconnect</code>).</p>';
+        } else {
+          console.error('Productos landing:', e);
+          productosWrap.innerHTML =
+            '<p class="text-sm text-rose-600">No se pudieron cargar productos. Revisa la conexion.</p>';
+        }
       }
     }
 
@@ -583,7 +813,11 @@ export default {
             .join('');
         },
         (error) => {
-          console.error('Parking realtime:', error);
+          if (error?.code === 'permission-denied') {
+            parkingSummary.textContent = 'Estacionamiento: sin permisos de lectura (revisa reglas Firestore).';
+            return;
+          }
+          console.warn('Parking realtime:', error);
           parkingSummary.textContent = 'No fue posible cargar estacionamiento en tiempo real.';
         }
       );
@@ -592,6 +826,7 @@ export default {
     const drawer = document.getElementById('home-nav-drawer');
     const overlay = document.getElementById('home-nav-overlay');
     const toggle = document.getElementById('home-nav-toggle');
+    const mobileMore = document.getElementById('home-nav-more');
     const sidebar = document.getElementById('home-sidebar');
     const collapse = document.getElementById('home-nav-collapse');
     const setCollapsed = (collapsed) => {
@@ -611,15 +846,24 @@ export default {
       drawer?.classList.add('-translate-x-full');
       overlay?.classList.add('hidden');
       toggle?.setAttribute('aria-expanded', 'false');
+      mobileMore?.setAttribute('aria-expanded', 'false');
+      drawer?.setAttribute('aria-hidden', 'true');
     };
     const openNav = () => {
       drawer?.classList.remove('-translate-x-full');
       overlay?.classList.remove('hidden');
       toggle?.setAttribute('aria-expanded', 'true');
+      mobileMore?.setAttribute('aria-expanded', 'true');
+      drawer?.setAttribute('aria-hidden', 'false');
     };
 
     toggle?.addEventListener('click', () => {
       const open = toggle.getAttribute('aria-expanded') === 'true';
+      if (open) closeNav();
+      else openNav();
+    });
+    mobileMore?.addEventListener('click', () => {
+      const open = mobileMore.getAttribute('aria-expanded') === 'true';
       if (open) closeNav();
       else openNav();
     });
@@ -633,11 +877,38 @@ export default {
       closeNav();
     };
 
-    document.querySelectorAll('.home-nav-link').forEach((a) => {
+    document.querySelectorAll('.home-nav-link, .home-mobile-nav-link').forEach((a) => {
       a.addEventListener('click', (ev) => {
         ev.preventDefault();
         scrollToId(a.getAttribute('href'));
       });
     });
+
+    const quickLinks = Array.from(document.querySelectorAll('.home-mobile-nav-link'));
+    const setQuickActive = (id) => {
+      quickLinks.forEach((link) => {
+        const active = link.getAttribute('href') === `#${id}`;
+        link.classList.toggle('bg-cyan-50', active);
+        link.classList.toggle('text-cyan-800', active);
+        link.classList.toggle('text-slate-600', !active);
+      });
+    };
+    const observedSections = quickLinks
+      .map((link) => document.getElementById((link.getAttribute('href') || '').replace('#', '')))
+      .filter(Boolean);
+    if ('IntersectionObserver' in window && observedSections.length) {
+      const observer = new IntersectionObserver(
+        (entries) => {
+          const visible = entries
+            .filter((entry) => entry.isIntersecting)
+            .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
+          if (visible?.target?.id) setQuickActive(visible.target.id);
+        },
+        { rootMargin: '-35% 0px -50% 0px', threshold: [0.1, 0.35, 0.65] }
+      );
+      observedSections.forEach((section) => observer.observe(section));
+    } else {
+      setQuickActive('inicio');
+    }
   }
 };

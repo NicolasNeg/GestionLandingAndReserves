@@ -18,7 +18,8 @@ import {
   createDistribucionEditor,
   DEFAULT_MAPA_JSON,
   MAP_ITEM_KINDS,
-  getMapKind
+  getMapKind,
+  parseDistribucionJson
 } from '../lib/distribucionMapa.js';
 import { getUserAccess } from '../lib/accessControl.js';
 import { icon } from '../lib/icons.js';
@@ -26,8 +27,14 @@ import { showAlert } from '../lib/appDialog.js';
 import { subscribeParkingSpots, upsertParkingSpot, updateParkingSpot, removeParkingSpot } from '../lib/parkingRealtime.js';
 import { defaultScheduleConfig, parseScheduleConfig, serializeScheduleConfig, scheduleDays } from '../lib/schedule.js';
 import { publishAppUpdate } from '../lib/realtimeSync.js';
+import { uploadProductImage } from '../lib/uploadProductImage.js';
 
 const LANDING_PAGE_ID = 'main';
+
+function isDataConnectNotDeployed(error) {
+  const msg = String(error?.message || error || '');
+  return msg.includes('NOT_FOUND') || msg.includes('not found') || msg.includes('operation ');
+}
 
 function escapeHtml(text) {
   return String(text ?? '')
@@ -256,7 +263,20 @@ const AdminDashboard = {
                     <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
                       <input id="prod-title" class="rounded border p-2" placeholder="Titulo" />
                       <input id="prod-price" type="number" step="0.01" class="rounded border p-2" placeholder="Precio" />
-                      <input id="prod-image" class="rounded border p-2 sm:col-span-2" placeholder="URL imagen" />
+                      <div class="sm:col-span-2 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                        <label class="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-2">Foto del producto</label>
+                        <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
+                          <input id="prod-image-file" type="file" accept="image/jpeg,image/png,image/webp,image/gif" class="hidden" />
+                          <button type="button" id="prod-image-pick" class="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-800 shadow-sm hover:bg-slate-50">
+                            ${icon('package', 'h-4 w-4')} Elegir foto del dispositivo
+                          </button>
+                          <button type="button" id="prod-image-clear" class="hidden text-sm font-semibold text-rose-600 hover:underline">Quitar imagen</button>
+                          <div id="prod-image-preview-wrap" class="hidden sm:ml-auto">
+                            <img id="prod-image-preview" src="" alt="Vista previa" class="h-28 w-28 rounded-lg border border-slate-200 object-cover shadow-sm" />
+                          </div>
+                        </div>
+                        <p class="mt-2 text-xs text-slate-500">JPG, PNG o WebP hasta 6 MB. Se sube de forma segura al guardar.</p>
+                      </div>
                       <textarea id="prod-desc" rows="2" class="rounded border p-2 sm:col-span-2" placeholder="Descripcion"></textarea>
                       <input id="prod-stock" type="number" class="rounded border p-2" placeholder="Stock inicial" />
                       <button id="btn-create-producto" class="rounded bg-emerald-600 px-4 py-2 font-semibold text-white hover:bg-emerald-700">Guardar producto</button>
@@ -369,66 +389,124 @@ const AdminDashboard = {
                         </label>
                     </div>
 
-                    <div class="rounded-xl border border-gray-200 bg-white p-6 shadow-sm space-y-4">
-                        <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                          <div>
-                            <h2 class="font-bold text-lg">Mapa de distribucion (lienzo)</h2>
-                            <p class="text-sm text-slate-600">Dibuja, selecciona, arrastra y redimensiona elementos. Cada elemento puede tener ID, tipo, etiqueta y notas.</p>
-                          </div>
-                          <div class="flex flex-wrap gap-2">
-                            <select id="lp-mapa-kind-new" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold">
-                              ${MAP_ITEM_KINDS.map((kind) => `<option value="${kind.value}">${kind.label}</option>`).join('')}
-                            </select>
-                            <button type="button" id="lp-mapa-add" class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">Dibujar</button>
-                            <button type="button" id="lp-mapa-add-quick" class="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold hover:bg-slate-50">Agregar rapido</button>
-                          </div>
-                        </div>
-                        <div class="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
-                          <div class="overflow-x-auto rounded-lg border border-slate-200 bg-slate-50 p-2">
-                            <canvas id="admin-mapa-canvas" width="800" height="440" class="block max-w-full"></canvas>
-                          </div>
-                          <aside class="rounded-lg border border-slate-200 bg-slate-50 p-4">
-                            <div class="mb-3 flex items-center justify-between gap-2">
-                              <h3 class="text-sm font-black text-slate-800">Propiedades</h3>
-                              <span id="mapa-selected-kind-pill" class="rounded-full bg-slate-200 px-2 py-1 text-xs font-bold text-slate-600">Sin seleccion</span>
-                            </div>
-                            <p id="mapa-empty-state" class="rounded-lg border border-dashed border-slate-300 bg-white p-4 text-sm text-slate-500">Selecciona un elemento del mapa para editarlo.</p>
-                            <div id="mapa-editor-fields" class="hidden space-y-3">
-                              <label class="block text-xs font-bold text-slate-600">ID unico
-                                <input id="mapa-item-id" type="text" class="mt-1 w-full rounded border p-2 text-sm" placeholder="mesa-01" />
-                              </label>
-                              <label class="block text-xs font-bold text-slate-600">Tipo
-                                <select id="mapa-item-kind" class="mt-1 w-full rounded border p-2 text-sm">
-                                  ${MAP_ITEM_KINDS.map((kind) => `<option value="${kind.value}">${kind.label}</option>`).join('')}
-                                </select>
-                              </label>
-                              <label class="block text-xs font-bold text-slate-600">Etiqueta visible
-                                <input id="mapa-item-label" type="text" class="mt-1 w-full rounded border p-2 text-sm" placeholder="Mesa familiar" />
-                              </label>
-                              <div class="grid grid-cols-2 gap-2">
-                                <label class="text-xs font-bold text-slate-600">X<input id="mapa-item-x" type="number" class="mt-1 w-full rounded border p-2 text-sm" /></label>
-                                <label class="text-xs font-bold text-slate-600">Y<input id="mapa-item-y" type="number" class="mt-1 w-full rounded border p-2 text-sm" /></label>
-                                <label class="text-xs font-bold text-slate-600">Ancho<input id="mapa-item-width" type="number" min="20" class="mt-1 w-full rounded border p-2 text-sm" /></label>
-                                <label class="text-xs font-bold text-slate-600">Alto<input id="mapa-item-height" type="number" min="20" class="mt-1 w-full rounded border p-2 text-sm" /></label>
-                              </div>
-                              <label class="flex items-center gap-2 text-sm font-semibold text-slate-700">
-                                <input id="mapa-item-locked" type="checkbox" class="h-4 w-4 rounded border-slate-300" />
-                                Bloquear posicion
-                              </label>
-                              <label class="block text-xs font-bold text-slate-600">Notas internas
-                                <textarea id="mapa-item-notes" rows="2" class="mt-1 w-full rounded border p-2 text-sm" placeholder="Ej. sombra, cupo, mantenimiento..."></textarea>
-                              </label>
-                              <div class="grid grid-cols-2 gap-2">
-                                <button type="button" id="mapa-duplicate" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-bold hover:bg-slate-100">Duplicar</button>
-                                <button type="button" id="mapa-delete" class="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-bold text-rose-700 hover:bg-rose-100">Eliminar</button>
-                                <button type="button" id="mapa-layer-back" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-bold hover:bg-slate-100">Enviar atras</button>
-                                <button type="button" id="mapa-layer-front" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-bold hover:bg-slate-100">Traer frente</button>
+                    <div class="rounded-xl border border-gray-200 bg-white p-4 shadow-sm space-y-4">
+                        <p class="text-sm text-slate-600">El mapa se guarda con el boton <strong>Guardar contenido del sitio</strong> al final de esta pagina. Vista previa en vivo en el lienzo.</p>
+
+                        <div class="mapa-editor-shell overflow-hidden rounded-2xl border border-slate-700 bg-gradient-to-b from-slate-900 via-slate-900 to-slate-950 text-slate-100 shadow-xl ring-1 ring-white/10">
+                          <header class="flex flex-wrap items-center gap-3 border-b border-white/10 px-4 py-3">
+                            <div class="flex min-w-0 flex-1 items-start gap-3">
+                              <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-cyan-500/15 text-cyan-400">${icon('map', 'h-6 w-6')}</span>
+                              <div class="min-w-0">
+                                <h2 class="text-base font-black tracking-tight text-white">Editor del mapa del parque</h2>
+                                <p class="text-xs text-slate-400">Elige tipo → <strong class="text-cyan-300">Dibujar</strong> en el lienzo (arrastra) · mueve y redimensiona con el raton · <kbd class="rounded bg-white/10 px-1">Esc</kbd> cancela dibujo</p>
                               </div>
                             </div>
-                          </aside>
-                        </div>
-                        <div class="flex flex-wrap gap-2 text-xs font-bold text-slate-600">
-                          ${MAP_ITEM_KINDS.map((kind) => `<span class="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-1"><i style="background:${kind.stroke}" class="h-2.5 w-2.5 rounded-full"></i>${kind.label}</span>`).join('')}
+                            <div class="flex flex-wrap gap-2">
+                              <button type="button" id="mapa-preset-row" class="rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-xs font-bold text-slate-200 hover:bg-white/10" title="Tres piezas en fila del tipo activo">Fila ×3</button>
+                              <button type="button" id="mapa-preset-wide" class="rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-xs font-bold text-slate-200 hover:bg-white/10" title="Rectangulo ancho">Bloque ancho</button>
+                              <button type="button" id="mapa-add-quick" class="rounded-lg bg-cyan-600 px-3 py-2 text-xs font-black text-white hover:bg-cyan-500">+ Pieza rapida</button>
+                            </div>
+                          </header>
+
+                          <div class="flex flex-wrap gap-2 border-b border-white/5 bg-black/25 px-4 py-2">
+                            ${MAP_ITEM_KINDS.map(
+                              (kind) => `
+                              <button type="button" class="mapa-tool-btn inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-2.5 py-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-300 hover:bg-white/10"
+                                data-map-tool="${kind.value}" title="${escapeHtml(kind.label)}">
+                                <span class="h-2 w-2 shrink-0 rounded-full" style="background:${kind.stroke}"></span>
+                                ${kind.label}
+                              </button>`
+                            ).join('')}
+                          </div>
+
+                          <p id="mapa-draw-hint" class="hidden border-b border-amber-500/20 bg-amber-500/10 px-4 py-2 text-center text-[11px] font-semibold text-amber-200">Modo dibujo activo: arrastra sobre el lienzo para crear el rectangulo.</p>
+
+                          <div class="grid gap-0 lg:grid-cols-[minmax(0,1fr)_300px]">
+                            <div class="relative border-b border-white/10 lg:border-b-0 lg:border-r">
+                              <div class="mapa-zoom-bar absolute right-3 top-3 z-20 flex items-center gap-1 rounded-lg border border-white/10 bg-slate-950/90 px-1 py-1 text-slate-200 shadow-lg backdrop-blur">
+                                <button type="button" id="mapa-zoom-out" class="h-8 w-8 rounded-md text-lg font-bold hover:bg-white/10" title="Alejar">−</button>
+                                <span id="mapa-zoom-label" class="min-w-[3rem] text-center text-[11px] font-bold text-slate-400">100%</span>
+                                <button type="button" id="mapa-zoom-in" class="h-8 w-8 rounded-md text-lg font-bold hover:bg-white/10" title="Acercar">+</button>
+                                <button type="button" id="mapa-zoom-reset" class="rounded-md px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-slate-500 hover:bg-white/10" title="Zoom 100%">1:1</button>
+                              </div>
+                              <div id="mapa-viewport-outer" class="mapa-viewport-outer max-h-[min(70vh,680px)] overflow-auto bg-slate-950/80 p-4">
+                                <div id="mapa-viewport-inner" class="inline-block origin-top-left transition-transform duration-150">
+                                  <canvas id="admin-mapa-canvas" width="800" height="440" class="block rounded-lg shadow-2xl ring-1 ring-white/10"></canvas>
+                                </div>
+                              </div>
+                              <div class="flex flex-wrap items-end gap-3 border-t border-white/10 bg-black/20 px-4 py-3 text-slate-300">
+                                <label class="flex flex-col text-[10px] font-bold uppercase tracking-wide text-slate-500">Ancho lienzo (px)
+                                  <input id="mapa-doc-w" type="number" min="400" max="2800" step="10" class="mt-1 w-28 rounded border border-white/10 bg-white/5 px-2 py-1.5 text-sm font-semibold text-white" />
+                                </label>
+                                <label class="flex flex-col text-[10px] font-bold uppercase tracking-wide text-slate-500">Alto lienzo (px)
+                                  <input id="mapa-doc-h" type="number" min="280" max="2000" step="10" class="mt-1 w-28 rounded border border-white/10 bg-white/5 px-2 py-1.5 text-sm font-semibold text-white" />
+                                </label>
+                                <button type="button" id="mapa-doc-apply" class="rounded-lg border border-cyan-500/40 bg-cyan-500/10 px-4 py-2 text-xs font-black text-cyan-200 hover:bg-cyan-500/20">Aplicar tamaño</button>
+                              </div>
+                            </div>
+
+                            <aside class="mapa-inspector flex flex-col bg-slate-900/90 p-4">
+                              <div class="mb-3 flex items-center justify-between gap-2">
+                                <div>
+                                  <p class="text-[10px] font-black uppercase tracking-widest text-slate-500">Inspector</p>
+                                  <h3 class="text-sm font-black text-white">Seleccion</h3>
+                                </div>
+                                <span id="mapa-selected-kind-pill" class="rounded-full bg-slate-700 px-2 py-1 text-[10px] font-bold text-slate-300">Sin seleccion</span>
+                              </div>
+                              <p id="mapa-empty-state" class="rounded-xl border border-dashed border-white/15 bg-white/5 p-4 text-xs leading-relaxed text-slate-400">Haz clic en una pieza del lienzo. Flechas del teclado mueven 1px (Shift = 10px).</p>
+                              <div id="mapa-editor-fields" class="hidden flex-1 space-y-3">
+                                <label class="block text-[10px] font-bold uppercase text-slate-500">ID unico
+                                  <input id="mapa-item-id" type="text" class="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-slate-600" placeholder="mesa-01" />
+                                </label>
+                                <label class="block text-[10px] font-bold uppercase text-slate-500">Tipo
+                                  <select id="mapa-item-kind" class="mt-1 w-full rounded-lg border border-white/10 bg-slate-800 px-3 py-2 text-sm text-white">
+                                    ${MAP_ITEM_KINDS.map((kind) => `<option value="${kind.value}">${kind.label}</option>`).join('')}
+                                  </select>
+                                </label>
+                                <label class="block text-[10px] font-bold uppercase text-slate-500">Etiqueta visible
+                                  <input id="mapa-item-label" type="text" class="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white" placeholder="Zona sombra" />
+                                </label>
+                                <div class="grid grid-cols-2 gap-2">
+                                  <label class="text-[10px] font-bold uppercase text-slate-500">X<input id="mapa-item-x" type="number" class="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 text-sm text-white" /></label>
+                                  <label class="text-[10px] font-bold uppercase text-slate-500">Y<input id="mapa-item-y" type="number" class="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 text-sm text-white" /></label>
+                                  <label class="text-[10px] font-bold uppercase text-slate-500">Ancho<input id="mapa-item-width" type="number" min="20" class="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 text-sm text-white" /></label>
+                                  <label class="text-[10px] font-bold uppercase text-slate-500">Alto<input id="mapa-item-height" type="number" min="20" class="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 text-sm text-white" /></label>
+                                </div>
+                                <div>
+                                  <p class="mb-1 text-[10px] font-bold uppercase text-slate-500">Ajuste fino</p>
+                                  <div class="grid max-w-[140px] grid-cols-3 gap-1">
+                                    <span></span>
+                                    <button type="button" data-map-nudge data-dx="0" data-dy="-10" class="mapa-nudge-btn flex h-9 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-sm hover:bg-white/10">↑</button>
+                                    <span></span>
+                                    <button type="button" data-map-nudge data-dx="-10" data-dy="0" class="mapa-nudge-btn flex h-9 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-sm hover:bg-white/10">←</button>
+                                    <span class="flex h-9 items-center justify-center text-slate-600">${icon('package', 'h-4 w-4')}</span>
+                                    <button type="button" data-map-nudge data-dx="10" data-dy="0" class="mapa-nudge-btn flex h-9 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-sm hover:bg-white/10">→</button>
+                                    <span></span>
+                                    <button type="button" data-map-nudge data-dx="0" data-dy="10" class="mapa-nudge-btn flex h-9 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-sm hover:bg-white/10">↓</button>
+                                    <span></span>
+                                  </div>
+                                </div>
+                                <label class="flex items-center gap-2 text-xs font-semibold text-slate-300">
+                                  <input id="mapa-item-locked" type="checkbox" class="h-4 w-4 rounded border-white/20 bg-white/5" />
+                                  Bloquear posicion
+                                </label>
+                                <label class="block text-[10px] font-bold uppercase text-slate-500">Notas internas
+                                  <textarea id="mapa-item-notes" rows="2" class="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-slate-600"></textarea>
+                                </label>
+                                <div class="grid grid-cols-2 gap-2 pt-1">
+                                  <button type="button" id="mapa-duplicate" class="rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-xs font-bold text-white hover:bg-white/10">Duplicar</button>
+                                  <button type="button" id="mapa-delete" class="rounded-lg border border-rose-400/30 bg-rose-500/10 px-3 py-2 text-xs font-bold text-rose-300 hover:bg-rose-500/20">Eliminar</button>
+                                  <button type="button" id="mapa-layer-back" class="rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-xs font-bold text-slate-300 hover:bg-white/10">Atras</button>
+                                  <button type="button" id="mapa-layer-front" class="rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-xs font-bold text-slate-300 hover:bg-white/10">Frente</button>
+                                </div>
+                              </div>
+                            </aside>
+                          </div>
+
+                          <footer class="flex flex-wrap gap-2 border-t border-white/10 bg-black/30 px-4 py-3">
+                            <span class="text-[10px] font-bold uppercase tracking-wide text-slate-500">Leyenda</span>
+                            ${MAP_ITEM_KINDS.map((kind) => `<span class="inline-flex items-center gap-1 rounded-full bg-white/5 px-2 py-1 text-[10px] font-semibold text-slate-400"><i style="background:${kind.stroke}" class="h-2 w-2 rounded-full"></i>${kind.label}</span>`).join('')}
+                          </footer>
                         </div>
                     </div>
 
@@ -641,6 +719,9 @@ const AdminDashboard = {
       setVal('lp-estacionamiento', landing.estacionamientoTexto);
       setVal('lp-satelite', landing.imagenSatelitalUrl);
       setVal('lp-maps', landing.googleMapsUrl);
+      const parsedMapDims = parseDistribucionJson(landing.mapaDistribucionJson);
+      setVal('mapa-doc-w', parsedMapDims.w);
+      setVal('mapa-doc-h', parsedMapDims.h);
       const abierto = document.getElementById('lp-abierto');
       if (abierto) abierto.checked = landing.abiertoAhora;
 
@@ -673,11 +754,13 @@ const AdminDashboard = {
         };
         const fillFields = (item) => {
           syncing = true;
+          const drawHint = document.getElementById('mapa-draw-hint');
+          if (drawHint && item) drawHint.classList.add('hidden');
           if (!item) {
             setDisabled(true);
             if (pill) {
               pill.textContent = 'Sin seleccion';
-              pill.className = 'rounded-full bg-slate-200 px-2 py-1 text-xs font-bold text-slate-600';
+              pill.className = 'rounded-full bg-slate-700 px-2 py-1 text-[10px] font-bold text-slate-300';
             }
             syncing = false;
             return;
@@ -686,7 +769,7 @@ const AdminDashboard = {
           const kind = getMapKind(item.kind);
           if (pill) {
             pill.textContent = kind.label;
-            pill.className = 'rounded-full px-2 py-1 text-xs font-bold text-white';
+            pill.className = 'rounded-full px-2 py-1 text-[10px] font-bold text-white';
             pill.style.background = kind.stroke;
           }
           el('id').value = item.id || '';
@@ -735,6 +818,16 @@ const AdminDashboard = {
         document.getElementById('mapa-duplicate')?.addEventListener('click', () => mapEditor?.duplicateSelected());
         document.getElementById('mapa-layer-back')?.addEventListener('click', () => mapEditor?.moveSelectedLayer(-1));
         document.getElementById('mapa-layer-front')?.addEventListener('click', () => mapEditor?.moveSelectedLayer(1));
+        document.querySelectorAll('[data-map-nudge]').forEach((btn) => {
+          btn.addEventListener('click', () => {
+            if (syncing) return;
+            const dx = parseInt(btn.getAttribute('data-dx') || '0', 10);
+            const dy = parseInt(btn.getAttribute('data-dy') || '0', 10);
+            const cur = mapEditor?.getSelected();
+            if (!cur || cur.locked) return;
+            mapEditor?.updateSelected({ x: cur.x + dx, y: cur.y + dy });
+          });
+        });
         mapEditor?.onSelectionChange(fillFields);
         fillFields(null);
       };
@@ -774,13 +867,60 @@ const AdminDashboard = {
         wireBotonRemove();
       });
 
-      document.getElementById('lp-mapa-add')?.addEventListener('click', () => {
-        const kind = document.getElementById('lp-mapa-kind-new')?.value || 'area';
-        mapEditor?.setAdding(true, kind);
+      let activeMapKind = 'area';
+      let mapZoom = 1;
+      const viewportInner = document.getElementById('mapa-viewport-inner');
+      const zoomLabel = document.getElementById('mapa-zoom-label');
+
+      const applyMapZoom = (next, reset = false) => {
+        mapZoom = reset ? 1 : Math.min(2.2, Math.max(0.35, next));
+        if (viewportInner) {
+          viewportInner.style.transform = `scale(${mapZoom})`;
+          viewportInner.style.transformOrigin = 'top left';
+        }
+        if (zoomLabel) zoomLabel.textContent = `${Math.round(mapZoom * 100)}%`;
+      };
+
+      document.getElementById('mapa-zoom-in')?.addEventListener('click', () => applyMapZoom(mapZoom + 0.12));
+      document.getElementById('mapa-zoom-out')?.addEventListener('click', () => applyMapZoom(mapZoom - 0.12));
+      document.getElementById('mapa-zoom-reset')?.addEventListener('click', () => applyMapZoom(1, true));
+
+      document.getElementById('mapa-doc-apply')?.addEventListener('click', () => {
+        const w = parseInt(document.getElementById('mapa-doc-w')?.value || '800', 10);
+        const h = parseInt(document.getElementById('mapa-doc-h')?.value || '440', 10);
+        mapEditor?.setDocumentSize(w, h);
+        if (mapEditor && typeof mapEditor.getDocumentSize === 'function') {
+          const s = mapEditor.getDocumentSize();
+          setVal('mapa-doc-w', s.w);
+          setVal('mapa-doc-h', s.h);
+        }
       });
-      document.getElementById('lp-mapa-add-quick')?.addEventListener('click', () => {
-        const kind = document.getElementById('lp-mapa-kind-new')?.value || 'area';
-        mapEditor?.addItem(kind);
+
+      document.querySelectorAll('[data-map-tool]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          activeMapKind = btn.getAttribute('data-map-tool') || 'area';
+          document.querySelectorAll('[data-map-tool]').forEach((b) => {
+            const on = b === btn;
+            b.classList.toggle('ring-2', on);
+            b.classList.toggle('ring-cyan-400/80', on);
+            b.classList.toggle('bg-cyan-500/15', on);
+          });
+          mapEditor?.setAdding(true, activeMapKind);
+          document.getElementById('mapa-draw-hint')?.classList.remove('hidden');
+        });
+      });
+
+      document.getElementById('mapa-add-quick')?.addEventListener('click', () => {
+        mapEditor?.addItem(activeMapKind);
+        document.getElementById('mapa-draw-hint')?.classList.add('hidden');
+      });
+
+      document.getElementById('mapa-preset-row')?.addEventListener('click', () => {
+        mapEditor?.addPresetRow(activeMapKind, 3);
+      });
+
+      document.getElementById('mapa-preset-wide')?.addEventListener('click', () => {
+        mapEditor?.addPresetWideBlock(activeMapKind);
       });
 
       const loadServicios = async () => {
@@ -998,7 +1138,12 @@ const AdminDashboard = {
           render();
         },
         (error) => {
-          console.error(error);
+          if (error?.code === 'permission-denied') {
+            listEl.innerHTML =
+              '<span class="text-amber-700">Sin permiso de lectura de estacionamiento. Revisa tu rol o las reglas Firestore.</span>';
+            return;
+          }
+          console.warn('Estacionamiento:', error);
           listEl.innerHTML = '<span class="text-rose-600">No se pudo cargar estacionamiento.</span>';
         }
       );
@@ -1083,13 +1228,20 @@ const AdminDashboard = {
             .map((p) => `
               <article class="rounded-xl border border-slate-200 bg-slate-50 p-4">
                 <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                  <div>
+                  <div class="flex min-w-0 flex-1 gap-3">
+                    ${
+                      p.imagenUrl
+                        ? `<img src="${escapeHtml(p.imagenUrl)}" alt="" class="h-20 w-20 flex-shrink-0 rounded-lg border border-slate-200 object-cover" loading="lazy" />`
+                        : ''
+                    }
+                    <div class="min-w-0">
                     <h4 class="font-bold text-slate-900">${escapeHtml(p.titulo)}</h4>
                     <p class="text-xs text-slate-500">${escapeHtml(p.descripcion || '')}</p>
                     <p class="mt-1 text-sm font-semibold text-slate-700">$${(p.precio || 0).toFixed(2)}</p>
                     <div class="mt-2 flex flex-wrap gap-2 text-xs">
                       <span class="rounded-full bg-emerald-100 px-2 py-1 font-semibold text-emerald-800">Stock: ${p.stockActual}</span>
                       <span class="rounded-full bg-amber-100 px-2 py-1 font-semibold text-amber-800">Reservados: ${p.reservadoAprox}</span>
+                    </div>
                     </div>
                   </div>
                   <div class="flex gap-2">
@@ -1164,23 +1316,78 @@ const AdminDashboard = {
 
           if (selectedProductoId) renderMovs(selectedProductoId);
         } catch (error) {
+          if (isDataConnectNotDeployed(error)) {
+            wrap.innerHTML = `<p class="text-sm text-amber-800">El servicio de inventario no esta desplegado o no esta actualizado. En el proyecto ejecuta: <code class="rounded bg-amber-100 px-1">npx firebase-tools@latest dataconnect:sql:migrate</code> (si aplica) y luego <code class="rounded bg-amber-100 px-1">npx firebase-tools@latest deploy --only dataconnect</code>, y vuelve a publicar la web.</p>`;
+            return;
+          }
           console.error(error);
           wrap.innerHTML = '<p class="text-rose-600">Error cargando inventario.</p>';
         }
       };
 
+      const fileInput = document.getElementById('prod-image-file');
+      const pickBtn = document.getElementById('prod-image-pick');
+      const clearBtn = document.getElementById('prod-image-clear');
+      const previewWrap = document.getElementById('prod-image-preview-wrap');
+      const previewImg = document.getElementById('prod-image-preview');
+
+      const clearProdImageUi = () => {
+        if (previewImg?.src?.startsWith('blob:')) {
+          try {
+            URL.revokeObjectURL(previewImg.src);
+          } catch {
+            /* noop */
+          }
+        }
+        if (fileInput) fileInput.value = '';
+        if (previewImg) {
+          previewImg.removeAttribute('src');
+        }
+        previewWrap?.classList.add('hidden');
+        clearBtn?.classList.add('hidden');
+      };
+
+      pickBtn?.addEventListener('click', () => fileInput?.click());
+      fileInput?.addEventListener('change', () => {
+        const f = fileInput?.files?.[0];
+        if (f && previewImg && previewWrap) {
+          if (previewImg.src?.startsWith('blob:')) {
+            try {
+              URL.revokeObjectURL(previewImg.src);
+            } catch {
+              /* noop */
+            }
+          }
+          previewImg.src = URL.createObjectURL(f);
+          previewWrap.classList.remove('hidden');
+          clearBtn?.classList.remove('hidden');
+        } else {
+          clearProdImageUi();
+        }
+      });
+      clearBtn?.addEventListener('click', () => clearProdImageUi());
+
       document.getElementById('btn-create-producto')?.addEventListener('click', async () => {
         if (!canManage) return;
         const titulo = document.getElementById('prod-title')?.value?.trim();
         const descripcion = document.getElementById('prod-desc')?.value?.trim() || '';
-        const imagenUrl = document.getElementById('prod-image')?.value?.trim() || '';
         const precio = parseFloat(document.getElementById('prod-price')?.value || '0');
         const stockActual = parseInt(document.getElementById('prod-stock')?.value || '0', 10) || 0;
+        const imageFile = fileInput?.files?.[0] || null;
         if (!titulo || precio <= 0) {
           await showAlert('Completa titulo y precio del producto.', { title: 'Producto', variant: 'warning' });
           return;
         }
+        const user = auth.currentUser;
+        if (!user?.uid) {
+          await showAlert('Sesion no valida. Vuelve a iniciar sesion.', { title: 'Sesion', variant: 'danger' });
+          return;
+        }
         try {
+          let imagenUrl = '';
+          if (imageFile) {
+            imagenUrl = await uploadProductImage(imageFile, user.uid);
+          }
           await createProducto({
             titulo,
             descripcion,
@@ -1193,14 +1400,17 @@ const AdminDashboard = {
           await publishAppUpdate('inventory', `Producto ${titulo} creado`);
           document.getElementById('prod-title').value = '';
           document.getElementById('prod-desc').value = '';
-          document.getElementById('prod-image').value = '';
           document.getElementById('prod-price').value = '';
           document.getElementById('prod-stock').value = '';
+          clearProdImageUi();
           await loadProductos();
           await showAlert('Producto creado correctamente.', { title: 'Inventario', variant: 'success' });
         } catch (e) {
           console.error(e);
-          await showAlert('No se pudo crear el producto.', { title: 'Error', variant: 'danger' });
+          const msg = isDataConnectNotDeployed(e)
+            ? 'Data Connect no tiene las operaciones de inventario desplegadas. Ejecuta deploy de dataconnect desde la carpeta del proyecto.'
+            : e?.message || 'No se pudo crear el producto.';
+          await showAlert(msg, { title: 'Error', variant: 'danger' });
         }
       });
 

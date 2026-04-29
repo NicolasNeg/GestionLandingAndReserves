@@ -158,6 +158,48 @@
     padding: 0.9rem 1rem;
   }
 
+  @media (max-width: 640px) {
+    .app-topbar {
+      gap: 0.45rem;
+      padding-inline: 0.6rem;
+    }
+
+    .app-brand {
+      gap: 0.45rem;
+      font-size: 0.95rem;
+    }
+
+    .app-brand > span:last-child {
+      max-width: 6.5rem;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .app-header-actions {
+      gap: 0.2rem;
+    }
+
+    .app-nav-link {
+      min-width: 2.45rem;
+      padding-inline: 0.65rem;
+    }
+
+    .app-nav-link span {
+      display: none;
+    }
+
+    .app-user-button {
+      min-width: 2.45rem;
+      padding-inline: 0.35rem;
+    }
+
+    .app-user-button > span,
+    .app-user-button > svg:last-child {
+      display: none;
+    }
+  }
+
   .app-avatar-initials {
     display: inline-flex;
     align-items: center;

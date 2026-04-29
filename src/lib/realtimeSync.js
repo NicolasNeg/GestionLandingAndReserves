@@ -20,14 +20,21 @@ export async function publishAppUpdate(scope = 'general', detail = '') {
 
 export function initRealtimeSync(onRemoteUpdate) {
   let lastKey = '';
-  return onSnapshot(CHANNEL_REF, (snap) => {
-    if (!snap.exists() || snap.metadata.hasPendingWrites) return;
-    const data = snap.data() || {};
-    const millis = data.updatedAt?.toMillis?.() || 0;
-    const key = `${millis}_${data.source || ''}_${data.scope || ''}`;
-    if (!millis || key === lastKey) return;
-    lastKey = key;
-    if (data.source === CLIENT_ID) return;
-    onRemoteUpdate?.(data.scope || 'general', data);
-  });
+  return onSnapshot(
+    CHANNEL_REF,
+    (snap) => {
+      if (!snap.exists() || snap.metadata.hasPendingWrites) return;
+      const data = snap.data() || {};
+      const millis = data.updatedAt?.toMillis?.() || 0;
+      const key = `${millis}_${data.source || ''}_${data.scope || ''}`;
+      if (!millis || key === lastKey) return;
+      lastKey = key;
+      if (data.source === CLIENT_ID) return;
+      onRemoteUpdate?.(data.scope || 'general', data);
+    },
+    (err) => {
+      if (err?.code === 'permission-denied') return;
+      console.warn('Sincronizacion en vivo (Firestore) no disponible:', err?.message || err);
+    }
+  );
 }

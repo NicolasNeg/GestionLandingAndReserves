@@ -6,9 +6,17 @@ import QRCode from 'qrcode';
 import { downloadTicketPdf } from '../lib/ticketPdf.js';
 import { showAlert } from '../lib/appDialog.js';
 import { getUserAccess } from '../lib/accessControl.js';
+import { icon } from '../lib/icons.js';
 
 function activeSection() {
-  return window.location.pathname.startsWith('/cliente/configuracion') ? 'configuracion' : 'tickets';
+  if (window.location.pathname.startsWith('/cliente/configuracion')) return 'configuracion';
+  if (window.location.pathname.startsWith('/cliente/tickets')) return 'tickets';
+  try {
+    const prefs = JSON.parse(localStorage.getItem('cliente-preferences-v1') || '{}');
+    return prefs.defaultSection === 'configuracion' ? 'configuracion' : 'tickets';
+  } catch {
+    return 'tickets';
+  }
 }
 
 const ClienteDashboard = {
@@ -39,20 +47,85 @@ const ClienteDashboard = {
             </div>
 
             <section id="cliente-section-configuracion" class="${section === 'configuracion' ? '' : 'hidden'} rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-              <h1 class="text-2xl font-black text-slate-900">Configuración</h1>
-              <p class="mt-1 text-sm text-slate-500">Administra tu perfil y accesos.</p>
-              <div class="mt-5 grid gap-6 lg:grid-cols-[280px_1fr]">
-                <div class="rounded-2xl border border-slate-100 bg-slate-50 p-5 text-center">
-                  <div class="mx-auto mb-3 h-20 w-20 rounded-full bg-blue-100 text-blue-600 text-3xl font-bold flex items-center justify-center" id="profile-initial">--</div>
-                  <p id="profile-name" class="font-bold text-slate-900">Cargando...</p>
-                  <p id="profile-email" class="text-sm text-slate-500">---</p>
-                  <span id="profile-role" class="mt-3 inline-block rounded-full bg-blue-100 px-3 py-1 text-xs font-bold uppercase text-blue-800">Cliente</span>
-                  <button id="btn-edit-profile" type="button" class="mt-4 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100">Editar perfil</button>
+              <div class="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+                <div>
+                  <p class="flex items-center gap-2 text-xs font-black uppercase tracking-wide text-teal-700">${icon('settings', 'h-4 w-4')} Cuenta</p>
+                  <h1 class="text-2xl font-black text-slate-900">Configuración</h1>
+                  <p class="mt-1 text-sm text-slate-500">Administra tu perfil, preferencias y accesos.</p>
                 </div>
-                <div class="rounded-2xl border border-slate-100 p-5">
-                  <h2 class="font-bold text-slate-800">Escáner QR</h2>
-                  <p id="scan-status-text" class="mt-1 text-sm text-slate-500">Verificando permisos...</p>
-                  <button id="btn-open-scanner" type="button" class="mt-3 rounded-lg bg-slate-900 px-4 py-2 text-sm font-bold text-white hover:bg-black">Abrir escáner</button>
+                <span id="profile-role" class="inline-flex w-fit rounded-full bg-blue-100 px-3 py-1 text-xs font-black uppercase text-blue-800">Cliente</span>
+              </div>
+
+              <div class="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1.1fr)_minmax(20rem,0.9fr)]">
+                <section class="rounded-3xl border border-teal-100 bg-gradient-to-br from-teal-50 via-white to-white p-5">
+                  <div class="flex flex-col gap-4 sm:flex-row sm:items-center">
+                    <div class="h-24 w-24 shrink-0 overflow-hidden rounded-3xl bg-teal-100 text-teal-700 text-4xl font-black flex items-center justify-center ring-4 ring-white shadow-sm" id="profile-initial">--</div>
+                    <div class="min-w-0">
+                      <p class="text-xs font-black uppercase tracking-wide text-teal-700">Mi perfil</p>
+                      <h2 id="profile-name" class="truncate text-2xl font-black text-slate-900">Cargando...</h2>
+                      <p id="profile-email" class="truncate text-sm font-semibold text-slate-500">---</p>
+                    </div>
+                  </div>
+
+                  <form id="profile-inline-form" class="mt-5 grid gap-4">
+                    <label class="block text-sm font-black text-slate-700">Nombre visible
+                      <input id="profile-name-input" type="text" class="mt-1 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-900 outline-none transition focus:border-teal-500" placeholder="Tu nombre" autocomplete="name" />
+                    </label>
+                    <label class="block text-sm font-black text-slate-700">Correo
+                      <input id="profile-email-input" type="email" class="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-500" readonly />
+                    </label>
+                    <label class="block text-sm font-black text-slate-700">Foto de perfil URL
+                      <input id="profile-photo-input" type="url" class="mt-1 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-900 outline-none transition focus:border-teal-500" placeholder="https://..." autocomplete="url" />
+                    </label>
+                    <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
+                      <button id="btn-save-profile" type="submit" class="inline-flex items-center justify-center gap-2 rounded-xl bg-teal-700 px-4 py-3 text-sm font-black text-white transition hover:bg-teal-800">
+                        ${icon('check', 'h-4 w-4')} Guardar perfil
+                      </button>
+                      <p id="profile-form-msg" class="text-sm font-semibold text-slate-500"></p>
+                    </div>
+                  </form>
+                </section>
+
+                <div class="grid gap-5">
+                  <section class="rounded-3xl border border-slate-200 bg-white p-5">
+                    <div class="mb-4 flex items-center gap-3">
+                      <div class="grid h-10 w-10 place-items-center rounded-2xl bg-cyan-50 text-cyan-700">${icon('settings', 'h-5 w-5')}</div>
+                      <div>
+                        <p class="text-xs font-black uppercase tracking-wide text-slate-500">Configuraciones</p>
+                        <h2 class="font-black text-slate-900">Preferencias</h2>
+                      </div>
+                    </div>
+                    <div class="space-y-3">
+                      <label class="flex items-start gap-3 rounded-2xl border border-slate-100 bg-slate-50 p-3 text-sm font-bold text-slate-700">
+                        <input id="pref-email-copy" type="checkbox" class="mt-1 h-4 w-4 rounded border-slate-300" />
+                        <span><strong class="block text-slate-900">Copias por correo</strong>Intentar enviar copia del ticket cuando sea posible.</span>
+                      </label>
+                      <label class="flex items-start gap-3 rounded-2xl border border-slate-100 bg-slate-50 p-3 text-sm font-bold text-slate-700">
+                        <input id="pref-compact-tickets" type="checkbox" class="mt-1 h-4 w-4 rounded border-slate-300" />
+                        <span><strong class="block text-slate-900">Tickets compactos</strong>Reducir texto visible en tarjetas de tickets.</span>
+                      </label>
+                      <label class="block text-sm font-black text-slate-700">Vista preferida
+                        <select id="pref-default-section" class="mt-1 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-900">
+                          <option value="tickets">Mis tickets</option>
+                          <option value="configuracion">Configuración</option>
+                        </select>
+                      </label>
+                      <button id="btn-save-preferences" type="button" class="w-full rounded-xl border border-slate-200 bg-slate-900 px-4 py-3 text-sm font-black text-white transition hover:bg-black">Guardar configuraciones</button>
+                      <p id="preferences-msg" class="text-sm font-semibold text-slate-500"></p>
+                    </div>
+                  </section>
+
+                  <section class="rounded-3xl border border-slate-200 bg-white p-5">
+                    <div class="mb-3 flex items-center gap-3">
+                      <div class="grid h-10 w-10 place-items-center rounded-2xl bg-amber-50 text-amber-700">${icon('scan', 'h-5 w-5')}</div>
+                      <div>
+                        <p class="text-xs font-black uppercase tracking-wide text-slate-500">Accesos</p>
+                        <h2 class="font-black text-slate-900">Escáner QR</h2>
+                      </div>
+                    </div>
+                    <p id="scan-status-text" class="text-sm font-semibold text-slate-500">Verificando permisos...</p>
+                    <button id="btn-open-scanner" type="button" class="mt-3 w-full rounded-xl bg-slate-900 px-4 py-3 text-sm font-black text-white transition hover:bg-black">Abrir escáner</button>
+                  </section>
                 </div>
               </div>
             </section>
@@ -64,7 +137,7 @@ const ClienteDashboard = {
               </div>
               <div id="tickets-container" class="space-y-4">
                 <div class="text-center py-10 bg-white rounded-xl border border-slate-200">
-                  <i class="fas fa-spinner fa-spin text-slate-400 text-3xl mb-3"></i>
+                  <div class="mx-auto mb-3 grid h-12 w-12 place-items-center rounded-2xl bg-slate-50 text-slate-400">${icon('clock', 'h-7 w-7 animate-spin')}</div>
                   <p class="text-slate-500">Cargando tickets...</p>
                 </div>
               </div>
@@ -82,20 +155,6 @@ const ClienteDashboard = {
           </div>
         </div>
 
-        <div id="modal-edit-profile" class="fixed inset-0 bg-black/60 hidden flex items-center justify-center z-50 p-4">
-          <div class="bg-white rounded-2xl w-full max-w-md p-6 shadow-2xl">
-            <h3 class="text-xl font-bold text-gray-800 mb-1">Editar perfil</h3>
-            <p class="text-sm text-gray-500 mb-5">Actualiza tu nombre para tickets y panel.</p>
-            <label class="block text-sm font-medium text-gray-700 mb-1">Nombre</label>
-            <input id="edit-name" type="text" class="w-full rounded-lg border border-gray-300 px-3 py-2 mb-4" placeholder="Tu nombre" />
-            <label class="block text-sm font-medium text-gray-700 mb-1">Correo</label>
-            <input id="edit-email" type="email" class="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 mb-6 text-gray-500" readonly />
-            <div class="flex gap-3">
-              <button id="btn-cancel-edit-profile" type="button" class="flex-1 rounded-lg border border-gray-200 py-2 font-semibold text-gray-700 hover:bg-gray-50">Cancelar</button>
-              <button id="btn-save-edit-profile" type="button" class="flex-1 rounded-lg bg-blue-600 py-2 font-semibold text-white hover:bg-blue-700">Guardar</button>
-            </div>
-          </div>
-        </div>
       </div>
     `;
   },
@@ -108,12 +167,17 @@ const ClienteDashboard = {
     const btnCloseQr = document.getElementById('btn-close-qr');
     const qrCanvas = document.getElementById('qr-canvas');
     const qrTicketId = document.getElementById('qr-ticket-id');
-    const btnEditProfile = document.getElementById('btn-edit-profile');
-    const modalEdit = document.getElementById('modal-edit-profile');
-    const btnCancelEdit = document.getElementById('btn-cancel-edit-profile');
-    const btnSaveEdit = document.getElementById('btn-save-edit-profile');
-    const editName = document.getElementById('edit-name');
-    const editEmail = document.getElementById('edit-email');
+    const profileForm = document.getElementById('profile-inline-form');
+    const profileNameInput = document.getElementById('profile-name-input');
+    const profileEmailInput = document.getElementById('profile-email-input');
+    const profilePhotoInput = document.getElementById('profile-photo-input');
+    const btnSaveProfile = document.getElementById('btn-save-profile');
+    const profileFormMsg = document.getElementById('profile-form-msg');
+    const prefEmailCopy = document.getElementById('pref-email-copy');
+    const prefCompactTickets = document.getElementById('pref-compact-tickets');
+    const prefDefaultSection = document.getElementById('pref-default-section');
+    const btnSavePreferences = document.getElementById('btn-save-preferences');
+    const preferencesMsg = document.getElementById('preferences-msg');
     const btnOpenScanner = document.getElementById('btn-open-scanner');
     const scanStatusText = document.getElementById('scan-status-text');
     const pInitial = document.getElementById('profile-initial');
@@ -123,8 +187,63 @@ const ClienteDashboard = {
 
     let user = auth.currentUser;
     const ticketById = new Map();
-    let profileSnapshot = { nombre: '', email: '', rol: 'cliente' };
+    let profileSnapshot = { nombre: '', email: '', rol: 'cliente', photoURL: '' };
     let accessSnapshot = null;
+    let preferences = {
+      emailCopy: true,
+      compactTickets: false,
+      defaultSection: 'tickets'
+    };
+
+    const renderAvatar = (name, photoURL) => {
+      if (!pInitial) return;
+      pInitial.innerHTML = '';
+      if (photoURL) {
+        const img = document.createElement('img');
+        img.src = photoURL;
+        img.alt = name || 'Perfil';
+        img.referrerPolicy = 'no-referrer';
+        img.className = 'h-full w-full object-cover';
+        img.addEventListener('error', () => {
+          pInitial.innerHTML = '';
+          pInitial.textContent = (name || 'U').charAt(0).toUpperCase();
+        });
+        pInitial.appendChild(img);
+      } else {
+        pInitial.textContent = (name || 'U').charAt(0).toUpperCase();
+      }
+    };
+
+    const readPreferences = () => {
+      try {
+        const saved = JSON.parse(localStorage.getItem('cliente-preferences-v1') || '{}');
+        preferences = {
+          emailCopy: saved.emailCopy !== false,
+          compactTickets: Boolean(saved.compactTickets),
+          defaultSection: saved.defaultSection === 'configuracion' ? 'configuracion' : 'tickets'
+        };
+      } catch {
+        preferences = { emailCopy: true, compactTickets: false, defaultSection: 'tickets' };
+      }
+      if (prefEmailCopy) prefEmailCopy.checked = preferences.emailCopy;
+      if (prefCompactTickets) prefCompactTickets.checked = preferences.compactTickets;
+      if (prefDefaultSection) prefDefaultSection.value = preferences.defaultSection;
+    };
+
+    const writePreferences = () => {
+      preferences = {
+        emailCopy: prefEmailCopy?.checked !== false,
+        compactTickets: Boolean(prefCompactTickets?.checked),
+        defaultSection: prefDefaultSection?.value === 'configuracion' ? 'configuracion' : 'tickets'
+      };
+      localStorage.setItem('cliente-preferences-v1', JSON.stringify(preferences));
+      if (preferencesMsg) {
+        preferencesMsg.textContent = 'Configuraciones guardadas en este dispositivo.';
+        preferencesMsg.className = 'text-sm font-semibold text-emerald-700';
+      }
+      showAlert('Configuraciones guardadas.', { title: 'Preferencias', variant: 'success' });
+      loadTickets();
+    };
 
     const runLogout = async () => {
       try {
@@ -144,24 +263,16 @@ const ClienteDashboard = {
         profileSnapshot = {
           nombre: name,
           email: userData?.email || user.email || '',
-          rol: userData?.rol || 'cliente'
+          rol: userData?.rol || 'cliente',
+          photoURL: user.photoURL || ''
         };
         if (pName) pName.textContent = name;
         if (pEmail) pEmail.textContent = profileSnapshot.email;
         if (pRole) pRole.textContent = profileSnapshot.rol;
-        if (pInitial) {
-          if (user.photoURL) {
-            pInitial.textContent = '';
-            const img = document.createElement('img');
-            img.src = user.photoURL;
-            img.alt = name;
-            img.referrerPolicy = 'no-referrer';
-            img.className = 'h-full w-full rounded-full object-cover';
-            pInitial.appendChild(img);
-          } else {
-            pInitial.textContent = name.charAt(0).toUpperCase();
-          }
-        }
+        if (profileNameInput) profileNameInput.value = name;
+        if (profileEmailInput) profileEmailInput.value = profileSnapshot.email;
+        if (profilePhotoInput) profilePhotoInput.value = profileSnapshot.photoURL;
+        renderAvatar(name, profileSnapshot.photoURL);
       } catch (error) {
         console.error('Error al cargar perfil:', error);
       }
@@ -173,11 +284,11 @@ const ClienteDashboard = {
       if (accessSnapshot.can('tickets.scan')) {
         scanStatusText.textContent = 'Tienes permiso de escaneo.';
         btnOpenScanner.disabled = false;
-        btnOpenScanner.className = 'mt-3 rounded-lg bg-slate-900 px-4 py-2 text-sm font-bold text-white hover:bg-black';
+        btnOpenScanner.className = 'mt-3 w-full rounded-xl bg-slate-900 px-4 py-3 text-sm font-black text-white transition hover:bg-black';
       } else {
         scanStatusText.textContent = 'Este usuario solo puede ver su QR y resumen.';
         btnOpenScanner.disabled = true;
-        btnOpenScanner.className = 'mt-3 rounded-lg bg-slate-100 px-4 py-2 text-sm font-bold text-slate-400 cursor-not-allowed';
+        btnOpenScanner.className = 'mt-3 w-full cursor-not-allowed rounded-xl bg-slate-100 px-4 py-3 text-sm font-black text-slate-400';
       }
     };
 
@@ -200,7 +311,12 @@ const ClienteDashboard = {
         const isValido = ticket.estadoTicket === 'valido';
         const statusText = isValido ? 'Vigente' : ticket.estadoTicket === 'escaneado' ? 'Usado' : 'No válido';
         const statusBg = isValido ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-700';
-        const basicResume = `
+        const basicResume = preferences.compactTickets
+          ? `
+          <p><span class="font-medium">Estado:</span> ${statusText}</p>
+          <p><span class="font-medium">Total:</span> $${ticket.precioTotal.toFixed(2)} MXN</p>
+        `
+          : `
           <p><span class="font-medium">Estado:</span> ${statusText}</p>
           <p><span class="font-medium">Total:</span> $${ticket.precioTotal.toFixed(2)} MXN</p>
           <p><span class="font-medium">Fecha:</span> ${new Date(ticket.fechaCreacion).toLocaleString()}</p>
@@ -276,21 +392,17 @@ const ClienteDashboard = {
       }
     };
 
-    const closeEditModal = () => modalEdit?.classList.add('hidden');
-    btnEditProfile?.addEventListener('click', () => {
-      editName.value = profileSnapshot.nombre || '';
-      editEmail.value = profileSnapshot.email || user?.email || '';
-      modalEdit.classList.remove('hidden');
-    });
-    btnCancelEdit?.addEventListener('click', closeEditModal);
-    modalEdit?.addEventListener('click', (e) => {
-      if (e.target === modalEdit) closeEditModal();
-    });
-    btnSaveEdit?.addEventListener('click', async () => {
-      const nombre = (editName.value || '').trim();
+    profileForm?.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const nombre = (profileNameInput?.value || '').trim();
+      const photoURL = (profilePhotoInput?.value || '').trim();
       if (!nombre) return showAlert('El nombre es obligatorio.', { title: 'Editar perfil', variant: 'warning' });
-      btnSaveEdit.disabled = true;
-      btnSaveEdit.textContent = 'Guardando...';
+      btnSaveProfile.disabled = true;
+      btnSaveProfile.innerHTML = `${icon('clock', 'h-4 w-4 animate-spin')} Guardando...`;
+      if (profileFormMsg) {
+        profileFormMsg.textContent = 'Guardando cambios...';
+        profileFormMsg.className = 'text-sm font-semibold text-slate-500';
+      }
       try {
         await upsertUser({
           id: user.uid,
@@ -298,25 +410,37 @@ const ClienteDashboard = {
           nombre,
           rol: profileSnapshot.rol || 'cliente'
         });
-        await updateProfile(user, { displayName: nombre });
+        await updateProfile(user, { displayName: nombre, photoURL: photoURL || null });
+        user = auth.currentUser || user;
         profileSnapshot.nombre = nombre;
+        profileSnapshot.photoURL = photoURL;
         if (pName) pName.textContent = nombre;
-        closeEditModal();
+        renderAvatar(nombre, photoURL);
+        if (profileFormMsg) {
+          profileFormMsg.textContent = 'Perfil actualizado.';
+          profileFormMsg.className = 'text-sm font-semibold text-emerald-700';
+        }
         await showAlert('Perfil actualizado correctamente.', { title: 'Listo', variant: 'success' });
       } catch (error) {
         console.error(error);
+        if (profileFormMsg) {
+          profileFormMsg.textContent = 'No se pudo actualizar el perfil.';
+          profileFormMsg.className = 'text-sm font-semibold text-rose-700';
+        }
         await showAlert('No se pudo actualizar el perfil.', { title: 'Error', variant: 'danger' });
       } finally {
-        btnSaveEdit.disabled = false;
-        btnSaveEdit.textContent = 'Guardar';
+        btnSaveProfile.disabled = false;
+        btnSaveProfile.innerHTML = `${icon('check', 'h-4 w-4')} Guardar perfil`;
       }
     });
 
+    btnSavePreferences?.addEventListener('click', writePreferences);
     btnCloseQr?.addEventListener('click', () => modalQr.classList.add('hidden'));
     btnOpenScanner?.addEventListener('click', () => accessSnapshot?.can('tickets.scan') && navigateTo('/escaner'));
     btnLogout?.addEventListener('click', runLogout);
     btnLogoutMobile?.addEventListener('click', runLogout);
 
+    readPreferences();
     if (user) {
       Promise.all([loadProfile(), loadAccess()]).then(loadTickets);
     } else {

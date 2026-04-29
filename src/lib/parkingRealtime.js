@@ -20,7 +20,13 @@ export function subscribeParkingSpots(onData, onError) {
         .sort((a, b) => String(a.id).localeCompare(String(b.id)));
       onData(spots);
     },
-    onError
+    (err) => {
+      if (err?.code === 'permission-denied') {
+        onData([]);
+        return;
+      }
+      onError?.(err);
+    }
   );
 }
 

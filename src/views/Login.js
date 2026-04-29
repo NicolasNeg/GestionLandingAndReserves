@@ -393,7 +393,7 @@ const Login = {
                     }
 
                     await syncUserToDataConnect(userCredential.user, userCredential.user.displayName);
-                    navigateTo('/cliente/dashboard');
+                    navigateTo('/home');
                 }
             } catch (error) {
                 showError(error.message.replace('Firebase: ', ''));
@@ -407,7 +407,7 @@ const Login = {
             try {
                 const result = await signInWithPopup(auth, provider);
                 await syncUserToDataConnect(result.user, result.user.displayName);
-                navigateTo('/cliente/dashboard');
+                navigateTo('/home');
             } catch (error) {
                 showError(error.message.replace('Firebase: ', ''));
             }

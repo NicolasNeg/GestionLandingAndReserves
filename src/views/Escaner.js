@@ -1,3 +1,4 @@
+import { Html5Qrcode } from 'html5-qrcode';
 import { getTicketById, updateTicketStatus } from '../dataconnect-generated';
 import { auth } from '../firebase-config.js';
 import { getUserAccess } from '../lib/accessControl.js';
@@ -58,9 +59,9 @@ const Escaner = {
                 <div class="grid gap-5 lg:grid-cols-[minmax(0,1fr)_380px]">
                     <section class="overflow-hidden rounded-3xl border border-slate-200 bg-slate-950 shadow-2xl">
                         <div class="relative aspect-[4/5] min-h-[420px] sm:aspect-video">
-                            <video id="qr-video" class="absolute inset-0 h-full w-full bg-slate-950 object-cover" playsinline muted></video>
-                            <div class="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_35%,rgba(2,6,23,0.72)_72%)]"></div>
-                            <div class="absolute inset-0 flex items-center justify-center p-8">
+                            <div id="qr-reader-root" class="absolute inset-0 z-0 bg-slate-950"></div>
+                            <div class="pointer-events-none absolute inset-0 z-10 bg-[radial-gradient(circle_at_center,transparent_35%,rgba(2,6,23,0.72)_72%)]"></div>
+                            <div class="pointer-events-none absolute inset-0 z-10 flex items-center justify-center p-8">
                                 <div class="relative h-72 w-72 max-w-full rounded-[2rem] border-4 border-cyan-300/90 shadow-[0_0_38px_rgba(34,211,238,0.45)]">
                                     <div class="absolute left-4 right-4 top-1/2 h-1 -translate-y-1/2 rounded-full bg-cyan-300 shadow-[0_0_18px_rgba(103,232,249,0.95)] animate-[scan_2s_ease-in-out_infinite]"></div>
                                     <div class="absolute -left-1 -top-1 h-12 w-12 rounded-tl-[1.8rem] border-l-4 border-t-4 border-white"></div>
@@ -69,7 +70,7 @@ const Escaner = {
                                     <div class="absolute -bottom-1 -right-1 h-12 w-12 rounded-br-[1.8rem] border-b-4 border-r-4 border-white"></div>
                                 </div>
                             </div>
-                            <div class="absolute left-4 right-4 top-4 flex items-center justify-between gap-3">
+                            <div class="pointer-events-none absolute left-4 right-4 top-4 z-20 flex items-center justify-between gap-3">
                                 <div class="rounded-full bg-black/55 px-3 py-2 text-xs font-bold uppercase tracking-wide text-cyan-100 backdrop-blur">
                                     ${icon('scan', 'mr-1 inline h-4 w-4')} Cámara QR
                                 </div>
@@ -145,6 +146,11 @@ const Escaner = {
                     0%, 100% { top: 12%; }
                     50% { top: 88%; }
                 }
+                #qr-reader-root video {
+                    width: 100% !important;
+                    height: 100% !important;
+                    object-fit: cover;
+                }
             </style>
         </div>
     `,
@@ -153,7 +159,7 @@ const Escaner = {
             window.__ticketScannerCleanup();
         }
 
-        const video = document.getElementById('qr-video');
+        const readerRoot = document.getElementById('qr-reader-root');
         const btnStartCamera = document.getElementById('btn-start-camera');
         const btnStopCamera = document.getElementById('btn-stop-camera');
         const cameraChip = document.getElementById('camera-chip');
@@ -179,14 +185,11 @@ const Escaner = {
         let currentTicketId = null;
         let currentTicketData = null;
         let currentActionLabel = 'Registrar Ingreso';
-        let cameraStream = null;
-        let barcodeDetector = null;
-        let scanFrameId = null;
+        let html5QrCode = null;
         let cameraActive = false;
         let isValidating = false;
         let lastScanRaw = '';
         let lastScanAt = 0;
-        let autoStartTimer = null;
         let scannerDisposed = false;
 
         const statusClasses = {
@@ -248,18 +251,18 @@ const Escaner = {
             if (navigator.vibrate) navigator.vibrate([90, 40, 90]);
         };
 
-        const stopCamera = ({ silent = false } = {}) => {
-            if (scanFrameId) {
-                cancelAnimationFrame(scanFrameId);
-                scanFrameId = null;
+        const stopCamera = async ({ silent = false } = {}) => {
+            if (html5QrCode) {
+                try {
+                    if (html5QrCode.isScanning) {
+                        await html5QrCode.stop();
+                    }
+                    html5QrCode.clear();
+                } catch (err) {
+                    console.warn('Al detener el escaner:', err);
+                }
+                html5QrCode = null;
             }
-
-            if (cameraStream) {
-                cameraStream.getTracks().forEach((track) => track.stop());
-                cameraStream = null;
-            }
-
-            if (video) video.srcObject = null;
             setCameraUi(false);
 
             if (!silent) {
@@ -325,57 +328,60 @@ const Escaner = {
             validateRawCode(raw);
         };
 
-        const scanFrame = async () => {
-            if (!cameraActive || !barcodeDetector) return;
-
-            if (video.readyState >= 2) {
-                try {
-                    const codes = await barcodeDetector.detect(video);
-                    const qr = codes.find((code) => code.rawValue);
-                    if (qr) handleDetectedCode(qr.rawValue);
-                } catch (error) {
-                    console.warn('No se pudo leer el frame del QR:', error);
-                }
-            }
-
-            scanFrameId = requestAnimationFrame(scanFrame);
-        };
-
         const startCamera = async () => {
             if (scannerDisposed) return;
             if (cameraActive) return;
+
+            if (!window.isSecureContext) {
+                showScannerStatus(
+                    'warning',
+                    'Contexto no seguro',
+                    'La camara requiere HTTPS (o localhost). Usa la validacion manual del boleto.'
+                );
+                return;
+            }
 
             if (!navigator.mediaDevices?.getUserMedia) {
                 showScannerStatus('warning', 'Cámara no disponible', 'Este navegador no permite acceso a cámara. Usa la validación manual.');
                 return;
             }
 
-            if (!('BarcodeDetector' in window)) {
-                showScannerStatus('warning', 'Lector QR no soportado', 'Este navegador no trae lector QR nativo. Usa Chrome/Edge actualizado o valida manualmente.');
+            if (!readerRoot) {
+                showScannerStatus('warning', 'Interfaz incompleta', 'Recarga la página e intenta de nuevo.');
                 return;
             }
 
             try {
                 btnStartCamera.disabled = true;
                 cameraChip.textContent = 'Abriendo...';
-                barcodeDetector = new window.BarcodeDetector({ formats: ['qr_code'] });
-                cameraStream = await navigator.mediaDevices.getUserMedia({
-                    audio: false,
-                    video: {
-                        facingMode: { ideal: 'environment' },
-                        width: { ideal: 1280 },
-                        height: { ideal: 720 }
-                    }
-                });
-                video.srcObject = cameraStream;
-                await video.play();
+
+                await stopCamera({ silent: true });
+
+                html5QrCode = new Html5Qrcode('qr-reader-root', { verbose: false });
+                await html5QrCode.start(
+                    { facingMode: 'environment' },
+                    {
+                        fps: 8,
+                        qrbox: { width: 260, height: 260 },
+                        aspectRatio: 1.777778
+                    },
+                    (decodedText) => {
+                        handleDetectedCode(decodedText);
+                    },
+                    () => {}
+                );
+
                 setCameraUi(true);
                 showScannerStatus('idle', 'Cámara lista', 'Apunta al QR del boleto. El sistema validará el ticket automáticamente.');
-                scanFrame();
             } catch (error) {
                 console.error('Error iniciando cámara:', error);
-                stopCamera({ silent: true });
-                showScannerStatus('warning', 'No se pudo abrir la cámara', 'Permite el acceso a cámara o usa la validación manual del boleto.');
+                await stopCamera({ silent: true });
+                const name = error?.name || '';
+                const hint =
+                    name === 'NotAllowedError' || name === 'PermissionDeniedError'
+                        ? 'Permite el acceso a la camara en la barra del navegador y vuelve a pulsar Iniciar.'
+                        : 'Prueba otro navegador o usa la validacion manual del boleto.';
+                showScannerStatus('warning', 'No se pudo abrir la cámara', hint);
             } finally {
                 if (!cameraActive) btnStartCamera.disabled = false;
             }
@@ -383,11 +389,7 @@ const Escaner = {
 
         const cleanupScanner = () => {
             scannerDisposed = true;
-            if (autoStartTimer) {
-                clearTimeout(autoStartTimer);
-                autoStartTimer = null;
-            }
-            stopCamera({ silent: true });
+            void stopCamera({ silent: true });
             document.removeEventListener('click', stopOnNavigation, true);
             window.removeEventListener('beforeunload', cleanupScanner);
             window.removeEventListener('popstate', cleanupScanner);
@@ -411,8 +413,8 @@ const Escaner = {
             btnAction.textContent = currentActionLabel;
         });
 
-        btnStartCamera.addEventListener('click', startCamera);
-        btnStopCamera.addEventListener('click', () => stopCamera());
+        btnStartCamera.addEventListener('click', () => void startCamera());
+        btnStopCamera.addEventListener('click', () => void stopCamera());
 
         btnSimulate.addEventListener('click', () => {
             validateRawCode(inputId.value);
@@ -536,8 +538,6 @@ const Escaner = {
             inputId.value = ticketFromUrl;
             validateRawCode(ticketFromUrl);
         }
-
-        autoStartTimer = setTimeout(startCamera, 250);
     }
 };
 

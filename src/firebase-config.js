@@ -1,5 +1,6 @@
 import { initializeApp } from "firebase/app";
 import { getFirestore } from "firebase/firestore";
+import { getStorage } from "firebase/storage";
 import {
   browserLocalPersistence,
   getAuth,
@@ -36,6 +37,7 @@ export const app = initializeApp(firebaseConfig);
 
 // Inicializar y exportar los servicios a usar en el proyecto
 export const db = getFirestore(app);
+export const storage = getStorage(app);
 export const auth = getAuth(app);
 setPersistence(auth, browserLocalPersistence).catch((error) => {
   console.warn('No se pudo fijar persistencia local de sesion:', error);

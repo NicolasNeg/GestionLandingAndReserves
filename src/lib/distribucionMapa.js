@@ -97,13 +97,28 @@ function roundRect(ctx, x, y, w, h, r = 10) {
 
 function drawBackground(ctx, data) {
   const bg = ctx.createLinearGradient(0, 0, data.w, data.h);
-  bg.addColorStop(0, '#e0f7f3');
-  bg.addColorStop(0.5, '#f8fafc');
-  bg.addColorStop(1, '#e0f2fe');
+  bg.addColorStop(0, '#dff8f4');
+  bg.addColorStop(0.45, '#f8fafc');
+  bg.addColorStop(1, '#dbeafe');
   ctx.fillStyle = bg;
   ctx.fillRect(0, 0, data.w, data.h);
 
-  ctx.strokeStyle = 'rgba(100, 116, 139, 0.28)';
+  ctx.save();
+  ctx.globalAlpha = 0.42;
+  ctx.strokeStyle = 'rgba(14, 165, 233, 0.28)';
+  ctx.lineWidth = 2;
+  for (let y = 30; y < data.h; y += 70) {
+    ctx.beginPath();
+    for (let x = 0; x <= data.w; x += 28) {
+      const wave = Math.sin((x + y) / 34) * 5;
+      if (x === 0) ctx.moveTo(x, y + wave);
+      else ctx.lineTo(x, y + wave);
+    }
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  ctx.strokeStyle = 'rgba(100, 116, 139, 0.18)';
   ctx.lineWidth = 1;
   for (let x = 0; x < data.w; x += 40) {
     ctx.beginPath();
@@ -118,9 +133,27 @@ function drawBackground(ctx, data) {
     ctx.stroke();
   }
 
-  ctx.strokeStyle = 'rgba(14, 116, 144, 0.28)';
+  ctx.strokeStyle = 'rgba(14, 116, 144, 0.32)';
   ctx.lineWidth = 3;
   ctx.strokeRect(1.5, 1.5, data.w - 3, data.h - 3);
+
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.78)';
+  roundRect(ctx, data.w - 76, 14, 58, 58, 16);
+  ctx.fill();
+  ctx.fillStyle = '#0f766e';
+  ctx.font = '900 16px system-ui, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('N', data.w - 47, 36);
+  ctx.strokeStyle = '#0f766e';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(data.w - 47, 42);
+  ctx.lineTo(data.w - 47, 60);
+  ctx.moveTo(data.w - 55, 50);
+  ctx.lineTo(data.w - 47, 42);
+  ctx.lineTo(data.w - 39, 50);
+  ctx.stroke();
+  ctx.textAlign = 'left';
 }
 
 function drawItem(ctx, item, selected = false) {
@@ -131,9 +164,15 @@ function drawItem(ctx, item, selected = false) {
   const height = Number(item.height) || 80;
   const stroke = item.stroke || meta.stroke;
 
+  ctx.save();
+  ctx.shadowColor = 'rgba(15, 23, 42, 0.18)';
+  ctx.shadowBlur = 14;
+  ctx.shadowOffsetY = 6;
   ctx.fillStyle = item.fill || meta.fill;
   roundRect(ctx, x, y, width, height, item.kind === 'mesa' ? 12 : 8);
   ctx.fill();
+  ctx.restore();
+
   ctx.strokeStyle = stroke;
   ctx.lineWidth = selected ? 3 : 2;
   ctx.setLineDash(meta.dashed ? [8, 5] : []);
@@ -166,6 +205,27 @@ function drawItem(ctx, item, selected = false) {
   }
 }
 
+function drawEmptyState(ctx, data) {
+  const boxW = Math.min(360, data.w - 80);
+  const boxH = 112;
+  const x = (data.w - boxW) / 2;
+  const y = (data.h - boxH) / 2;
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.88)';
+  roundRect(ctx, x, y, boxW, boxH, 18);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(14, 116, 144, 0.22)';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  ctx.fillStyle = '#0f172a';
+  ctx.font = '900 18px system-ui, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('Mapa en preparacion', data.w / 2, y + 42);
+  ctx.fillStyle = '#64748b';
+  ctx.font = '700 13px system-ui, sans-serif';
+  ctx.fillText('El personal puede publicar zonas desde el panel.', data.w / 2, y + 68);
+  ctx.textAlign = 'left';
+}
+
 function drawHandles(ctx, item) {
   const x = Number(item.x) || 0;
   const y = Number(item.y) || 0;
@@ -195,6 +255,7 @@ export function drawDistribucionCanvas(canvas, jsonStr, options = {}) {
   ctx.clearRect(0, 0, data.w, data.h);
   drawBackground(ctx, data);
   data.items.forEach((item, index) => drawItem(ctx, item, options.selected === index));
+  if (!data.items.length) drawEmptyState(ctx, data);
   if (options.selected >= 0 && data.items[options.selected]) {
     drawHandles(ctx, data.items[options.selected]);
   }
@@ -235,6 +296,11 @@ export function createDistribucionEditor(canvas, initialJson, onChange) {
   let addingKind = DEFAULT_MAP_ITEM_KIND;
   let addStart = null;
   const selectionListeners = new Set();
+
+  const DOC_W_MIN = 400;
+  const DOC_W_MAX = 2800;
+  const DOC_H_MIN = 280;
+  const DOC_H_MAX = 2000;
 
   const emit = () => {
     const json = JSON.stringify({ w: data.w, h: data.h, items: data.items });
@@ -405,6 +471,15 @@ export function createDistribucionEditor(canvas, initialJson, onChange) {
   const onKey = (ev) => {
     const tag = document.activeElement?.tagName;
     if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+    if (ev.key === 'Escape') {
+      if (adding || addStart) {
+        ev.preventDefault();
+        adding = false;
+        addStart = null;
+        redraw();
+      }
+      return;
+    }
     const it = selectedItem();
     if (!it) return;
     if (ev.key === 'Delete' || ev.key === 'Backspace') {
@@ -448,10 +523,80 @@ export function createDistribucionEditor(canvas, initialJson, onChange) {
       data = parseDistribucionJson(s);
       setSelected(-1);
     },
+    setDocumentSize: (w, h) => {
+      const nw = clamp(Math.round(Number(w) || data.w), DOC_W_MIN, DOC_W_MAX);
+      const nh = clamp(Math.round(Number(h) || data.h), DOC_H_MIN, DOC_H_MAX);
+      data.w = nw;
+      data.h = nh;
+      data.items = data.items.map((it) => {
+        const ix = Number(it.x) || 0;
+        const iy = Number(it.y) || 0;
+        const iw = Number(it.width) || 0;
+        const ih = Number(it.height) || 0;
+        return {
+          ...it,
+          x: Math.min(ix, Math.max(0, nw - 20)),
+          y: Math.min(iy, Math.max(0, nh - 20)),
+          width: Math.min(iw, nw - ix),
+          height: Math.min(ih, nh - iy)
+        };
+      });
+      emit();
+      notifySelection();
+      redraw();
+    },
+    getDocumentSize: () => ({ w: data.w, h: data.h }),
     setAdding: (v, kind = DEFAULT_MAP_ITEM_KIND) => {
       adding = !!v;
       addingKind = KIND_BY_VALUE[kind] ? kind : DEFAULT_MAP_ITEM_KIND;
       addStart = null;
+    },
+    addPresetRow: (kind = DEFAULT_MAP_ITEM_KIND, count = 3) => {
+      const k = KIND_BY_VALUE[kind] ? kind : DEFAULT_MAP_ITEM_KIND;
+      const meta = getMapKind(k);
+      const gap = 12;
+      const cellW = 110;
+      const cellH = 72;
+      const startX = 48;
+      const startY = Math.min(120, data.h - cellH - 48);
+      for (let i = 0; i < count; i++) {
+        data.items.push(
+          makeNewItem(data, {
+            kind: k,
+            x: startX + i * (cellW + gap),
+            y: startY,
+            width: cellW,
+            height: cellH,
+            label: `${meta.label} ${i + 1}`
+          })
+        );
+      }
+      selected = data.items.length - 1;
+      adding = false;
+      addStart = null;
+      emit();
+      notifySelection();
+      redraw();
+    },
+    addPresetWideBlock: (kind = DEFAULT_MAP_ITEM_KIND) => {
+      const k = KIND_BY_VALUE[kind] ? kind : DEFAULT_MAP_ITEM_KIND;
+      const meta = getMapKind(k);
+      data.items.push(
+        makeNewItem(data, {
+          kind: k,
+          x: 40,
+          y: 80,
+          width: Math.min(520, data.w - 80),
+          height: 100,
+          label: meta.label
+        })
+      );
+      selected = data.items.length - 1;
+      adding = false;
+      addStart = null;
+      emit();
+      notifySelection();
+      redraw();
     },
     addItem: (kind = DEFAULT_MAP_ITEM_KIND) => {
       data.items.push(makeNewItem(data, { kind }));
