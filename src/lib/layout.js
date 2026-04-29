@@ -3,6 +3,7 @@ import { auth } from '../firebase-config.js';
 import { getUserAccess } from './accessControl.js';
 import { icon } from './icons.js';
 import { readThemeConfig, applyTheme } from './theme.js';
+import { cartCount } from './cart.js';
 
 let navigate = (url) => {
   window.history.pushState(null, '', url);
@@ -49,13 +50,22 @@ function userAvatar(access, sizeClass = 'h-9 w-9') {
 function renderHeader(access, theme) {
   const isLogged = Boolean(access.user);
   const path = lastPath;
+  const count = cartCount();
   const publicLinks = [
     navLink({ href: '/home', label: 'Inicio', iconName: 'home', active: path === '/home' }),
+    `<a href="/checkout" data-link class="app-nav-link ${path === '/checkout' ? 'is-active' : ''}" title="Carrito">
+      ${icon('ticket', 'h-4 w-4')}
+      <span>Carrito ${count > 0 ? `(${count})` : ''}</span>
+    </a>`,
     navLink({ href: '/login', label: 'Login', iconName: 'login', active: path === '/login' })
   ].join('');
 
   const loggedLinks = [
     navLink({ href: '/home', label: 'Inicio', iconName: 'home', active: path === '/home' }),
+    `<a href="/checkout" data-link class="app-nav-link ${path === '/checkout' ? 'is-active' : ''}" title="Carrito">
+      ${icon('ticket', 'h-4 w-4')}
+      <span>Carrito ${count > 0 ? `(${count})` : ''}</span>
+    </a>`,
     access.can('dashboard.manage')
       ? navLink({ href: '/admin/dashboard?section=tickets', label: 'Gestion', iconName: 'briefcase', active: path === '/admin/dashboard' })
       : '',
@@ -165,6 +175,13 @@ export function initAppShell(options = {}) {
   });
 
   onAuthStateChanged(auth, () => {
+    updateAppShell(lastPath);
+  });
+
+  window.addEventListener('storage', (event) => {
+    if (event.key === 'balneario_cart_v1') updateAppShell(lastPath);
+  });
+  window.addEventListener('cart:changed', () => {
     updateAppShell(lastPath);
   });
 

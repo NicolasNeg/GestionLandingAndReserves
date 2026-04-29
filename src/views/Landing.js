@@ -1,5 +1,6 @@
 import {
   listPaquetes,
+  listProductosPublic,
   getLandingPage,
   listServiciosLanding
 } from '../dataconnect-generated';
@@ -7,6 +8,10 @@ import { drawDistribucionCanvas, DEFAULT_MAPA_JSON } from '../lib/distribucionMa
 import { getUserAccess, waitForAuthUser } from '../lib/accessControl.js';
 import { icon } from '../lib/icons.js';
 import heroImageUrl from '../assets/hero.png';
+import { addToCart } from '../lib/cart.js';
+import { showAlert } from '../lib/appDialog.js';
+import { subscribeParkingSpots } from '../lib/parkingRealtime.js';
+import { parseScheduleConfig, renderScheduleText } from '../lib/schedule.js';
 
 const LANDING_PAGE_ID = 'main';
 
@@ -105,9 +110,14 @@ const renderPaqueteCard = (paquete) => `
         Incluye ${paquete.incluyePersonas} personas
       </p>
     </div>
-    <a href="/checkout" data-link class="mt-5 inline-flex w-full items-center justify-center rounded-xl bg-blue-600 px-4 py-2 font-semibold text-white transition hover:bg-blue-700">
-      Reservar este paquete
-    </a>
+    <div class="mt-5 flex gap-2">
+      <button type="button" class="btn-add-paquete inline-flex flex-1 items-center justify-center rounded-xl bg-blue-600 px-4 py-2 font-semibold text-white transition hover:bg-blue-700" data-paquete-id="${paquete.id}" data-paquete-name="${escapeHtml(paquete.nombre)}" data-paquete-price="${paquete.precioBase}">
+        Agregar al carrito
+      </button>
+      <a href="/checkout" data-link class="inline-flex items-center justify-center rounded-xl border border-blue-200 bg-white px-4 py-2 font-semibold text-blue-700 hover:bg-blue-50">
+        Ir
+      </a>
+    </div>
   </article>
 `;
 
@@ -126,6 +136,30 @@ const renderPaquetes = (paquetes) => {
   `;
 };
 
+const renderProductos = (productos) => {
+  if (!productos.length) {
+    return `<p class="text-sm text-slate-500">Aun no hay productos publicados.</p>`;
+  }
+  return `
+    <div class="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+      ${productos
+        .map((p) => `
+          <article class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <img src="${escapeHtml(p.imagenUrl || '')}" alt="${escapeHtml(p.titulo)}" class="h-36 w-full rounded-lg object-cover border border-slate-100 mb-3" />
+            <h3 class="font-bold text-slate-900">${escapeHtml(p.titulo)}</h3>
+            <p class="mt-1 text-sm text-slate-600 min-h-10">${escapeHtml(p.descripcion || '')}</p>
+            <p class="mt-2 font-extrabold text-blue-700">${currencyFormatter.format(p.precio || 0)}</p>
+            <button type="button" class="btn-add-producto mt-3 w-full rounded-lg bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-black"
+              data-producto-id="${p.id}" data-producto-name="${escapeHtml(p.titulo)}" data-producto-price="${p.precio}">
+              Agregar al carrito
+            </button>
+          </article>
+        `)
+        .join('')}
+    </div>
+  `;
+};
+
 const navItems = [
   { id: 'inicio', label: 'Inicio', iconName: 'home' },
   { id: 'descripcion', label: 'El parque', iconName: 'info' },
@@ -134,6 +168,8 @@ const navItems = [
   { id: 'mapa', label: 'Mapa', iconName: 'map' },
   { id: 'vista-aerea', label: 'Vista aerea', iconName: 'image' },
   { id: 'paquetes', label: 'Paquetes', iconName: 'package' },
+  { id: 'productos', label: 'Productos', iconName: 'package' },
+  { id: 'estacionamiento', label: 'Estacionamiento', iconName: 'parking' },
   { id: 'contacto', label: 'Contacto', iconName: 'phone' }
 ];
 
@@ -335,6 +371,27 @@ export default {
               </div>
             </section>
 
+            <section id="productos" class="scroll-mt-24 border-t border-slate-200 bg-white px-4 py-14 sm:px-8">
+              <div class="mx-auto max-w-5xl">
+                <h2 class="text-2xl font-black text-slate-900 sm:text-3xl">Productos y extras</h2>
+                <p class="mt-2 text-sm text-slate-500">Agrega bebidas, alimentos o extras (ej. estacionamiento) al carrito.</p>
+                <div id="landing-productos" class="mt-6 min-h-24">
+                  <p class="text-sm text-slate-500">Cargando productos...</p>
+                </div>
+              </div>
+            </section>
+
+            <section id="estacionamiento" class="scroll-mt-24 border-t border-slate-200 bg-slate-50 px-4 py-14 sm:px-8">
+              <div class="mx-auto max-w-5xl">
+                <h2 class="text-2xl font-black text-slate-900 sm:text-3xl">Estacionamiento en tiempo real</h2>
+                <p class="mt-2 text-sm text-slate-500">Visualiza spots libres, reservados y ocupados.</p>
+                <div class="mt-4 rounded-xl border border-slate-200 bg-white p-4">
+                  <div class="mb-2 text-sm text-slate-600" id="parking-summary">Cargando spots...</div>
+                  <div id="landing-parking-map" class="relative h-[360px] overflow-hidden rounded-lg border border-slate-200 bg-slate-100"></div>
+                </div>
+              </div>
+            </section>
+
             <section id="contacto" class="scroll-mt-24 bg-white px-4 py-14 sm:px-8">
               <div class="mx-auto max-w-5xl">
                 <h2 class="text-2xl font-black text-slate-900 sm:text-3xl">Contacto y enlaces</h2>
@@ -379,7 +436,10 @@ export default {
     if (descEl) descEl.textContent = landing.descripcionParque;
 
     const horarios = document.getElementById('landing-horarios');
-    if (horarios) horarios.textContent = landing.horariosTexto;
+    if (horarios) {
+      const schedule = parseScheduleConfig(landing.horariosTexto);
+      horarios.textContent = renderScheduleText(schedule);
+    }
 
     const abierto = document.getElementById('landing-abierto');
     if (abierto) {
@@ -456,6 +516,77 @@ export default {
           No fue posible cargar los paquetes en este momento.
         </div>`;
       }
+    }
+
+    const productosWrap = document.getElementById('landing-productos');
+    if (productosWrap) {
+      try {
+        const res = await listProductosPublic();
+        const productos = res.data?.productos || [];
+        productosWrap.innerHTML = renderProductos(productos);
+      } catch (e) {
+        console.error('Productos landing:', e);
+        productosWrap.innerHTML = '<p class="text-sm text-rose-600">No se pudieron cargar productos.</p>';
+      }
+    }
+
+    document.querySelectorAll('.btn-add-paquete').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        addToCart({
+          key: `paquete:${btn.dataset.paqueteId}`,
+          type: 'paquete',
+          id: btn.dataset.paqueteId,
+          name: btn.dataset.paqueteName,
+          price: Number(btn.dataset.paquetePrice || 0),
+          qty: 1
+        });
+        await showAlert('Paquete agregado al carrito.', { title: 'Carrito', variant: 'success' });
+      });
+    });
+
+    document.querySelectorAll('.btn-add-producto').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        addToCart({
+          key: `producto:${btn.dataset.productoId}`,
+          type: 'producto',
+          id: btn.dataset.productoId,
+          name: btn.dataset.productoName,
+          price: Number(btn.dataset.productoPrice || 0),
+          qty: 1
+        });
+        await showAlert('Producto agregado al carrito.', { title: 'Carrito', variant: 'success' });
+      });
+    });
+
+    const parkingMap = document.getElementById('landing-parking-map');
+    const parkingSummary = document.getElementById('parking-summary');
+    if (parkingMap && parkingSummary) {
+      subscribeParkingSpots(
+        (spots) => {
+          const libres = spots.filter((s) => s.estado === 'libre').length;
+          const reservados = spots.filter((s) => s.estado === 'reservado').length;
+          const ocupados = spots.filter((s) => s.estado === 'ocupado').length;
+          parkingSummary.textContent = `Libres: ${libres} · Reservados: ${reservados} · Ocupados: ${ocupados}`;
+          parkingMap.innerHTML = spots
+            .map((s) => {
+              const x = Math.max(0, Math.min(95, Number(s.x || 0)));
+              const y = Math.max(0, Math.min(90, Number(s.y || 0)));
+              const cls =
+                s.estado === 'libre'
+                  ? 'bg-emerald-500'
+                  : s.estado === 'reservado'
+                    ? 'bg-amber-500'
+                    : 'bg-rose-600';
+              const title = `${s.id} · ${s.estado}${s.placas ? ` · ${s.placas}` : ''}${s.modelo ? ` · ${s.modelo}` : ''}`;
+              return `<div title="${escapeHtml(title)}" class="absolute h-7 min-w-7 rounded px-2 text-[11px] font-bold text-white ${cls} flex items-center justify-center" style="left:${x}%; top:${y}%">${escapeHtml(s.id)}</div>`;
+            })
+            .join('');
+        },
+        (error) => {
+          console.error('Parking realtime:', error);
+          parkingSummary.textContent = 'No fue posible cargar estacionamiento en tiempo real.';
+        }
+      );
     }
 
     const drawer = document.getElementById('home-nav-drawer');

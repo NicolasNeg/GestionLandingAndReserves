@@ -11,6 +11,7 @@ import ProgramadorDashboard from './views/ProgramadorDashboard.js';
 import { getUserAccess, waitForAuthUser } from './lib/accessControl.js';
 import { initAppShell, updateAppShell } from './lib/layout.js';
 import { showAlert } from './lib/appDialog.js';
+import { initRealtimeSync } from './lib/realtimeSync.js';
 
 // Listado de rutas mapeadas a componentes/funciones
 const routes = {
@@ -152,6 +153,13 @@ export const navigateTo = (url) => {
 // Función de inicialización
 export const initRouter = () => {
     initAppShell({ navigateTo });
+    let refreshTimer = null;
+    initRealtimeSync(() => {
+      if (refreshTimer) clearTimeout(refreshTimer);
+      refreshTimer = setTimeout(() => {
+        router();
+      }, 120);
+    });
     window.addEventListener('popstate', router);
     document.body.addEventListener('click', e => {
         // Encontrar si el click provino de un enlace con atributo [data-link]

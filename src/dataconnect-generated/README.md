@@ -17,6 +17,7 @@ This README will guide you through the process of using the generated JavaScript
   - [*ListServiciosLanding*](#listservicioslanding)
   - [*ListServiciosAdmin*](#listserviciosadmin)
   - [*ListProductosAdmin*](#listproductosadmin)
+  - [*ListProductosPublic*](#listproductospublic)
   - [*ListMovimientosInventario*](#listmovimientosinventario)
 - [**Mutations**](#mutations)
   - [*CreateAnonymousTicket*](#createanonymousticket)
@@ -1032,6 +1033,107 @@ const ref = listProductosAdminRef();
 // You can also pass in a `DataConnect` instance to the `QueryRef` function.
 const dataConnect = getDataConnect(connectorConfig);
 const ref = listProductosAdminRef(dataConnect);
+
+// Call `executeQuery()` on the reference to execute the query.
+// You can use the `await` keyword to wait for the promise to resolve.
+const { data } = await executeQuery(ref);
+
+console.log(data.productos);
+
+// Or, you can use the `Promise` API.
+executeQuery(ref).then((response) => {
+  const data = response.data;
+  console.log(data.productos);
+});
+```
+
+## ListProductosPublic
+You can execute the `ListProductosPublic` query using the following action shortcut function, or by calling `executeQuery()` after calling the following `QueryRef` function, both of which are defined in [dataconnect-generated/index.d.ts](./index.d.ts):
+```typescript
+listProductosPublic(options?: ExecuteQueryOptions): QueryPromise<ListProductosPublicData, undefined>;
+
+interface ListProductosPublicRef {
+  ...
+  /* Allow users to create refs without passing in DataConnect */
+  (): QueryRef<ListProductosPublicData, undefined>;
+}
+export const listProductosPublicRef: ListProductosPublicRef;
+```
+You can also pass in a `DataConnect` instance to the action shortcut function or `QueryRef` function.
+```typescript
+listProductosPublic(dc: DataConnect, options?: ExecuteQueryOptions): QueryPromise<ListProductosPublicData, undefined>;
+
+interface ListProductosPublicRef {
+  ...
+  (dc: DataConnect): QueryRef<ListProductosPublicData, undefined>;
+}
+export const listProductosPublicRef: ListProductosPublicRef;
+```
+
+If you need the name of the operation without creating a ref, you can retrieve the operation name by calling the `operationName` property on the listProductosPublicRef:
+```typescript
+const name = listProductosPublicRef.operationName;
+console.log(name);
+```
+
+### Variables
+The `ListProductosPublic` query has no variables.
+### Return Type
+Recall that executing the `ListProductosPublic` query returns a `QueryPromise` that resolves to an object with a `data` property.
+
+The `data` property is an object of type `ListProductosPublicData`, which is defined in [dataconnect-generated/index.d.ts](./index.d.ts). It has the following fields:
+```typescript
+export interface ListProductosPublicData {
+  productos: ({
+    id: UUIDString;
+    titulo: string;
+    descripcion: string;
+    imagenUrl: string;
+    precio: number;
+    stockActual: number;
+    reservadoAprox: number;
+    activo: boolean;
+    fechaCreacion: TimestampString;
+  } & Producto_Key)[];
+}
+```
+### Using `ListProductosPublic`'s action shortcut function
+
+```typescript
+import { getDataConnect } from 'firebase/data-connect';
+import { connectorConfig, listProductosPublic } from '@dataconnect/generated';
+
+
+// Call the `listProductosPublic()` function to execute the query.
+// You can use the `await` keyword to wait for the promise to resolve.
+const { data } = await listProductosPublic();
+
+// You can also pass in a `DataConnect` instance to the action shortcut function.
+const dataConnect = getDataConnect(connectorConfig);
+const { data } = await listProductosPublic(dataConnect);
+
+console.log(data.productos);
+
+// Or, you can use the `Promise` API.
+listProductosPublic().then((response) => {
+  const data = response.data;
+  console.log(data.productos);
+});
+```
+
+### Using `ListProductosPublic`'s `QueryRef` function
+
+```typescript
+import { getDataConnect, executeQuery } from 'firebase/data-connect';
+import { connectorConfig, listProductosPublicRef } from '@dataconnect/generated';
+
+
+// Call the `listProductosPublicRef()` function to get a reference to the query.
+const ref = listProductosPublicRef();
+
+// You can also pass in a `DataConnect` instance to the `QueryRef` function.
+const dataConnect = getDataConnect(connectorConfig);
+const ref = listProductosPublicRef(dataConnect);
 
 // Call `executeQuery()` on the reference to execute the query.
 // You can use the `await` keyword to wait for the promise to resolve.

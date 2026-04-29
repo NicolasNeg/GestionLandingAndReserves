@@ -1,9 +1,18 @@
 import { auth } from '../firebase-config.js';
-import { createAnonymousTicket, createUserTicket, getUserProfile } from '../dataconnect-generated';
+import {
+    createAnonymousTicket,
+    createUserTicket,
+    getUserProfile,
+    listProductosAdmin,
+    updateProductoStock,
+    createMovimientoInventario
+} from '../dataconnect-generated';
 import { navigateTo } from '../router.js';
 import { showAlert } from '../lib/appDialog.js';
 import { downloadTicketPdf } from '../lib/ticketPdf.js';
 import { sendTicketEmailCopy } from '../lib/sendTicketEmail.js';
+import { listCartItems, setCartQty, removeFromCart, cartSubtotal, addToCart, clearCart } from '../lib/cart.js';
+import { publishAppUpdate } from '../lib/realtimeSync.js';
 
 const Checkout = {
     render: () => `
@@ -16,6 +25,12 @@ const Checkout = {
                     <strong>Comprando como invitado.</strong> Inicia sesión o regístrate para que tus reservas se guarden en tu cuenta.
                 </div>
                 <button id="btn-goto-login" class="px-4 py-2 bg-blue-600 text-white rounded font-bold text-sm hover:bg-blue-700">Iniciar Sesión</button>
+            </div>
+
+            <div class="bg-white rounded-xl shadow-md p-6 mb-6">
+                <h2 class="text-xl font-bold mb-4 border-b pb-2">Carrito</h2>
+                <div id="checkout-cart-items" class="space-y-3 mb-4"></div>
+                <button id="btn-add-ticket" type="button" class="mb-2 rounded-lg border border-slate-300 px-3 py-1 text-sm font-semibold hover:bg-slate-50">+ Agregar ticket suelto</button>
             </div>
 
             <div class="bg-white rounded-xl shadow-md p-6 mb-6">
@@ -54,11 +69,11 @@ const Checkout = {
 
             <div class="bg-gray-100 rounded-xl p-6 flex justify-between items-center mb-6 shadow-inner border border-gray-200">
                 <div>
-                    <p class="text-gray-600">Subtotal: <span class="font-bold text-gray-800">$1,000.00 MXN</span></p>
+                    <p class="text-gray-600">Subtotal: <span class="font-bold text-gray-800" id="subtotal-text">$0.00 MXN</span></p>
                 </div>
                 <div class="text-right">
                     <p class="text-sm text-gray-500">Total a pagar:</p>
-                    <p class="text-3xl font-extrabold text-blue-600" id="total-text">$1,000.00 MXN</p>
+                    <p class="text-3xl font-extrabold text-blue-600" id="total-text">$0.00 MXN</p>
                 </div>
             </div>
 
@@ -95,10 +110,59 @@ const Checkout = {
         const inputName = document.getElementById('chk-name');
         const inputEmail = document.getElementById('chk-email');
         const authNotice = document.getElementById('auth-notice');
+        const cartWrap = document.getElementById('checkout-cart-items');
+        const subtotalText = document.getElementById('subtotal-text');
+        const totalText = document.getElementById('total-text');
 
         const modalInvite = document.getElementById('modal-invite');
 
         let selectedPayment = 'online';
+        let cartItems = listCartItems();
+
+        const fmt = (n) => `$${Number(n || 0).toFixed(2)} MXN`;
+        const syncTotals = () => {
+            const total = cartSubtotal();
+            subtotalText.textContent = fmt(total);
+            totalText.textContent = fmt(total);
+        };
+        const renderCart = () => {
+            cartItems = listCartItems();
+            if (!cartItems.length) {
+                cartWrap.innerHTML = '<p class="text-sm text-rose-600">Tu carrito está vacío. Agrega tickets, paquetes o productos.</p>';
+                syncTotals();
+                return;
+            }
+            cartWrap.innerHTML = cartItems.map((item) => `
+              <div class="rounded-lg border border-slate-200 p-3 flex items-center justify-between gap-3">
+                <div>
+                  <p class="font-semibold text-slate-900">${item.name}</p>
+                  <p class="text-xs text-slate-500">${item.type} · ${fmt(item.price)}</p>
+                </div>
+                <div class="flex items-center gap-2">
+                  <button class="cart-minus rounded border px-2" data-key="${item.key}">-</button>
+                  <span class="w-6 text-center font-bold">${item.qty}</span>
+                  <button class="cart-plus rounded border px-2" data-key="${item.key}">+</button>
+                  <button class="cart-remove rounded border border-rose-200 px-2 text-rose-700" data-key="${item.key}">x</button>
+                </div>
+              </div>`).join('');
+            cartWrap.querySelectorAll('.cart-minus').forEach((b) => b.addEventListener('click', () => { setCartQty(b.dataset.key, (cartItems.find(i => i.key === b.dataset.key)?.qty || 1) - 1); renderCart(); }));
+            cartWrap.querySelectorAll('.cart-plus').forEach((b) => b.addEventListener('click', () => { setCartQty(b.dataset.key, (cartItems.find(i => i.key === b.dataset.key)?.qty || 1) + 1); renderCart(); }));
+            cartWrap.querySelectorAll('.cart-remove').forEach((b) => b.addEventListener('click', () => { removeFromCart(b.dataset.key); renderCart(); }));
+            syncTotals();
+        };
+
+        document.getElementById('btn-add-ticket')?.addEventListener('click', () => {
+            addToCart({
+                key: 'ticket:entrada-general',
+                type: 'ticket',
+                id: 'entrada-general',
+                name: 'Ticket entrada general',
+                price: 1000,
+                qty: 1
+            });
+            renderCart();
+        });
+        renderCart();
 
         const fillUserData = async (user) => {
             if (user) {
@@ -164,12 +228,18 @@ const Checkout = {
             document.getElementById('loading-msg').classList.remove('hidden');
 
             try {
+                cartItems = listCartItems();
+                if (!cartItems.length) {
+                    await showAlert('Agrega al menos un item al carrito antes de pagar.', { title: 'Carrito vacío', variant: 'warning' });
+                    return;
+                }
+                const totalCarrito = cartItems.reduce((acc, item) => acc + Number(item.price || 0) * Number(item.qty || 0), 0);
                 const variables = {
                     clienteNombre: name,
                     clienteEmail: email,
                     metodoPago: selectedPayment,
                     estadoPago: selectedPayment === 'online' ? 'pagado' : 'pendiente',
-                    precioTotal: 1000
+                    precioTotal: totalCarrito
                 };
 
                 const isAuthed = auth.currentUser != null;
@@ -190,10 +260,40 @@ const Checkout = {
                     clienteNombre: name,
                     clienteEmail: email,
                     fechaCreacion: new Date(),
-                    precioTotal: 1000,
+                    precioTotal: totalCarrito,
                     metodoPago: selectedPayment,
                     estadoPago
                 });
+
+                if (isAuthed) {
+                    try {
+                        const productsInCart = cartItems.filter((x) => x.type === 'producto' && x.id);
+                        if (productsInCart.length) {
+                            const invRes = await listProductosAdmin();
+                            const map = new Map((invRes.data?.productos || []).map((p) => [p.id, p]));
+                            for (const item of productsInCart) {
+                                const p = map.get(item.id);
+                                if (!p) continue;
+                                const qty = Number(item.qty || 0);
+                                if (qty <= 0) continue;
+                                await updateProductoStock({
+                                    id: p.id,
+                                    stockActual: p.stockActual,
+                                    reservadoAprox: Math.max(0, (p.reservadoAprox || 0) + qty)
+                                });
+                                await createMovimientoInventario({
+                                    productoId: p.id,
+                                    tipo: 'reserva_aprox',
+                                    cantidad: qty,
+                                    nota: `Reservado desde checkout ticket ${ticketId}`
+                                });
+                            }
+                            await publishAppUpdate('inventory', 'Reservas aproximadas actualizadas desde checkout');
+                        }
+                    } catch (invErr) {
+                        console.warn('No se pudo registrar reservado aprox de productos:', invErr);
+                    }
+                }
 
                 const emailResult = await sendTicketEmailCopy({
                     toEmail: email,
@@ -211,8 +311,10 @@ const Checkout = {
                             ' No pudimos enviar el correo ahora; puedes volver a descargar el PDF desde Mis tickets.';
                     }
                     await showAlert(msg, { title: 'Compra exitosa', variant: 'success' });
+                    clearCart();
                     navigateTo('/cliente/dashboard');
                 } else {
+                    clearCart();
                     modalInvite.classList.remove('hidden');
                 }
             } catch (error) {

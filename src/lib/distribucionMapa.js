@@ -1,37 +1,109 @@
 /** JSON del mapa editable en admin y solo lectura en /home */
 
+export const MAP_ITEM_KINDS = [
+  { value: 'mesa', label: 'Mesa', fill: 'rgba(37, 99, 235, 0.28)', stroke: '#1d4ed8' },
+  { value: 'area', label: 'Area', fill: 'rgba(20, 184, 166, 0.24)', stroke: '#0f766e' },
+  { value: 'limitacion', label: 'Limitacion', fill: 'rgba(244, 63, 94, 0.14)', stroke: '#be123c', dashed: true },
+  { value: 'estacionamiento', label: 'Cajon estacionamiento', fill: 'rgba(245, 158, 11, 0.22)', stroke: '#b45309' },
+  { value: 'alberca', label: 'Alberca', fill: 'rgba(14, 165, 233, 0.24)', stroke: '#0369a1' },
+  { value: 'palapa', label: 'Palapa', fill: 'rgba(132, 204, 22, 0.22)', stroke: '#4d7c0f' },
+  { value: 'servicio', label: 'Servicio', fill: 'rgba(168, 85, 247, 0.20)', stroke: '#7e22ce' },
+  { value: 'entrada', label: 'Entrada / salida', fill: 'rgba(16, 185, 129, 0.24)', stroke: '#047857' }
+];
+
+export const DEFAULT_MAP_ITEM_KIND = 'area';
+
 export const DEFAULT_MAPA_JSON = JSON.stringify({
   w: 800,
   h: 440,
   items: []
 });
 
+const KIND_BY_VALUE = MAP_ITEM_KINDS.reduce((acc, kind) => {
+  acc[kind.value] = kind;
+  return acc;
+}, {});
+
+function clamp(num, min, max) {
+  return Math.min(Math.max(num, min), max);
+}
+
+function sanitizeId(text, fallback) {
+  const clean = String(text || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return clean || fallback;
+}
+
+export function getMapKind(kind) {
+  return KIND_BY_VALUE[kind] || KIND_BY_VALUE[DEFAULT_MAP_ITEM_KIND];
+}
+
+export function normalizeMapItem(item, index = 0) {
+  const kind = KIND_BY_VALUE[item?.kind] ? item.kind : DEFAULT_MAP_ITEM_KIND;
+  const meta = getMapKind(kind);
+  const fallbackId = `${kind}-${String(index + 1).padStart(2, '0')}`;
+  const id = sanitizeId(item?.id, fallbackId);
+  const width = clamp(Math.round(Number(item?.width) || 100), 20, 2000);
+  const height = clamp(Math.round(Number(item?.height) || 80), 20, 2000);
+  return {
+    type: 'rect',
+    id,
+    kind,
+    label: String(item?.label || meta.label || 'Zona'),
+    x: Math.round(Number(item?.x) || 0),
+    y: Math.round(Number(item?.y) || 0),
+    width,
+    height,
+    fill: item?.fill || meta.fill,
+    stroke: item?.stroke || meta.stroke,
+    notes: String(item?.notes || ''),
+    locked: Boolean(item?.locked)
+  };
+}
+
 export function parseDistribucionJson(jsonStr) {
   try {
     const o = JSON.parse(jsonStr || '{}');
     const w = Number(o.w) > 0 ? Number(o.w) : 800;
     const h = Number(o.h) > 0 ? Number(o.h) : 440;
-    const items = Array.isArray(o.items) ? o.items.filter((it) => it && it.type === 'rect') : [];
+    const items = Array.isArray(o.items)
+      ? o.items
+          .filter((it) => it && (!it.type || it.type === 'rect'))
+          .map((it, index) => normalizeMapItem(it, index))
+      : [];
     return { w, h, items };
   } catch {
     return { w: 800, h: 440, items: [] };
   }
 }
 
-export function drawDistribucionCanvas(canvas, jsonStr) {
-  const data = parseDistribucionJson(jsonStr);
-  const dpr = window.devicePixelRatio || 1;
-  canvas.width = Math.floor(data.w * dpr);
-  canvas.height = Math.floor(data.h * dpr);
-  canvas.style.width = `${data.w}px`;
-  canvas.style.height = `${data.h}px`;
-  const ctx = canvas.getContext('2d');
-  if (!ctx) return;
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  ctx.clearRect(0, 0, data.w, data.h);
-  ctx.fillStyle = '#e2f0ec';
+function roundRect(ctx, x, y, w, h, r = 10) {
+  const radius = Math.min(r, w / 2, h / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + radius, y);
+  ctx.lineTo(x + w - radius, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + radius);
+  ctx.lineTo(x + w, y + h - radius);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - radius, y + h);
+  ctx.lineTo(x + radius, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - radius);
+  ctx.lineTo(x, y + radius);
+  ctx.quadraticCurveTo(x, y, x + radius, y);
+  ctx.closePath();
+}
+
+function drawBackground(ctx, data) {
+  const bg = ctx.createLinearGradient(0, 0, data.w, data.h);
+  bg.addColorStop(0, '#e0f7f3');
+  bg.addColorStop(0.5, '#f8fafc');
+  bg.addColorStop(1, '#e0f2fe');
+  ctx.fillStyle = bg;
   ctx.fillRect(0, 0, data.w, data.h);
-  ctx.strokeStyle = '#94a3b8';
+
+  ctx.strokeStyle = 'rgba(100, 116, 139, 0.28)';
   ctx.lineWidth = 1;
   for (let x = 0; x < data.w; x += 40) {
     ctx.beginPath();
@@ -45,35 +117,146 @@ export function drawDistribucionCanvas(canvas, jsonStr) {
     ctx.lineTo(data.w, y);
     ctx.stroke();
   }
-  for (const it of data.items) {
-    const x = Number(it.x) || 0;
-    const y = Number(it.y) || 0;
-    const width = Number(it.width) || 100;
-    const height = Number(it.height) || 80;
-    ctx.fillStyle = it.fill || 'rgba(37, 99, 235, 0.28)';
-    ctx.fillRect(x, y, width, height);
-    ctx.strokeStyle = '#1e3a8a';
-    ctx.lineWidth = 2;
-    ctx.strokeRect(x, y, width, height);
-    ctx.fillStyle = '#0f172a';
-    ctx.font = '600 13px system-ui, sans-serif';
-    const label = String(it.label || 'Zona');
-    ctx.fillText(label, x + 8, y + 22);
+
+  ctx.strokeStyle = 'rgba(14, 116, 144, 0.28)';
+  ctx.lineWidth = 3;
+  ctx.strokeRect(1.5, 1.5, data.w - 3, data.h - 3);
+}
+
+function drawItem(ctx, item, selected = false) {
+  const meta = getMapKind(item.kind);
+  const x = Number(item.x) || 0;
+  const y = Number(item.y) || 0;
+  const width = Number(item.width) || 100;
+  const height = Number(item.height) || 80;
+  const stroke = item.stroke || meta.stroke;
+
+  ctx.fillStyle = item.fill || meta.fill;
+  roundRect(ctx, x, y, width, height, item.kind === 'mesa' ? 12 : 8);
+  ctx.fill();
+  ctx.strokeStyle = stroke;
+  ctx.lineWidth = selected ? 3 : 2;
+  ctx.setLineDash(meta.dashed ? [8, 5] : []);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.88)';
+  roundRect(ctx, x + 6, y + 6, Math.max(Math.min(width - 12, 190), 56), 44, 8);
+  ctx.fill();
+  ctx.fillStyle = '#0f172a';
+  ctx.font = '800 12px system-ui, sans-serif';
+  ctx.fillText(String(item.id || 'sin-id').slice(0, 24), x + 14, y + 23);
+  ctx.font = '700 11px system-ui, sans-serif';
+  ctx.fillStyle = stroke;
+  ctx.fillText(String(meta.label || item.kind).slice(0, 26), x + 14, y + 40);
+
+  if (height > 72) {
+    ctx.fillStyle = '#334155';
+    ctx.font = '700 13px system-ui, sans-serif';
+    ctx.fillText(String(item.label || 'Zona').slice(0, 28), x + 10, y + height - 14);
+  }
+
+  if (item.locked) {
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.78)';
+    roundRect(ctx, x + width - 30, y + 8, 20, 20, 6);
+    ctx.fill();
+    ctx.fillStyle = 'white';
+    ctx.font = '800 13px system-ui, sans-serif';
+    ctx.fillText('L', x + width - 24, y + 23);
   }
 }
 
+function drawHandles(ctx, item) {
+  const x = Number(item.x) || 0;
+  const y = Number(item.y) || 0;
+  const w = Number(item.width) || 0;
+  const h = Number(item.height) || 0;
+  [[x, y], [x + w, y], [x, y + h], [x + w, y + h]].forEach(([hx, hy]) => {
+    ctx.fillStyle = '#f59e0b';
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.rect(hx - 5, hy - 5, 10, 10);
+    ctx.fill();
+    ctx.stroke();
+  });
+}
+
+export function drawDistribucionCanvas(canvas, jsonStr, options = {}) {
+  const data = parseDistribucionJson(jsonStr);
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = Math.floor(data.w * dpr);
+  canvas.height = Math.floor(data.h * dpr);
+  canvas.style.width = `${data.w}px`;
+  canvas.style.height = `${data.h}px`;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, data.w, data.h);
+  drawBackground(ctx, data);
+  data.items.forEach((item, index) => drawItem(ctx, item, options.selected === index));
+  if (options.selected >= 0 && data.items[options.selected]) {
+    drawHandles(ctx, data.items[options.selected]);
+  }
+}
+
+function makeNewItem(data, patch = {}) {
+  const kind = KIND_BY_VALUE[patch.kind] ? patch.kind : DEFAULT_MAP_ITEM_KIND;
+  const count = data.items.filter((item) => item.kind === kind).length + 1;
+  const meta = getMapKind(kind);
+  return normalizeMapItem({
+    type: 'rect',
+    id: patch.id || `${kind}-${String(count).padStart(2, '0')}`,
+    kind,
+    label: patch.label || meta.label,
+    x: patch.x ?? 40,
+    y: patch.y ?? 40,
+    width: patch.width ?? 120,
+    height: patch.height ?? 80,
+    fill: patch.fill || meta.fill,
+    stroke: patch.stroke || meta.stroke,
+    notes: patch.notes || '',
+    locked: patch.locked || false
+  }, data.items.length);
+}
+
 /**
- * Editor simple: arrastrar zonas rectangulares, agregar, eliminar.
- * @returns {{ getJson: () => string, setJson: (s: string) => void, destroy: () => void }}
+ * Editor: arrastrar, redimensionar, agregar, eliminar, duplicar y editar metadata.
  */
 export function createDistribucionEditor(canvas, initialJson, onChange) {
   let data = parseDistribucionJson(initialJson || DEFAULT_MAPA_JSON);
   let selected = -1;
   let dragging = false;
+  let resizing = false;
+  let resizeHandle = '';
   let dragOffX = 0;
   let dragOffY = 0;
   let adding = false;
+  let addingKind = DEFAULT_MAP_ITEM_KIND;
   let addStart = null;
+  const selectionListeners = new Set();
+
+  const emit = () => {
+    const json = JSON.stringify({ w: data.w, h: data.h, items: data.items });
+    onChange?.(json);
+  };
+
+  const selectedItem = () => (selected >= 0 && data.items[selected] ? data.items[selected] : null);
+
+  const notifySelection = () => {
+    const item = selectedItem();
+    selectionListeners.forEach((fn) => fn(item ? { ...item } : null, selected));
+  };
+
+  const redraw = () => {
+    drawDistribucionCanvas(canvas, JSON.stringify(data), { selected });
+  };
+
+  const setSelected = (idx) => {
+    selected = idx;
+    notifySelection();
+    redraw();
+  };
 
   const hitTest = (mx, my) => {
     for (let i = data.items.length - 1; i >= 0; i--) {
@@ -87,73 +270,108 @@ export function createDistribucionEditor(canvas, initialJson, onChange) {
     return -1;
   };
 
-  const emit = () => {
-    const json = JSON.stringify({ w: data.w, h: data.h, items: data.items });
-    onChange?.(json);
+  const handleHit = (mx, my, item) => {
+    if (!item) return '';
+    const x = Number(item.x) || 0;
+    const y = Number(item.y) || 0;
+    const w = Number(item.width) || 0;
+    const h = Number(item.height) || 0;
+    const handles = { nw: [x, y], ne: [x + w, y], sw: [x, y + h], se: [x + w, y + h] };
+    return Object.entries(handles).find(([, [hx, hy]]) => Math.abs(mx - hx) <= 9 && Math.abs(my - hy) <= 9)?.[0] || '';
   };
 
-  const redraw = () => {
-    drawDistribucionCanvas(canvas, JSON.stringify(data));
-    if (selected >= 0 && data.items[selected]) {
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return;
-      const it = data.items[selected];
-      const x = Number(it.x) || 0;
-      const y = Number(it.y) || 0;
-      const w = Number(it.width) || 0;
-      const h = Number(it.height) || 0;
-      ctx.strokeStyle = '#f59e0b';
-      ctx.lineWidth = 3;
-      ctx.setLineDash([6, 4]);
-      ctx.strokeRect(x, y, w, h);
-      ctx.setLineDash([]);
-    }
+  const pointer = (ev) => {
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = data.w / rect.width;
+    const scaleY = data.h / rect.height;
+    return {
+      x: clamp((ev.clientX - rect.left) * scaleX, 0, data.w),
+      y: clamp((ev.clientY - rect.top) * scaleY, 0, data.h)
+    };
   };
 
   const onDown = (ev) => {
-    const rect = canvas.getBoundingClientRect();
-    const mx = ev.clientX - rect.left;
-    const my = ev.clientY - rect.top;
+    const { x: mx, y: my } = pointer(ev);
+    const current = selectedItem();
+    const handle = handleHit(mx, my, current);
+    if (handle && current && !current.locked) {
+      resizing = true;
+      resizeHandle = handle;
+      return;
+    }
+
     const idx = hitTest(mx, my);
     if (idx >= 0) {
       addStart = null;
-      selected = idx;
-      dragging = true;
+      setSelected(idx);
       const it = data.items[idx];
-      dragOffX = mx - (Number(it.x) || 0);
-      dragOffY = my - (Number(it.y) || 0);
-      redraw();
+      if (!it.locked) {
+        dragging = true;
+        dragOffX = mx - (Number(it.x) || 0);
+        dragOffY = my - (Number(it.y) || 0);
+      }
       return;
     }
-    selected = -1;
+
+    setSelected(-1);
     if (adding) {
       addStart = { x: mx, y: my };
     }
-    redraw();
+  };
+
+  const resizeSelected = (mx, my) => {
+    const it = selectedItem();
+    if (!it || it.locked) return;
+    const minSize = 24;
+    const right = Number(it.x) + Number(it.width);
+    const bottom = Number(it.y) + Number(it.height);
+    if (resizeHandle.includes('n')) {
+      const nextY = clamp(Math.round(my), 0, bottom - minSize);
+      it.height = Math.round(bottom - nextY);
+      it.y = nextY;
+    }
+    if (resizeHandle.includes('s')) it.height = Math.round(clamp(my - Number(it.y), minSize, data.h - Number(it.y)));
+    if (resizeHandle.includes('w')) {
+      const nextX = clamp(Math.round(mx), 0, right - minSize);
+      it.width = Math.round(right - nextX);
+      it.x = nextX;
+    }
+    if (resizeHandle.includes('e')) it.width = Math.round(clamp(mx - Number(it.x), minSize, data.w - Number(it.x)));
   };
 
   const onMove = (ev) => {
-    const rect = canvas.getBoundingClientRect();
-    const mx = ev.clientX - rect.left;
-    const my = ev.clientY - rect.top;
-    if (dragging && selected >= 0) {
-      const it = data.items[selected];
-      it.x = Math.round(mx - dragOffX);
-      it.y = Math.round(my - dragOffY);
+    const { x: mx, y: my } = pointer(ev);
+    if (resizing && selected >= 0) {
+      resizeSelected(mx, my);
       emit();
+      notifySelection();
       redraw();
-    } else if (adding && addStart) {
+      return;
+    }
+    if (dragging && selected >= 0) {
+      const it = selectedItem();
+      if (!it || it.locked) return;
+      it.x = Math.round(clamp(mx - dragOffX, 0, data.w - Number(it.width)));
+      it.y = Math.round(clamp(my - dragOffY, 0, data.h - Number(it.height)));
+      emit();
+      notifySelection();
+      redraw();
+      return;
+    }
+    if (adding && addStart) {
       const x0 = addStart.x;
       const y0 = addStart.y;
       const x = Math.min(x0, mx);
       const y = Math.min(y0, my);
       const w = Math.abs(mx - x0);
       const h = Math.abs(my - y0);
-      drawDistribucionCanvas(canvas, JSON.stringify(data));
+      redraw();
       const ctx = canvas.getContext('2d');
       if (ctx) {
-        ctx.strokeStyle = '#2563eb';
+        const meta = getMapKind(addingKind);
+        ctx.strokeStyle = meta.stroke;
         ctx.setLineDash([4, 4]);
+        ctx.lineWidth = 2;
         ctx.strokeRect(x, y, Math.max(w, 4), Math.max(h, 4));
         ctx.setLineDash([]);
       }
@@ -161,57 +379,60 @@ export function createDistribucionEditor(canvas, initialJson, onChange) {
   };
 
   const onUp = (ev) => {
-    const rect = canvas.getBoundingClientRect();
-    const mx = ev.clientX - rect.left;
-    const my = ev.clientY - rect.top;
+    const { x: mx, y: my } = pointer(ev);
     if (adding && addStart) {
       const x0 = addStart.x;
       const y0 = addStart.y;
-      const x = Math.min(x0, mx);
-      const y = Math.min(y0, my);
-      const w = Math.max(Math.abs(mx - x0), 40);
-      const h = Math.max(Math.abs(my - y0), 40);
-      data.items.push({
-        type: 'rect',
-        x: Math.round(x),
-        y: Math.round(y),
-        width: Math.round(w),
-        height: Math.round(h),
-        label: 'Nueva zona',
-        fill: 'rgba(37, 99, 235, 0.28)'
-      });
+      data.items.push(makeNewItem(data, {
+        kind: addingKind,
+        x: Math.round(Math.min(x0, mx)),
+        y: Math.round(Math.min(y0, my)),
+        width: Math.round(Math.max(Math.abs(mx - x0), 40)),
+        height: Math.round(Math.max(Math.abs(my - y0), 40))
+      }));
       selected = data.items.length - 1;
       addStart = null;
       adding = false;
       emit();
+      notifySelection();
     }
     dragging = false;
+    resizing = false;
+    resizeHandle = '';
     redraw();
   };
 
   const onKey = (ev) => {
-    if ((ev.key === 'Delete' || ev.key === 'Backspace') && selected >= 0 && document.activeElement?.tagName !== 'INPUT' && document.activeElement?.tagName !== 'TEXTAREA') {
+    const tag = document.activeElement?.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+    const it = selectedItem();
+    if (!it) return;
+    if (ev.key === 'Delete' || ev.key === 'Backspace') {
       ev.preventDefault();
       data.items.splice(selected, 1);
       selected = -1;
       emit();
+      notifySelection();
+      redraw();
+      return;
+    }
+    const step = ev.shiftKey ? 10 : 1;
+    if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(ev.key) && !it.locked) {
+      ev.preventDefault();
+      if (ev.key === 'ArrowUp') it.y = clamp(Number(it.y) - step, 0, data.h - Number(it.height));
+      if (ev.key === 'ArrowDown') it.y = clamp(Number(it.y) + step, 0, data.h - Number(it.height));
+      if (ev.key === 'ArrowLeft') it.x = clamp(Number(it.x) - step, 0, data.w - Number(it.width));
+      if (ev.key === 'ArrowRight') it.x = clamp(Number(it.x) + step, 0, data.w - Number(it.width));
+      emit();
+      notifySelection();
       redraw();
     }
   };
 
   const onDblClick = (ev) => {
-    const rect = canvas.getBoundingClientRect();
-    const mx = ev.clientX - rect.left;
-    const my = ev.clientY - rect.top;
+    const { x: mx, y: my } = pointer(ev);
     const idx = hitTest(mx, my);
-    if (idx < 0) return;
-    const it = data.items[idx];
-    const next = window.prompt('Etiqueta de la zona', it.label || 'Zona');
-    if (next !== null) {
-      it.label = next;
-      emit();
-      redraw();
-    }
+    if (idx >= 0) setSelected(idx);
   };
 
   canvas.addEventListener('mousedown', onDown);
@@ -219,19 +440,79 @@ export function createDistribucionEditor(canvas, initialJson, onChange) {
   window.addEventListener('mouseup', onUp);
   window.addEventListener('keydown', onKey);
   canvas.addEventListener('dblclick', onDblClick);
-
   redraw();
 
   return {
     getJson: () => JSON.stringify({ w: data.w, h: data.h, items: data.items }),
     setJson: (s) => {
       data = parseDistribucionJson(s);
-      selected = -1;
+      setSelected(-1);
+    },
+    setAdding: (v, kind = DEFAULT_MAP_ITEM_KIND) => {
+      adding = !!v;
+      addingKind = KIND_BY_VALUE[kind] ? kind : DEFAULT_MAP_ITEM_KIND;
+      addStart = null;
+    },
+    addItem: (kind = DEFAULT_MAP_ITEM_KIND) => {
+      data.items.push(makeNewItem(data, { kind }));
+      selected = data.items.length - 1;
+      emit();
+      notifySelection();
+      redraw();
+      return { ...data.items[selected] };
+    },
+    getSelected: () => {
+      const it = selectedItem();
+      return it ? { ...it } : null;
+    },
+    updateSelected: (patch = {}) => {
+      const it = selectedItem();
+      if (!it) return;
+      const nextKind = KIND_BY_VALUE[patch.kind] ? patch.kind : it.kind;
+      const meta = getMapKind(nextKind);
+      Object.assign(it, normalizeMapItem({
+        ...it,
+        ...patch,
+        kind: nextKind,
+        fill: patch.fill || (nextKind !== it.kind ? meta.fill : it.fill),
+        stroke: patch.stroke || (nextKind !== it.kind ? meta.stroke : it.stroke)
+      }, selected));
+      emit();
+      notifySelection();
       redraw();
     },
-    setAdding: (v) => {
-      adding = !!v;
-      addStart = null;
+    deleteSelected: () => {
+      if (selected < 0) return;
+      data.items.splice(selected, 1);
+      selected = -1;
+      emit();
+      notifySelection();
+      redraw();
+    },
+    duplicateSelected: () => {
+      const it = selectedItem();
+      if (!it) return;
+      data.items.push(makeNewItem(data, { ...it, id: `${it.id}-copia`, x: Number(it.x) + 18, y: Number(it.y) + 18 }));
+      selected = data.items.length - 1;
+      emit();
+      notifySelection();
+      redraw();
+    },
+    moveSelectedLayer: (dir) => {
+      if (selected < 0) return;
+      const next = clamp(selected + dir, 0, data.items.length - 1);
+      if (next === selected) return;
+      const [it] = data.items.splice(selected, 1);
+      data.items.splice(next, 0, it);
+      selected = next;
+      emit();
+      notifySelection();
+      redraw();
+    },
+    onSelectionChange: (fn) => {
+      selectionListeners.add(fn);
+      fn(selectedItem() ? { ...selectedItem() } : null, selected);
+      return () => selectionListeners.delete(fn);
     },
     destroy: () => {
       canvas.removeEventListener('mousedown', onDown);
@@ -239,6 +520,7 @@ export function createDistribucionEditor(canvas, initialJson, onChange) {
       window.removeEventListener('mouseup', onUp);
       window.removeEventListener('keydown', onKey);
       canvas.removeEventListener('dblclick', onDblClick);
+      selectionListeners.clear();
     }
   };
 }

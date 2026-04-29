@@ -268,7 +268,7 @@ const ClienteDashboard = {
           });
         });
         document.querySelectorAll('.btn-go-scan').forEach((btn) => {
-          btn.addEventListener('click', () => navigateTo('/escaner'));
+          btn.addEventListener('click', (e) => navigateTo(`/escaner?ticket=${encodeURIComponent(e.currentTarget.dataset.id)}`));
         });
       } catch (error) {
         console.error('Error al cargar tickets:', error);

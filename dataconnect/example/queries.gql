@@ -123,6 +123,20 @@ query ListProductosAdmin @auth(level: USER) {
   }
 }
 
+query ListProductosPublic @auth(level: PUBLIC) {
+  productos(where: { activo: { eq: true } }, orderBy: [{ fechaCreacion: DESC }]) {
+    id
+    titulo
+    descripcion
+    imagenUrl
+    precio
+    stockActual
+    reservadoAprox
+    activo
+    fechaCreacion
+  }
+}
+
 query ListMovimientosInventario($productoId: UUID!) @auth(level: USER) {
   movimientoInventarios(
     where: { productoId: { eq: $productoId } }

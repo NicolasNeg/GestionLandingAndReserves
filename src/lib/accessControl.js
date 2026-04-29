@@ -13,6 +13,7 @@ export const PERMISSIONS = [
   { key: 'inventory.manage', label: 'Inventario productos' },
   { key: 'inventory.adjust', label: 'Ajustes stock' },
   { key: 'sales.physical', label: 'Ventas fisicas caja' },
+  { key: 'parking.manage', label: 'Estacionamiento en tiempo real' },
   { key: 'landing.manage', label: 'Landing' },
   { key: 'finance.view', label: 'Finanzas' },
   { key: 'admin.panel', label: 'Panel administracion' },
@@ -29,7 +30,8 @@ export const DEFAULT_ROLE_PERMISSIONS = {
     'tickets.monitor',
     'tickets.scan',
     'inventory.adjust',
-    'sales.physical'
+    'sales.physical',
+    'parking.manage'
   ],
   jefe: [
     'dashboard.manage',
@@ -39,6 +41,7 @@ export const DEFAULT_ROLE_PERMISSIONS = {
     'inventory.manage',
     'inventory.adjust',
     'sales.physical',
+    'parking.manage',
     'landing.manage',
     'finance.view',
     'admin.panel'

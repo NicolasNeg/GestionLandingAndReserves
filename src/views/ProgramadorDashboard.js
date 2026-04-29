@@ -4,6 +4,7 @@ import { DEFAULT_ROLE_PERMISSIONS, PERMISSIONS, getUserAccess, labelRole, normal
 import { icon } from '../lib/icons.js';
 import { DEFAULT_THEME, applyTheme, readThemeConfig } from '../lib/theme.js';
 import { refreshAppTheme } from '../lib/layout.js';
+import { publishAppUpdate } from '../lib/realtimeSync.js';
 
 function escapeHtml(text) {
   return String(text ?? '')
@@ -298,6 +299,7 @@ const ProgramadorDashboard = {
         await setDoc(doc(db, 'appConfig', 'theme'), payload, { merge: true });
         const applied = applyTheme(payload);
         refreshAppTheme(applied);
+        await publishAppUpdate('theme', 'Paleta actualizada');
         if (msg) msg.textContent = 'Paleta guardada.';
       } catch (error) {
         console.error(error);
@@ -385,6 +387,7 @@ const ProgramadorDashboard = {
       if (msg) msg.textContent = 'Guardando...';
       try {
         await setDoc(doc(db, 'roles', roleId), payload, { merge: true });
+        await publishAppUpdate('roles', `Rol ${roleId} actualizado`);
         if (msg) msg.textContent = 'Rol guardado.';
         await renderRoles();
       } catch (error) {
@@ -529,6 +532,7 @@ const ProgramadorDashboard = {
             updatedBy: auth.currentUser?.uid || null
           }, { merge: true })
         ]);
+        await publishAppUpdate('users', `Permisos usuario ${uid}`);
         if (msg) msg.textContent = 'Usuario guardado.';
         await loadUsers();
       } catch (error) {
