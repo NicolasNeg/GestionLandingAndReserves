@@ -1,3 +1,4 @@
+import { getAuthActionParams } from './lib/authUrlParams.js';
 import Landing from './views/Landing.js';
 import Login from './views/Login.js';
 import Reservar from './views/Reservar.js';
@@ -6,6 +7,9 @@ import ClienteDashboard from './views/ClienteDashboard.js';
 import AdminDashboard from './views/AdminDashboard.js';
 import Escaner from './views/Escaner.js';
 import Politicas from './views/Politicas.js';
+import ProgramadorDashboard from './views/ProgramadorDashboard.js';
+import { getUserAccess, waitForAuthUser } from './lib/accessControl.js';
+import { initAppShell, updateAppShell } from './lib/layout.js';
 
 // Listado de rutas mapeadas a componentes/funciones
 const routes = {
@@ -28,39 +32,70 @@ const NotFound = () => `
 
 // Lógica de ruteo
 import { auth } from './firebase-config.js';
-import { onAuthStateChanged } from 'firebase/auth';
-import { getUserProfile } from './dataconnect-generated';
 
-// Helper para validar rol de Data Connect
-const requireRole = async (user, allowedRoles) => {
-    try {
-        const profile = await getUserProfile({ id: user.uid });
-        const rol = (profile.data && profile.data.user) ? profile.data.user.rol : 'cliente';
-        return allowedRoles.includes(rol);
-    } catch {
+const resolveView = (path) => {
+    if (path.startsWith('/programador')) return ProgramadorDashboard;
+    return routes[path] || NotFound;
+};
+
+const isProtectedPath = (path) =>
+    ['/cliente/dashboard', '/admin/dashboard', '/escaner'].includes(path) || path.startsWith('/programador');
+
+const guardPath = async (path, user) => {
+    if (path === '/cliente/dashboard') return true;
+    const access = await getUserAccess(user);
+
+    if (path === '/admin/dashboard') {
+        if (access.can('dashboard.manage')) return true;
+        alert('Acceso denegado. Se requiere permiso de gestion.');
         return false;
     }
+
+    if (path === '/escaner') {
+        if (access.can('tickets.scan')) return true;
+        alert('Acceso denegado. Area exclusiva para personal con permiso de escaner.');
+        return false;
+    }
+
+    if (path.startsWith('/programador')) {
+        if (access.isProgramador) return true;
+        alert('Acceso denegado. Ruta exclusiva para rol programador.');
+        return false;
+    }
+
+    return true;
 };
 
 const router = async () => {
     let path = window.location.pathname;
-    if (path === '/') {
-        window.history.replaceState(null, '', '/home');
+    const search = window.location.search;
+    const hash = window.location.hash;
+    const { mode, oobCode } = getAuthActionParams();
+
+    // Enlaces de correo (verificar email / restablecer contraseña) deben abrir /login con los mismos parametros
+    if (
+        oobCode &&
+        (mode === 'verifyEmail' || mode === 'resetPassword') &&
+        path !== '/login'
+    ) {
+        const loginUrl = `/login?mode=${encodeURIComponent(mode)}&oobCode=${encodeURIComponent(oobCode)}`;
+        window.history.replaceState(null, '', loginUrl);
+        path = '/login';
+    } else if (path === '/') {
+        // Conservar ?mode= / &oobCode= al pasar de / a /home (evita perder la verificacion)
+        window.history.replaceState(null, '', `/home${search}${hash}`);
         path = '/home';
     }
-    let view = routes[path] || NotFound;
+
+    await updateAppShell(path);
+    let view = resolveView(path);
     
     // Auth Guards
-    const isProtected = ['/cliente/dashboard', '/admin/dashboard', '/escaner'].includes(path);
+    const isProtected = isProtectedPath(path);
     
     if (isProtected) {
         // Promesa para esperar el estado de auth real (firebase init puede ser asíncrono)
-        const user = await new Promise((resolve) => {
-            const unsubscribe = onAuthStateChanged(auth, (u) => {
-                unsubscribe();
-                resolve(u);
-            });
-        });
+        const user = await waitForAuthUser();
 
         if (!user) {
             // No autenticado
@@ -68,23 +103,10 @@ const router = async () => {
             return;
         }
 
-        // Si va a rutas administrativas, verificar rol
-        if (path === '/admin/dashboard') {
-            const isAllowed = await requireRole(user, ['programador', 'jefe', 'trabajador']);
-            if (!isAllowed) {
-                alert("Acceso denegado. Se requiere rol de personal del balneario.");
-                navigateTo('/home');
-                return;
-            }
-        }
-
-        if (path === '/escaner') {
-            const isAllowed = await requireRole(user, ['programador', 'jefe', 'trabajador']);
-            if (!isAllowed) {
-                alert("Acceso denegado. Área exclusiva para personal del balneario.");
-                navigateTo('/home');
-                return;
-            }
+        const isAllowed = await guardPath(path, user);
+        if (!isAllowed) {
+            navigateTo('/home');
+            return;
         }
     }
 
@@ -110,6 +132,7 @@ export const navigateTo = (url) => {
 
 // Función de inicialización
 export const initRouter = () => {
+    initAppShell({ navigateTo });
     window.addEventListener('popstate', router);
     document.body.addEventListener('click', e => {
         // Encontrar si el click provino de un enlace con atributo [data-link]
