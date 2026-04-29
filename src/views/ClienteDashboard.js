@@ -143,6 +143,9 @@ const ClienteDashboard = {
               <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
                 <h1 class="text-2xl font-black text-slate-900">Mis tickets</h1>
                 <p class="mt-1 text-sm text-slate-500">Consulta estado, QR y descarga de tus entradas.</p>
+                <div id="tickets-role-breakdown" class="mt-3 rounded-xl border border-slate-100 bg-slate-50 p-3 text-sm text-slate-600">
+                  Desglose de tickets cargando...
+                </div>
               </div>
               <div id="tickets-container" class="space-y-4">
                 <div class="text-center py-10 bg-white rounded-xl border border-slate-200">
@@ -195,6 +198,7 @@ const ClienteDashboard = {
     const pName = document.getElementById('profile-name');
     const pEmail = document.getElementById('profile-email');
     const pRole = document.getElementById('profile-role');
+    const ticketsRoleBreakdown = document.getElementById('tickets-role-breakdown');
 
     let user = auth.currentUser;
     const ticketById = new Map();
@@ -356,6 +360,15 @@ const ClienteDashboard = {
           </div>`;
       });
       ticketsContainer.innerHTML = html;
+      if (ticketsRoleBreakdown) {
+        const vigentes = tickets.filter((t) => t.estadoTicket === 'valido').length;
+        const usados = tickets.filter((t) => t.estadoTicket === 'escaneado').length;
+        const pendientes = tickets.filter((t) => t.estadoPago !== 'pagado').length;
+        ticketsRoleBreakdown.innerHTML = `
+          <strong>Usuario:</strong> Vigentes: ${vigentes} · Usados: ${usados} · Pendientes de pago: ${pendientes}.
+          ${canScan ? '<br/><strong>Trabajador:</strong> también puedes abrir escáner y registrar entrada.' : ''}
+        `;
+      }
     };
 
     const loadTickets = async () => {

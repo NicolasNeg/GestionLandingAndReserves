@@ -14,6 +14,7 @@ import { showAlert } from '../lib/appDialog.js';
 import { upsertMesaReservaLive } from '../lib/mesaRealtime.js';
 import { formatFechaDia } from '../lib/fechaDiaMexico.js';
 import { sweepExpiredMesaReservas } from '../lib/mesaLifecycle.js';
+import { publishAppUpdate } from '../lib/realtimeSync.js';
 
 const UUID_PATTERN = /[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/i;
 
@@ -135,6 +136,11 @@ const Escaner = {
                                 </div>
                             </div>
                         </div>
+                        <div id="scanner-role-breakdown" class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                            <p class="text-xs font-black uppercase tracking-wide text-slate-500">Desglose trabajador</p>
+                            <h3 id="scanner-breakdown-title" class="mt-1 text-sm font-black text-slate-900">Sin ticket seleccionado</h3>
+                            <div id="scanner-breakdown-body" class="mt-2 text-xs text-slate-600">Escanea un ticket para ver estado, pago y acción recomendada.</div>
+                        </div>
 
                         <div class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                             <h2 class="mb-3 flex items-center gap-2 text-lg font-black text-slate-900">
@@ -200,6 +206,8 @@ const Escaner = {
         const statusIcon = document.getElementById('scanner-status-icon');
         const statusTitle = document.getElementById('scanner-status-title');
         const statusMessage = document.getElementById('scanner-status-message');
+        const breakdownTitle = document.getElementById('scanner-breakdown-title');
+        const breakdownBody = document.getElementById('scanner-breakdown-body');
         const lastQrValue = document.getElementById('last-qr-value');
         const btnSimulate = document.getElementById('btn-simulate');
         const inputId = document.getElementById('sim-ticket-id');
@@ -256,6 +264,25 @@ const Escaner = {
             statusTitle.textContent = title;
             statusMessage.textContent = message;
         };
+        const updateBreakdown = (ticket, actionLabel = '--') => {
+            if (!breakdownTitle || !breakdownBody) return;
+            if (!ticket) {
+                breakdownTitle.textContent = 'Sin ticket seleccionado';
+                breakdownBody.textContent = 'Escanea un ticket para ver estado, pago y acción recomendada.';
+                return;
+            }
+            const estado = ticket.estadoTicket || 'desconocido';
+            const pago = ticket.estadoPago || 'desconocido';
+            breakdownTitle.textContent = `Ticket #${String(ticket.id || '').substring(0, 8)} · ${estado.toUpperCase()}`;
+            breakdownBody.innerHTML = `
+                <div class="space-y-1">
+                    <p><strong>Cliente:</strong> ${ticket.clienteNombre || 'N/A'}</p>
+                    <p><strong>Pago:</strong> ${pago}</p>
+                    <p><strong>Total:</strong> ${formatMoney(ticket.precioTotal)}</p>
+                    <p><strong>Acción:</strong> ${actionLabel}</p>
+                </div>
+            `;
+        };
 
         const updateLastRead = (rawValue) => {
             const text = String(rawValue || '').trim();
@@ -280,6 +307,7 @@ const Escaner = {
         const showInvalidScan = (message = 'Este QR no pertenece al sistema del balneario. No permitir acceso.') => {
             currentTicketId = null;
             currentTicketData = null;
+            updateBreakdown(null);
             showScannerStatus('danger', 'BOLETO INVALIDO', message);
             playTone(false);
             if (navigator.vibrate) navigator.vibrate([90, 40, 90]);
@@ -501,6 +529,7 @@ const Escaner = {
                 const fechaUso = data.fechaEscaneo ? new Date(data.fechaEscaneo).toLocaleString() : 'Recientemente';
                 tPaymentStatus.textContent = "Este ticket ya ingresó al balneario el: " + fechaUso;
                 btnAction.style.display = 'none'; // No se puede registrar ingreso
+                updateBreakdown(data, 'Ya usado. No permitir reingreso');
                 showScannerStatus('danger', 'BOLETO RECHAZADO', 'Este ticket ya fue usado. No permitir acceso nuevamente.');
                 
             } else if (data.estadoTicket === 'valido') {
@@ -516,6 +545,7 @@ const Escaner = {
                     btnAction.textContent = currentActionLabel;
                     btnAction.className = "w-full bg-gray-900 text-white font-bold py-4 rounded-xl text-lg hover:bg-black transition shadow-lg";
                     showScannerStatus('success', 'BOLETO VALIDO', 'Pago confirmado. Puedes aceptar el ingreso y marcar el boleto como usado.');
+                    updateBreakdown(data, 'Registrar entrada');
                 playTone(true);
                 if (navigator.vibrate) navigator.vibrate([25, 20, 45]);
                 } else {
@@ -530,6 +560,7 @@ const Escaner = {
                     btnAction.textContent = currentActionLabel;
                     btnAction.className = "w-full bg-amber-500 text-white font-bold py-4 rounded-xl text-lg hover:bg-amber-600 transition shadow-lg";
                     showScannerStatus('warning', 'PAGO PENDIENTE', 'El boleto existe, pero primero debe cobrarse en taquilla.');
+                    updateBreakdown(data, 'Cobrar y registrar entrada');
                     playTone(false);
                     if (navigator.vibrate) navigator.vibrate([70]);
                 }
@@ -541,6 +572,7 @@ const Escaner = {
                 tTitle.textContent = "Ticket Inválido o Cancelado";
                 tPaymentStatus.classList.add('hidden');
                 btnAction.style.display = 'none';
+                updateBreakdown(data, 'No permitir acceso');
                 showScannerStatus('danger', 'BOLETO INVALIDO', 'Este ticket está cancelado o no tiene estado válido. No permitir acceso.');
             }
 
@@ -588,6 +620,8 @@ const Escaner = {
                 }
 
                 showScannerStatus('success', 'INGRESO REGISTRADO', 'El boleto quedó marcado como usado en el sistema.');
+                updateBreakdown({ ...currentTicketData, estadoTicket: 'escaneado', estadoPago: 'pagado' }, 'Entrada registrada');
+                await publishAppUpdate('tickets', `scanner:${currentTicketId}`);
                 playTone(true);
                 if (navigator.vibrate) navigator.vibrate([45, 20, 45]);
                 await showAlert('Ingreso registrado exitosamente en el sistema.', {

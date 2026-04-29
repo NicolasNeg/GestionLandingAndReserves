@@ -11,6 +11,7 @@ export const DEFAULT_THEME = {
 };
 
 const colorKeys = ['primary', 'primaryDark', 'accent', 'surface', 'text'];
+const THEME_READ_TIMEOUT_MS = 3500;
 
 function isPermissionDenied(error) {
   return error?.code === 'permission-denied' || /insufficient permissions/i.test(String(error?.message || ''));
@@ -49,7 +50,12 @@ export function applyTheme(theme = DEFAULT_THEME) {
 
 export async function readThemeConfig() {
   try {
-    const snap = await getDoc(doc(db, 'appConfig', 'theme'));
+    const snap = await Promise.race([
+      getDoc(doc(db, 'appConfig', 'theme')),
+      new Promise((_, reject) => {
+        globalThis.setTimeout(() => reject(new Error('Timeout leyendo tema Firestore')), THEME_READ_TIMEOUT_MS);
+      })
+    ]);
     return mergeTheme(snap.exists() ? snap.data() : {});
   } catch (error) {
     if (!isPermissionDenied(error)) {

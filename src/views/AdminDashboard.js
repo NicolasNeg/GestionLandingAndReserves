@@ -14,7 +14,8 @@ import {
   createServicio,
   updateServicio,
   deleteServicio,
-  deleteProducto
+  deleteProducto,
+  updateTicketStatus
 } from '../dataconnect-generated';
 import {
   createDistribucionEditor,
@@ -198,6 +199,9 @@ const AdminDashboard = {
                 <div id="admin-panel-tickets">
                 <h1 class="text-3xl font-bold text-gray-800 mb-2">Dashboard</h1>
                 <p id="admin-rol-hint" class="mb-6 text-sm text-slate-500"></p>
+                <div class="mb-6 rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-600">
+                  <strong>Desglose trabajador:</strong> monitorea tickets y usa <em>Registrar entrada</em> para marcar estado final <code>escaneado</code> en tiempo real.
+                </div>
 
                 <div id="admin-stats-wrap" class="grid grid-cols-1 gap-6 mb-8 sm:grid-cols-2">
                     <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
@@ -235,6 +239,7 @@ const AdminDashboard = {
                                 <th class="p-4 border-b">Total</th>
                                 <th class="p-4 border-b">Pago</th>
                                 <th class="p-4 border-b">Ticket</th>
+                                ${canScan ? '<th class="p-4 border-b text-right">Acción</th>' : ''}
                             </tr>
                         </thead>
                         <tbody id="tickets-table-body">
@@ -2151,10 +2156,38 @@ const AdminDashboard = {
                             <td class="p-4 border-b">$${(data.precioTotal || 0).toFixed(2)}</td>
                             <td class="p-4 border-b"><span class="${pagoClase} px-2 py-1 rounded text-xs font-bold uppercase">${data.estadoPago}</span></td>
                             <td class="p-4 border-b"><span class="${ticketClase} px-2 py-1 rounded text-xs font-bold uppercase">${data.estadoTicket}</span></td>
+                            ${canScan
+                              ? `<td class="p-4 border-b text-right">
+                                  ${
+                                    data.estadoTicket === 'valido'
+                                      ? `<button type="button" data-ticket-register="${data.id}" class="rounded bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-emerald-700">Registrar entrada</button>`
+                                      : '<span class="text-xs font-semibold text-slate-400">Sin acción</span>'
+                                  }
+                                </td>`
+                              : ''}
                         </tr>
                     `;
         });
         tableBody.innerHTML = html;
+        if (canScan) {
+          tableBody.querySelectorAll('[data-ticket-register]').forEach((btn) => {
+            btn.addEventListener('click', async () => {
+              const id = btn.getAttribute('data-ticket-register');
+              if (!id) return;
+              btn.setAttribute('disabled', 'true');
+              btn.textContent = 'Registrando...';
+              try {
+                await updateTicketStatus({ id, estadoTicket: 'escaneado', estadoPago: 'pagado' });
+                await publishAppUpdate('tickets', `entrada:${id}`);
+                await loadTickets();
+              } catch (err) {
+                console.error('No se pudo registrar entrada:', err);
+                btn.removeAttribute('disabled');
+                btn.textContent = 'Reintentar';
+              }
+            });
+          });
+        }
         if (canFinanzas) {
           const st = document.getElementById('stat-scanned');
           const inc = document.getElementById('stat-income');

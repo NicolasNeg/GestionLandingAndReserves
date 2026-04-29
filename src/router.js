@@ -164,7 +164,21 @@ export const navigateTo = (url) => {
 export const initRouter = () => {
     initAppShell({ navigateTo });
     let refreshTimer = null;
-    initRealtimeSync(() => {
+    const shouldRefreshByScope = (scope, path) => {
+      if (!scope || scope === 'general') return true;
+      if (scope === 'tickets') {
+        return path.startsWith('/cliente/') || path === '/admin/dashboard' || path === '/escaner' || path === '/checkout';
+      }
+      if (scope === 'sales') {
+        return path === '/checkout' || path === '/admin/dashboard' || path.startsWith('/cliente/');
+      }
+      if (scope === 'inventory') {
+        return path === '/checkout' || path === '/admin/dashboard';
+      }
+      return true;
+    };
+    initRealtimeSync((scope) => {
+      if (!shouldRefreshByScope(scope, window.location.pathname)) return;
       if (refreshTimer) clearTimeout(refreshTimer);
       refreshTimer = setTimeout(() => {
         router();

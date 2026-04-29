@@ -42,7 +42,7 @@ mutation UpdateTicketStatus(
   $id: UUID!, 
   $estadoTicket: String!, 
   $estadoPago: String!
-) @auth(level: PUBLIC) {
+) @auth(level: USER) {
   ticket_update(
     id: $id,
     data: {

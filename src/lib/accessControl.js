@@ -56,6 +56,8 @@ export const ROLE_LABELS = {
   programador: 'Programador'
 };
 
+const AUTH_WAIT_TIMEOUT_MS = 6000;
+
 function isPermissionDenied(error) {
   return error?.code === 'permission-denied' || /insufficient permissions/i.test(String(error?.message || ''));
 }
@@ -78,11 +80,22 @@ export function uniquePermissions(...groups) {
   return [...new Set(groups.flat().filter(Boolean))];
 }
 
-export function waitForAuthUser() {
+export function waitForAuthUser(timeoutMs = AUTH_WAIT_TIMEOUT_MS) {
   return new Promise((resolve) => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
+    let done = false;
+    let unsubscribe = () => {};
+    const finish = (user) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
       unsubscribe();
       resolve(user);
+    };
+    const timer = globalThis.setTimeout(() => {
+      finish(auth.currentUser || null);
+    }, timeoutMs);
+    unsubscribe = onAuthStateChanged(auth, (user) => {
+      finish(user);
     });
   });
 }

@@ -13,6 +13,7 @@ import { downloadTicketPdf } from '../lib/ticketPdf.js';
 import { sendTicketEmailCopy } from '../lib/sendTicketEmail.js';
 import { listCartItems, setCartQty, removeFromCart, cartSubtotal, addToCart, clearCart } from '../lib/cart.js';
 import { publishAppUpdate } from '../lib/realtimeSync.js';
+import { getUserAccess } from '../lib/accessControl.js';
 
 const Checkout = {
     render: () => `
@@ -76,6 +77,9 @@ const Checkout = {
                     <p class="text-3xl font-extrabold text-blue-600" id="total-text">$0.00 MXN</p>
                 </div>
             </div>
+            <div id="checkout-role-breakdown" class="mb-6 rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-600">
+                Cargando desglose de rol...
+            </div>
 
             <button id="btn-pay" class="w-full bg-blue-600 text-white font-bold py-4 rounded-xl text-xl hover:bg-blue-700 shadow-lg transition">Confirmar Reserva</button>
             <div id="loading-msg" class="hidden text-center text-blue-600 mt-4 font-bold flex justify-center items-center gap-2">
@@ -125,6 +129,7 @@ const Checkout = {
         const modalInvite = document.getElementById('modal-invite');
         const purchaseConfirm = document.getElementById('purchase-confirm');
         const purchaseConfirmMsg = document.getElementById('purchase-confirm-msg');
+        const roleBreakdown = document.getElementById('checkout-role-breakdown');
 
         let selectedPayment = 'online';
         let cartItems = listCartItems();
@@ -184,9 +189,22 @@ const Checkout = {
                 } catch (e) {
                     inputEmail.value = user.email || '';
                 }
+                try {
+                    const access = await getUserAccess(user);
+                    if (roleBreakdown) {
+                        if (access.can('tickets.scan')) {
+                            roleBreakdown.innerHTML = '<strong>Vista trabajador:</strong> este checkout permite compra y después registrar entrada desde escáner/admin en tiempo real.';
+                        } else {
+                            roleBreakdown.innerHTML = '<strong>Vista usuario:</strong> tus tickets se generan al pagar y su estado se sincroniza en vivo cuando el trabajador registra entrada.';
+                        }
+                    }
+                } catch {}
             } else {
                 authNotice.classList.remove('hidden');
                 document.getElementById('btn-goto-login').addEventListener('click', () => navigateTo('/login'));
+                if (roleBreakdown) {
+                    roleBreakdown.innerHTML = '<strong>Vista invitado:</strong> puedes comprar ticket, y su estado de entrada se actualiza en tiempo real en el sistema.';
+                }
             }
         };
 
@@ -262,6 +280,8 @@ const Checkout = {
                     const res = await createAnonymousTicket(variables);
                     ticketId = res.data.ticket_insert.id;
                 }
+                await publishAppUpdate('tickets', `created:${ticketId}`);
+                await publishAppUpdate('sales', `checkout:${ticketId}`);
 
                 const estadoPago = variables.estadoPago;
 
