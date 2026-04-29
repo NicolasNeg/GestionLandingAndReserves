@@ -1,4 +1,6 @@
 import { getTicketById, updateTicketStatus } from '../dataconnect-generated';
+import { auth } from '../firebase-config.js';
+import { getUserAccess } from '../lib/accessControl.js';
 import { icon } from '../lib/icons.js';
 import { showAlert } from '../lib/appDialog.js';
 
@@ -494,7 +496,15 @@ const Escaner = {
             btnAction.disabled = true;
 
             try {
-                // 2. Actualizar en Cloud SQL usando Data Connect
+                const access = await getUserAccess(auth.currentUser);
+                if (!access.can('tickets.scan')) {
+                    await showAlert('Tu usuario ya no tiene permiso para escanear tickets.', {
+                        title: 'Sin permiso',
+                        variant: 'danger'
+                    });
+                    return;
+                }
+
                 await updateTicketStatus({
                     id: currentTicketId,
                     estadoTicket: 'escaneado',

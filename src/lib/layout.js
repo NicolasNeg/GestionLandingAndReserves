@@ -3,7 +3,7 @@ import { auth } from '../firebase-config.js';
 import { getUserAccess } from './accessControl.js';
 import { icon } from './icons.js';
 import { readThemeConfig, applyTheme } from './theme.js';
-import { cartCount } from './cart.js';
+import { cartCount, cartSubtotal, listCartItems, removeFromCart, setCartQty } from './cart.js';
 
 let navigate = (url) => {
   window.history.pushState(null, '', url);
@@ -12,6 +12,7 @@ let navigate = (url) => {
 let lastPath = window.location.pathname;
 let themeCache = null;
 let renderToken = 0;
+let cartOpen = false;
 
 function escapeHtml(text) {
   return String(text ?? '')
@@ -51,21 +52,21 @@ function renderHeader(access, theme) {
   const isLogged = Boolean(access.user);
   const path = lastPath;
   const count = cartCount();
-  const publicLinks = [
-    navLink({ href: '/home', label: 'Inicio', iconName: 'home', active: path === '/home' }),
-    `<a href="/checkout" data-link class="app-nav-link ${path === '/checkout' ? 'is-active' : ''}" title="Carrito">
+  const cartButton = `
+    <button type="button" class="app-nav-link ${cartOpen ? 'is-active' : ''}" data-app-cart-toggle title="Carrito">
       ${icon('ticket', 'h-4 w-4')}
       <span>Carrito ${count > 0 ? `(${count})` : ''}</span>
-    </a>`,
+    </button>
+  `;
+  const publicLinks = [
+    navLink({ href: '/home', label: 'Inicio', iconName: 'home', active: path === '/home' }),
+    cartButton,
     navLink({ href: '/login', label: 'Login', iconName: 'login', active: path === '/login' })
   ].join('');
 
   const loggedLinks = [
     navLink({ href: '/home', label: 'Inicio', iconName: 'home', active: path === '/home' }),
-    `<a href="/checkout" data-link class="app-nav-link ${path === '/checkout' ? 'is-active' : ''}" title="Carrito">
-      ${icon('ticket', 'h-4 w-4')}
-      <span>Carrito ${count > 0 ? `(${count})` : ''}</span>
-    </a>`,
+    cartButton,
     access.can('dashboard.manage')
       ? navLink({ href: '/admin/dashboard?section=tickets', label: 'Gestion', iconName: 'briefcase', active: path === '/admin/dashboard' })
       : '',
@@ -120,6 +121,75 @@ function renderHeader(access, theme) {
   `;
 }
 
+function ensureCartDrawer() {
+  let drawer = document.getElementById('app-cart-drawer');
+  if (drawer) return drawer;
+  drawer = document.createElement('div');
+  drawer.id = 'app-cart-drawer';
+  drawer.className = 'fixed inset-0 z-[120] hidden';
+  drawer.innerHTML = `
+    <div class="absolute inset-0 bg-slate-900/45" data-app-cart-overlay></div>
+    <aside class="absolute right-0 top-0 h-full w-full max-w-md bg-white shadow-2xl border-l border-slate-200 flex flex-col">
+      <div class="flex items-center justify-between border-b border-slate-200 px-4 py-3">
+        <h3 class="text-lg font-black text-slate-900">Tu carrito</h3>
+        <button type="button" data-app-cart-close class="rounded border border-slate-300 px-3 py-1 text-sm font-semibold hover:bg-slate-50">Cerrar</button>
+      </div>
+      <div id="app-cart-items" class="flex-1 overflow-y-auto p-4"></div>
+      <div class="border-t border-slate-200 p-4">
+        <div class="mb-3 flex items-center justify-between text-sm">
+          <span class="text-slate-500">Subtotal</span>
+          <strong id="app-cart-subtotal" class="text-slate-900">$0.00 MXN</strong>
+        </div>
+        <button type="button" data-app-cart-checkout class="w-full rounded-xl bg-blue-600 px-4 py-3 font-bold text-white hover:bg-blue-700">
+          Completar compra
+        </button>
+      </div>
+    </aside>
+  `;
+  document.body.appendChild(drawer);
+  return drawer;
+}
+
+function renderCartDrawer() {
+  const drawer = ensureCartDrawer();
+  const itemsWrap = drawer.querySelector('#app-cart-items');
+  const subtotalEl = drawer.querySelector('#app-cart-subtotal');
+  const items = listCartItems();
+  if (!items.length) {
+    itemsWrap.innerHTML = '<p class="text-sm text-slate-500">Tu carrito está vacío.</p>';
+    subtotalEl.textContent = '$0.00 MXN';
+    return;
+  }
+  itemsWrap.innerHTML = items
+    .map((item) => `
+      <article class="mb-3 rounded-xl border border-slate-200 p-3">
+        <p class="font-semibold text-slate-900">${escapeHtml(item.name)}</p>
+        <p class="text-xs text-slate-500">${escapeHtml(item.type)} · $${Number(item.price || 0).toFixed(2)} MXN</p>
+        <div class="mt-2 flex items-center gap-2">
+          <button type="button" data-app-cart-minus="${escapeHtml(item.key)}" class="rounded border px-2">-</button>
+          <span class="w-6 text-center font-bold">${Number(item.qty || 1)}</span>
+          <button type="button" data-app-cart-plus="${escapeHtml(item.key)}" class="rounded border px-2">+</button>
+          <button type="button" data-app-cart-remove="${escapeHtml(item.key)}" class="ml-auto rounded border border-rose-200 px-2 text-rose-700">Quitar</button>
+        </div>
+      </article>
+    `)
+    .join('');
+  subtotalEl.textContent = `$${cartSubtotal().toFixed(2)} MXN`;
+}
+
+function openCartDrawer() {
+  const drawer = ensureCartDrawer();
+  cartOpen = true;
+  renderCartDrawer();
+  drawer.classList.remove('hidden');
+}
+
+function closeCartDrawer() {
+  const drawer = ensureCartDrawer();
+  cartOpen = false;
+  drawer.classList.add('hidden');
+}
+
 function closeUserMenu() {
   const menu = document.getElementById('app-user-menu');
   const toggle = document.querySelector('[data-app-user-menu-toggle]');
@@ -141,6 +211,7 @@ export async function updateAppShell(path = window.location.pathname) {
 
   themeCache = applyTheme(theme);
   header.innerHTML = renderHeader(access, themeCache);
+  renderCartDrawer();
 }
 
 export function refreshAppTheme(theme) {
@@ -150,8 +221,55 @@ export function refreshAppTheme(theme) {
 
 export function initAppShell(options = {}) {
   navigate = options.navigateTo || navigate;
+  ensureCartDrawer();
+  renderCartDrawer();
 
   document.body.addEventListener('click', async (event) => {
+    const cartToggle = event.target.closest('[data-app-cart-toggle]');
+    if (cartToggle) {
+      event.preventDefault();
+      if (cartOpen) closeCartDrawer();
+      else openCartDrawer();
+      updateAppShell(lastPath);
+      return;
+    }
+    if (event.target.closest('[data-app-cart-close]') || event.target.closest('[data-app-cart-overlay]')) {
+      closeCartDrawer();
+      updateAppShell(lastPath);
+      return;
+    }
+    if (event.target.closest('[data-app-cart-checkout]')) {
+      closeCartDrawer();
+      navigate('/checkout');
+      return;
+    }
+    const minus = event.target.closest('[data-app-cart-minus]');
+    if (minus) {
+      const key = minus.getAttribute('data-app-cart-minus');
+      const item = listCartItems().find((x) => x.key === key);
+      setCartQty(key, (item?.qty || 1) - 1);
+      renderCartDrawer();
+      updateAppShell(lastPath);
+      return;
+    }
+    const plus = event.target.closest('[data-app-cart-plus]');
+    if (plus) {
+      const key = plus.getAttribute('data-app-cart-plus');
+      const item = listCartItems().find((x) => x.key === key);
+      setCartQty(key, (item?.qty || 1) + 1);
+      renderCartDrawer();
+      updateAppShell(lastPath);
+      return;
+    }
+    const remove = event.target.closest('[data-app-cart-remove]');
+    if (remove) {
+      const key = remove.getAttribute('data-app-cart-remove');
+      removeFromCart(key);
+      renderCartDrawer();
+      updateAppShell(lastPath);
+      return;
+    }
+
     const menuToggle = event.target.closest('[data-app-user-menu-toggle]');
     if (menuToggle) {
       const menu = document.getElementById('app-user-menu');
@@ -179,9 +297,13 @@ export function initAppShell(options = {}) {
   });
 
   window.addEventListener('storage', (event) => {
-    if (event.key === 'balneario_cart_v1') updateAppShell(lastPath);
+    if (event.key === 'balneario_cart_v1') {
+      renderCartDrawer();
+      updateAppShell(lastPath);
+    }
   });
   window.addEventListener('cart:changed', () => {
+    renderCartDrawer();
     updateAppShell(lastPath);
   });
 
