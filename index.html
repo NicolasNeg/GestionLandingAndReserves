@@ -7,7 +7,18 @@
   </head>
   <body class="bg-gray-50 text-gray-900 font-sans antialiased">
     <header id="app-header" class="app-header"></header>
-    <div id="app" class="min-h-[calc(100vh-64px)] w-full"></div>
+    <div
+      id="app-route-loading"
+      class="pointer-events-none fixed inset-0 z-[160] flex items-center justify-center bg-slate-50/75 opacity-0 backdrop-blur-[2px] transition-opacity duration-300 ease-out"
+      aria-busy="false"
+      aria-hidden="true"
+    >
+      <div class="flex flex-col items-center gap-3 rounded-2xl border border-slate-200 bg-white px-8 py-6 shadow-xl">
+        <span class="app-route-loading-spinner h-10 w-10 rounded-full border-2 border-teal-600 border-t-transparent" aria-hidden="true"></span>
+        <p class="text-sm font-bold text-slate-600">Cargando…</p>
+      </div>
+    </div>
+    <div id="app" class="app-route-view min-h-[calc(100vh-64px)] w-full transition-opacity duration-200 ease-out"></div>
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>

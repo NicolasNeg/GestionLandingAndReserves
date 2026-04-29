@@ -158,7 +158,72 @@
     padding: 0.9rem 1rem;
   }
 
+  .app-user-menu-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 170;
+    background: rgb(15 23 42 / 0.48);
+  }
+
+  @media (min-width: 641px) {
+    .app-user-menu-backdrop {
+      display: none !important;
+    }
+  }
+
+  .app-route-loading-spinner {
+    animation: app-route-spin 0.8s linear infinite;
+  }
+
+  @keyframes app-route-spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  .landing-hero {
+    animation: landing-hero-in 0.9s ease-out both;
+  }
+
+  @keyframes landing-hero-in {
+    from {
+      opacity: 0.88;
+      transform: translateY(10px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  .landing-reveal {
+    opacity: 0;
+    transform: translateY(16px);
+    transition:
+      opacity 0.6s ease,
+      transform 0.6s ease;
+  }
+
+  .landing-reveal.landing-reveal--visible {
+    opacity: 1;
+    transform: none;
+  }
+
   @media (max-width: 640px) {
+    .app-user-menu:not(.hidden) {
+      position: fixed;
+      right: 0;
+      bottom: 0;
+      left: 0;
+      top: auto;
+      z-index: 180;
+      width: 100%;
+      max-width: none;
+      border-radius: 1.1rem 1.1rem 0 0;
+      padding-bottom: max(0.5rem, env(safe-area-inset-bottom));
+      box-shadow: 0 -12px 48px rgb(15 23 42 / 0.2);
+    }
+
     .app-topbar {
       gap: 0.45rem;
       padding-inline: 0.6rem;

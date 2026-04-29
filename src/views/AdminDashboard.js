@@ -27,6 +27,7 @@ import { showAlert } from '../lib/appDialog.js';
 import { subscribeParkingSpots, upsertParkingSpot, updateParkingSpot, removeParkingSpot } from '../lib/parkingRealtime.js';
 import { defaultScheduleConfig, parseScheduleConfig, serializeScheduleConfig, scheduleDays } from '../lib/schedule.js';
 import { publishAppUpdate } from '../lib/realtimeSync.js';
+import { openImageCropModal } from '../lib/imageCropModal.js';
 import { uploadProductImage } from '../lib/uploadProductImage.js';
 
 const LANDING_PAGE_ID = 'main';
@@ -142,7 +143,10 @@ const AdminDashboard = {
   render: async () => {
     const access = await getUserAccess(auth.currentUser);
     const canPackages = access.can('packages.manage');
-    const canLanding = access.can('landing.manage');
+    const canSitioPanel =
+      access.can('landing.manage') ||
+      access.can('admin.panel') ||
+      access.isProgramador === true;
     const canScan = access.can('tickets.scan');
     const canAdminPanel = access.can('admin.panel');
     const canInventoryView = access.can('inventory.manage') || access.can('inventory.adjust') || access.can('sales.physical');
@@ -171,7 +175,7 @@ const AdminDashboard = {
                     ${canInventoryView ? `<button type="button" data-admin-section="inventario" class="admin-sidebar-item" title="Inventario y ventas">${icon('package', 'h-5 w-5')}<span class="admin-sidebar-label">Inventario / Ventas</span></button>` : ''}
                     ${canScan ? `<a href="/escaner" data-link class="admin-sidebar-item" title="Escaner">${icon('scan', 'h-5 w-5')}<span class="admin-sidebar-label">Escaner</span></a>` : ''}
                     ${canAdminPanel ? `<button type="button" data-admin-section="admin" class="admin-sidebar-item" title="Panel administracion">${icon('dashboard', 'h-5 w-5')}<span class="admin-sidebar-label">Panel administracion</span></button>` : ''}
-                    ${canLanding ? `<button type="button" data-admin-section="sitio" class="admin-sidebar-item" title="Sitio / Landing">${icon('palette', 'h-5 w-5')}<span class="admin-sidebar-label">Sitio / Landing</span></button>` : ''}
+                    ${canSitioPanel ? `<button type="button" data-admin-section="sitio" class="admin-sidebar-item" title="Sitio / Landing">${icon('palette', 'h-5 w-5')}<span class="admin-sidebar-label">Sitio / Landing</span></button>` : ''}
                     ${access.isProgramador ? `<a href="/programador/theme" data-link class="admin-sidebar-item" title="Programador">${icon('code', 'h-5 w-5')}<span class="admin-sidebar-label">Programador</span></a>` : ''}
                 </nav>
                 <div class="admin-sidebar-footer">
@@ -320,7 +324,7 @@ const AdminDashboard = {
                             <span>Inventario</span>
                             <small>Productos, reservados aprox y ventas físicas.</small>
                         </button>` : ''}
-                        ${canLanding ? `<button type="button" class="admin-resource-card" data-admin-section="sitio">
+                        ${canSitioPanel ? `<button type="button" class="admin-resource-card" data-admin-section="sitio">
                             ${icon('map', 'h-6 w-6')}
                             <span>Landing y mapa</span>
                             <small>Horarios, servicios, vista aerea y zonas.</small>
@@ -347,7 +351,7 @@ const AdminDashboard = {
                     </div>
                 </div>` : ''}
 
-                ${canLanding ? `<div id="admin-panel-sitio" class="hidden space-y-8">
+                ${canSitioPanel ? `<div id="admin-panel-sitio" class="hidden space-y-8">
                     <h1 class="text-3xl font-bold text-gray-800">Contenido del sitio (/home)</h1>
                     <p class="text-sm text-slate-600">Textos, horarios, estado, mapa tipo lienzo, vista aerea, Google Maps y botones de contacto. Guarda al final.</p>
 
@@ -602,7 +606,9 @@ const AdminDashboard = {
         if (sec === 'inventario') initInventarioPanel();
       });
     });
-    const requestedInitialSection = new URLSearchParams(window.location.search).get('section') || 'tickets';
+    const adminUrlParams = new URLSearchParams(window.location.search);
+    const requestedInitialSection = adminUrlParams.get('section') || 'tickets';
+    const mapEditorFocus = adminUrlParams.get('mapfocus') === '1';
 
     let mapEditor = null;
     let sitioReady = false;
@@ -1330,8 +1336,10 @@ const AdminDashboard = {
       const clearBtn = document.getElementById('prod-image-clear');
       const previewWrap = document.getElementById('prod-image-preview-wrap');
       const previewImg = document.getElementById('prod-image-preview');
+      let croppedProductFile = null;
 
       const clearProdImageUi = () => {
+        croppedProductFile = null;
         if (previewImg?.src?.startsWith('blob:')) {
           try {
             URL.revokeObjectURL(previewImg.src);
@@ -1348,22 +1356,42 @@ const AdminDashboard = {
       };
 
       pickBtn?.addEventListener('click', () => fileInput?.click());
-      fileInput?.addEventListener('change', () => {
+      fileInput?.addEventListener('change', async () => {
         const f = fileInput?.files?.[0];
-        if (f && previewImg && previewWrap) {
-          if (previewImg.src?.startsWith('blob:')) {
-            try {
-              URL.revokeObjectURL(previewImg.src);
-            } catch {
-              /* noop */
-            }
-          }
-          previewImg.src = URL.createObjectURL(f);
-          previewWrap.classList.remove('hidden');
-          clearBtn?.classList.remove('hidden');
-        } else {
+        if (!f) {
           clearProdImageUi();
+          return;
         }
+        if (!previewImg || !previewWrap) return;
+        let blob;
+        try {
+          blob = await openImageCropModal({
+            file: f,
+            aspectRatio: Number.NaN,
+            title: 'Recortar imagen del producto'
+          });
+        } catch (e) {
+          if (e?.name === 'AbortError') {
+            clearProdImageUi();
+            return;
+          }
+          console.error(e);
+          await showAlert(e?.message || 'No se pudo procesar la imagen.', { title: 'Imagen', variant: 'danger' });
+          clearProdImageUi();
+          return;
+        }
+        const nameBase = (f.name && f.name.replace(/\.\w+$/, '')) || 'producto';
+        croppedProductFile = new File([blob], `${nameBase}.jpg`, { type: 'image/jpeg' });
+        if (previewImg.src?.startsWith('blob:')) {
+          try {
+            URL.revokeObjectURL(previewImg.src);
+          } catch {
+            /* noop */
+          }
+        }
+        previewImg.src = URL.createObjectURL(croppedProductFile);
+        previewWrap.classList.remove('hidden');
+        clearBtn?.classList.remove('hidden');
       });
       clearBtn?.addEventListener('click', () => clearProdImageUi());
 
@@ -1373,7 +1401,7 @@ const AdminDashboard = {
         const descripcion = document.getElementById('prod-desc')?.value?.trim() || '';
         const precio = parseFloat(document.getElementById('prod-price')?.value || '0');
         const stockActual = parseInt(document.getElementById('prod-stock')?.value || '0', 10) || 0;
-        const imageFile = fileInput?.files?.[0] || null;
+        const imageFile = croppedProductFile || fileInput?.files?.[0] || null;
         if (!titulo || precio <= 0) {
           await showAlert('Completa titulo y precio del producto.', { title: 'Producto', variant: 'warning' });
           return;
@@ -1431,7 +1459,14 @@ const AdminDashboard = {
     showSection(initialSection);
     if (requestedInitialSection === 'parking' && panelParking) initParkingPanel();
     if (requestedInitialSection === 'inventario' && panelInventario) initInventarioPanel();
-    if (requestedInitialSection === 'sitio' && panelSitio) initSitioPanel();
+    if (requestedInitialSection === 'sitio' && panelSitio) {
+      await initSitioPanel();
+      if (mapEditorFocus) {
+        requestAnimationFrame(() => {
+          document.querySelector('.mapa-editor-shell')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        });
+      }
+    }
 
     const btnCreatePkg = document.getElementById('btn-create-pkg');
     const btnRefresh = document.getElementById('btn-refresh');

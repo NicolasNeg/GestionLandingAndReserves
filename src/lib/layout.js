@@ -70,6 +70,10 @@ function renderHeader(access, theme) {
     access.can('dashboard.manage')
       ? navLink({ href: '/admin/dashboard?section=tickets', label: 'Gestion', iconName: 'briefcase', active: path === '/admin/dashboard' })
       : '',
+    access.can('dashboard.manage') &&
+    (access.can('landing.manage') || access.can('admin.panel') || access.isProgramador)
+      ? navLink({ href: '/admin/mapa', label: 'Editor mapa', iconName: 'map', active: false })
+      : '',
     access.can('admin.panel')
       ? navLink({ href: '/admin/dashboard?section=admin', label: 'Panel administracion', iconName: 'dashboard', active: path === '/admin/dashboard' })
       : ''
@@ -87,7 +91,8 @@ function renderHeader(access, theme) {
       <div class="app-header-actions">
         ${isLogged ? loggedLinks : publicLinks}
         ${isLogged ? `
-          <div class="relative">
+          <div class="app-user-wrap relative z-[100]">
+            <div id="app-user-menu-backdrop" class="app-user-menu-backdrop" hidden data-app-user-menu-backdrop></div>
             <button type="button" class="app-user-button" data-app-user-menu-toggle aria-expanded="false" aria-controls="app-user-menu">
               ${userAvatar(access)}
               <span>Usuario</span>
@@ -190,10 +195,13 @@ function closeCartDrawer() {
   drawer.classList.add('hidden');
 }
 
-function closeUserMenu() {
+export function closeUserMenu() {
   const menu = document.getElementById('app-user-menu');
   const toggle = document.querySelector('[data-app-user-menu-toggle]');
+  const backdrop = document.getElementById('app-user-menu-backdrop');
   menu?.classList.add('hidden');
+  backdrop?.setAttribute('hidden', '');
+  document.body.classList.remove('overflow-hidden');
   toggle?.setAttribute('aria-expanded', 'false');
 }
 
@@ -270,12 +278,27 @@ export function initAppShell(options = {}) {
       return;
     }
 
+    if (event.target.closest('[data-app-user-menu-backdrop]')) {
+      closeUserMenu();
+      return;
+    }
+
     const menuToggle = event.target.closest('[data-app-user-menu-toggle]');
     if (menuToggle) {
+      event.preventDefault();
       const menu = document.getElementById('app-user-menu');
+      const backdrop = document.getElementById('app-user-menu-backdrop');
       const isOpen = menu && !menu.classList.contains('hidden');
       menu?.classList.toggle('hidden', isOpen);
-      menuToggle.setAttribute('aria-expanded', isOpen ? 'false' : 'true');
+      const nowOpen = Boolean(menu && !menu.classList.contains('hidden'));
+      const isMobile = window.matchMedia('(max-width: 640px)').matches;
+      if (backdrop) {
+        if (nowOpen && isMobile) backdrop.removeAttribute('hidden');
+        else backdrop.setAttribute('hidden', '');
+      }
+      if (nowOpen && isMobile) document.body.classList.add('overflow-hidden');
+      else document.body.classList.remove('overflow-hidden');
+      menuToggle.setAttribute('aria-expanded', nowOpen ? 'true' : 'false');
       return;
     }
 

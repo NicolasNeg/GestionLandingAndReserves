@@ -7,6 +7,8 @@ import { downloadTicketPdf } from '../lib/ticketPdf.js';
 import { showAlert } from '../lib/appDialog.js';
 import { getUserAccess } from '../lib/accessControl.js';
 import { icon } from '../lib/icons.js';
+import { openImageCropModal } from '../lib/imageCropModal.js';
+import { uploadAvatarImage } from '../lib/uploadProductImage.js';
 
 function activeSection() {
   if (window.location.pathname.startsWith('/cliente/configuracion')) return 'configuracion';
@@ -74,8 +76,15 @@ const ClienteDashboard = {
                     <label class="block text-sm font-black text-slate-700">Correo
                       <input id="profile-email-input" type="email" class="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-500" readonly />
                     </label>
-                    <label class="block text-sm font-black text-slate-700">Foto de perfil URL
-                      <input id="profile-photo-input" type="url" class="mt-1 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-900 outline-none transition focus:border-teal-500" placeholder="https://..." autocomplete="url" />
+                    <input type="hidden" id="profile-photo-url" value="" />
+                    <label class="block text-sm font-black text-slate-700">Foto de perfil
+                      <div class="mt-1 flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+                        <input id="profile-photo-file" type="file" accept="image/jpeg,image/png,image/webp" class="hidden" />
+                        <button type="button" id="profile-photo-pick" class="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-800 outline-none transition hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-teal-500">
+                          ${icon('image', 'h-4 w-4')} Elegir y recortar
+                        </button>
+                        <span class="text-xs font-semibold text-slate-500">Cuadrada recomendada; max. 6 MB.</span>
+                      </div>
                     </label>
                     <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
                       <button id="btn-save-profile" type="submit" class="inline-flex items-center justify-center gap-2 rounded-xl bg-teal-700 px-4 py-3 text-sm font-black text-white transition hover:bg-teal-800">
@@ -170,7 +179,9 @@ const ClienteDashboard = {
     const profileForm = document.getElementById('profile-inline-form');
     const profileNameInput = document.getElementById('profile-name-input');
     const profileEmailInput = document.getElementById('profile-email-input');
-    const profilePhotoInput = document.getElementById('profile-photo-input');
+    const profilePhotoUrl = document.getElementById('profile-photo-url');
+    const profilePhotoFile = document.getElementById('profile-photo-file');
+    const profilePhotoPick = document.getElementById('profile-photo-pick');
     const btnSaveProfile = document.getElementById('btn-save-profile');
     const profileFormMsg = document.getElementById('profile-form-msg');
     const prefEmailCopy = document.getElementById('pref-email-copy');
@@ -271,7 +282,7 @@ const ClienteDashboard = {
         if (pRole) pRole.textContent = profileSnapshot.rol;
         if (profileNameInput) profileNameInput.value = name;
         if (profileEmailInput) profileEmailInput.value = profileSnapshot.email;
-        if (profilePhotoInput) profilePhotoInput.value = profileSnapshot.photoURL;
+        if (profilePhotoUrl) profilePhotoUrl.value = profileSnapshot.photoURL;
         renderAvatar(name, profileSnapshot.photoURL);
       } catch (error) {
         console.error('Error al cargar perfil:', error);
@@ -392,10 +403,54 @@ const ClienteDashboard = {
       }
     };
 
+    profilePhotoPick?.addEventListener('click', () => profilePhotoFile?.click());
+    profilePhotoFile?.addEventListener('change', async () => {
+      const f = profilePhotoFile?.files?.[0];
+      const u = auth.currentUser;
+      if (!f || !u) return;
+      const prevHtml = profilePhotoPick?.innerHTML;
+      if (profilePhotoPick) {
+        profilePhotoPick.disabled = true;
+        profilePhotoPick.innerHTML = `${icon('clock', 'h-4 w-4 animate-spin')} Procesando...`;
+      }
+      try {
+        const blob = await openImageCropModal({
+          file: f,
+          aspectRatio: 1,
+          title: 'Recortar foto de perfil'
+        });
+        const file = new File([blob], 'avatar.jpg', { type: 'image/jpeg' });
+        const url = await uploadAvatarImage(file, u.uid);
+        if (profilePhotoUrl) profilePhotoUrl.value = url;
+        profileSnapshot.photoURL = url;
+        const nombre = (profileNameInput?.value || profileSnapshot.nombre || '').trim() || 'Usuario';
+        renderAvatar(nombre, url);
+        if (profileFormMsg) {
+          profileFormMsg.textContent = 'Foto lista. Pulsa Guardar perfil para aplicarla.';
+          profileFormMsg.className = 'text-sm font-semibold text-emerald-700';
+        }
+      } catch (e) {
+        if (e?.name !== 'AbortError') {
+          console.error(e);
+          if (profileFormMsg) {
+            profileFormMsg.textContent = e?.message || 'No se pudo subir la foto.';
+            profileFormMsg.className = 'text-sm font-semibold text-rose-700';
+          }
+          await showAlert(e?.message || 'No se pudo subir la foto.', { title: 'Foto', variant: 'danger' });
+        }
+      } finally {
+        if (profilePhotoFile) profilePhotoFile.value = '';
+        if (profilePhotoPick) {
+          profilePhotoPick.disabled = false;
+          profilePhotoPick.innerHTML = prevHtml || `${icon('image', 'h-4 w-4')} Elegir y recortar`;
+        }
+      }
+    });
+
     profileForm?.addEventListener('submit', async (event) => {
       event.preventDefault();
       const nombre = (profileNameInput?.value || '').trim();
-      const photoURL = (profilePhotoInput?.value || '').trim();
+      const photoURL = (profilePhotoUrl?.value || '').trim();
       if (!nombre) return showAlert('El nombre es obligatorio.', { title: 'Editar perfil', variant: 'warning' });
       btnSaveProfile.disabled = true;
       btnSaveProfile.innerHTML = `${icon('clock', 'h-4 w-4 animate-spin')} Guardando...`;

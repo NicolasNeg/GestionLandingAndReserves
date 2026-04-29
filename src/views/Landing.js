@@ -4,6 +4,7 @@ import {
   getLandingPage,
   listServiciosLanding
 } from '../dataconnect-generated';
+import { auth } from '../firebase-config.js';
 import { drawDistribucionCanvas, DEFAULT_MAPA_JSON, MAP_ITEM_KINDS } from '../lib/distribucionMapa.js';
 import { getUserAccess, waitForAuthUser } from '../lib/accessControl.js';
 import { icon } from '../lib/icons.js';
@@ -408,12 +409,12 @@ export default {
           </nav>
 
           <main class="flex-1 pb-28 pt-14 lg:pb-16 lg:pt-6">
-            <section id="inicio" class="landing-hero scroll-mt-24 px-4 py-16 text-white sm:px-8" style="background-image: linear-gradient(115deg, rgba(12, 74, 110, 0.92), rgba(13, 148, 136, 0.76)), url('${heroImageUrl}')">
+            <section id="inicio" class="landing-hero scroll-mt-24 px-4 py-20 text-white sm:px-8 sm:py-24" style="background-image: linear-gradient(115deg, rgba(12, 74, 110, 0.92), rgba(13, 148, 136, 0.76)), url('${heroImageUrl}'); background-size: cover; background-position: center;">
               <div class="landing-hero-content mx-auto max-w-5xl">
                 <p class="mb-3 text-xs font-bold uppercase tracking-widest text-amber-200/90">Balneario San Antonio Texas</p>
-                <h1 class="text-4xl font-black leading-tight sm:text-5xl">Tu dia perfecto empieza aqui</h1>
-                <p class="mt-5 max-w-2xl text-base text-blue-100 sm:text-lg">
-                  Reserva en linea, revisa paquetes y conoce el parque. Todo el contenido de esta pagina puede actualizarlo el personal desde el panel administrativo.
+                <h1 class="text-balance text-4xl font-black leading-[1.12] sm:text-5xl lg:text-6xl">Tu dia perfecto empieza aqui</h1>
+                <p class="mt-5 max-w-2xl text-base leading-relaxed text-blue-100/95 sm:text-lg">
+                  Reserva en linea, revisa paquetes y conoce el parque. Actualizado por el equipo desde un solo panel: horarios, mapa y catalogo.
                 </p>
                 <div class="landing-resource-pills mt-6">
                   <span>${icon('waves', 'h-4 w-4')} Albercas</span>
@@ -428,14 +429,14 @@ export default {
               </div>
             </section>
 
-            <section id="descripcion" class="scroll-mt-24 border-b border-slate-200 bg-white px-4 py-14 sm:px-8">
+            <section id="descripcion" class="landing-reveal scroll-mt-24 border-b border-slate-200 bg-white px-4 py-14 sm:px-8">
               <div class="mx-auto max-w-5xl">
                 <h2 class="text-2xl font-black text-slate-900 sm:text-3xl">Sobre nuestro parque</h2>
                 <div id="landing-descripcion" class="prose prose-slate mt-6 max-w-none whitespace-pre-wrap text-slate-600"></div>
               </div>
             </section>
 
-            <section id="servicios" class="scroll-mt-24 bg-slate-50 px-4 py-14 sm:px-8">
+            <section id="servicios" class="landing-reveal scroll-mt-24 bg-slate-50 px-4 py-14 sm:px-8">
               <div class="mx-auto max-w-5xl">
                 <h2 class="text-2xl font-black text-slate-900 sm:text-3xl">Servicios</h2>
                 <p class="mt-2 text-sm text-slate-500">Gestionados desde el panel del personal.</p>
@@ -445,7 +446,7 @@ export default {
               </div>
             </section>
 
-            <section id="estado" class="scroll-mt-24 border-y border-slate-200 bg-white px-4 py-14 sm:px-8">
+            <section id="estado" class="landing-reveal scroll-mt-24 border-y border-slate-200 bg-white px-4 py-14 sm:px-8">
               <div class="mx-auto max-w-5xl">
                 <div class="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
                   <div>
@@ -504,7 +505,7 @@ export default {
               </div>
             </section>
 
-            <section id="mapa" class="scroll-mt-24 bg-slate-50 px-4 py-14 sm:px-8">
+            <section id="mapa" class="landing-reveal scroll-mt-24 bg-slate-50 px-4 py-14 sm:px-8">
               <div class="mx-auto max-w-5xl">
                 <div class="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
                   <div>
@@ -512,9 +513,16 @@ export default {
                     <h2 class="text-2xl font-black text-slate-900 sm:text-3xl">Distribucion del parque</h2>
                     <p class="mt-2 max-w-2xl text-sm text-slate-600">Zonas, mesas, albercas, palapas, servicios y accesos publicados por el personal.</p>
                   </div>
-                  <p class="inline-flex w-fit items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-black text-slate-700">
-                    ${icon('settings', 'h-4 w-4')} Editable desde panel
-                  </p>
+                  <div class="flex flex-col items-end gap-2 sm:flex-row sm:items-center">
+                    <p class="inline-flex w-fit items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-black text-slate-700">
+                      ${icon('settings', 'h-4 w-4')} Editable desde panel
+                    </p>
+                    <p id="landing-mapa-edit-wrap" class="hidden">
+                      <a href="/admin/mapa" data-link class="inline-flex items-center gap-2 rounded-full bg-cyan-600 px-4 py-2 text-sm font-black text-white shadow-md transition hover:bg-cyan-500">
+                        ${icon('map', 'h-4 w-4')} Editar plano del parque
+                      </a>
+                    </p>
+                  </div>
                 </div>
                 <div class="mt-8 overflow-hidden rounded-3xl border border-cyan-100 bg-white shadow-sm">
                   <div class="flex flex-col gap-3 border-b border-slate-100 bg-gradient-to-r from-cyan-50 to-blue-50 p-4">
@@ -528,7 +536,7 @@ export default {
               </div>
             </section>
 
-            <section id="vista-aerea" class="scroll-mt-24 bg-white px-4 py-14 sm:px-8">
+            <section id="vista-aerea" class="landing-reveal scroll-mt-24 bg-white px-4 py-14 sm:px-8">
               <div class="mx-auto max-w-5xl">
                 <div class="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
                   <div>
@@ -554,7 +562,7 @@ export default {
               </div>
             </section>
 
-            <section id="paquetes" class="scroll-mt-24 border-t border-slate-200 bg-slate-50 px-4 py-14 sm:px-8">
+            <section id="paquetes" class="landing-reveal scroll-mt-24 border-t border-slate-200 bg-slate-50 px-4 py-14 sm:px-8">
               <div class="mx-auto max-w-5xl">
                 <h2 class="text-2xl font-black text-slate-900 sm:text-3xl">Paquetes disponibles</h2>
                 <div id="landing-paquetes" class="mt-8 min-h-24 rounded-2xl border border-blue-100 bg-white p-6 shadow-sm">
@@ -563,7 +571,7 @@ export default {
               </div>
             </section>
 
-            <section id="productos" class="scroll-mt-24 border-t border-slate-200 bg-white px-4 py-14 sm:px-8">
+            <section id="productos" class="landing-reveal scroll-mt-24 border-t border-slate-200 bg-white px-4 py-14 sm:px-8">
               <div class="mx-auto max-w-5xl">
                 <h2 class="text-2xl font-black text-slate-900 sm:text-3xl">Productos y extras</h2>
                 <p class="mt-2 text-sm text-slate-500">Agrega bebidas, alimentos o extras (ej. estacionamiento) al carrito.</p>
@@ -573,7 +581,7 @@ export default {
               </div>
             </section>
 
-            <section id="estacionamiento" class="scroll-mt-24 border-t border-slate-200 bg-slate-50 px-4 py-14 sm:px-8">
+            <section id="estacionamiento" class="landing-reveal scroll-mt-24 border-t border-slate-200 bg-slate-50 px-4 py-14 sm:px-8">
               <div class="mx-auto max-w-5xl">
                 <h2 class="text-2xl font-black text-slate-900 sm:text-3xl">Estacionamiento en tiempo real</h2>
                 <p class="mt-2 text-sm text-slate-500">Visualiza spots libres, reservados y ocupados.</p>
@@ -584,7 +592,7 @@ export default {
               </div>
             </section>
 
-            <section id="contacto" class="scroll-mt-24 bg-white px-4 py-14 sm:px-8">
+            <section id="contacto" class="landing-reveal scroll-mt-24 bg-white px-4 py-14 sm:px-8">
               <div class="mx-auto max-w-5xl">
                 <h2 class="text-2xl font-black text-slate-900 sm:text-3xl">Contacto y enlaces</h2>
                 <div id="landing-botones" class="mt-6 flex flex-wrap gap-3"></div>
@@ -667,6 +675,19 @@ export default {
 
     const mapCanvas = document.getElementById('landing-mapa-canvas');
     if (mapCanvas) drawDistribucionCanvas(mapCanvas, landing.mapaDistribucionJson);
+
+    const mapEditWrap = document.getElementById('landing-mapa-edit-wrap');
+    if (mapEditWrap && auth.currentUser) {
+      try {
+        const access = await getUserAccess(auth.currentUser);
+        const canEditPlano =
+          access.can('dashboard.manage') &&
+          (access.can('landing.manage') || access.can('admin.panel') || access.isProgramador);
+        if (canEditPlano) mapEditWrap.classList.remove('hidden');
+      } catch {
+        /* noop */
+      }
+    }
 
     const satWrap = document.getElementById('landing-satelite-wrap');
     const satImg = document.getElementById('landing-satelite-img');
@@ -910,5 +931,24 @@ export default {
     } else {
       setQuickActive('inicio');
     }
+
+    const revealObserver =
+      'IntersectionObserver' in window
+        ? new IntersectionObserver(
+            (entries, obs) => {
+              entries.forEach((entry) => {
+                if (entry.isIntersecting) {
+                  entry.target.classList.add('landing-reveal--visible');
+                  obs.unobserve(entry.target);
+                }
+              });
+            },
+            { rootMargin: '0px 0px -6% 0px', threshold: 0.06 }
+          )
+        : null;
+    document.querySelectorAll('.landing-reveal').forEach((el) => {
+      if (revealObserver) revealObserver.observe(el);
+      else el.classList.add('landing-reveal--visible');
+    });
   }
 };
