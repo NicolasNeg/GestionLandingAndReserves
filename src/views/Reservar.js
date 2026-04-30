@@ -38,6 +38,115 @@ function isDataConnectMissing(error) {
   );
 }
 
+const TABLE_STATUS_META = {
+  libre: {
+    label: 'Libre',
+    className: 'bg-emerald-50 text-emerald-800 ring-emerald-100'
+  },
+  apartada_mia: {
+    label: 'Apartada por mi',
+    className: 'bg-amber-50 text-amber-800 ring-amber-100'
+  },
+  apartada: {
+    label: 'Apartada por otro',
+    className: 'bg-rose-50 text-rose-800 ring-rose-100'
+  },
+  ocupada: {
+    label: 'Ocupada',
+    className: 'bg-indigo-50 text-indigo-800 ring-indigo-100'
+  },
+  no_reservable: {
+    label: 'No reservable',
+    className: 'bg-slate-100 text-slate-700 ring-slate-200'
+  }
+};
+
+const moneyFormatter = new Intl.NumberFormat('es-MX', {
+  style: 'currency',
+  currency: 'MXN'
+});
+
+function isMesaItem(item) {
+  return item?.kind === 'mesa' || item?.kind === 'table' || item?.type === 'table';
+}
+
+function normalizeBoolean(value, fallback = true) {
+  if (value === undefined || value === null || value === '') return fallback;
+  if (value === false || value === 'false') return false;
+  return Boolean(value);
+}
+
+function normalizeTags(value) {
+  if (Array.isArray(value)) return value.map((tag) => String(tag || '').trim()).filter(Boolean);
+  return String(value || '')
+    .split(',')
+    .map((tag) => tag.trim())
+    .filter(Boolean);
+}
+
+function slugify(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+function normalizeExtras(value) {
+  const source = Array.isArray(value)
+    ? value
+    : String(value || '')
+        .split('\n')
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .map((line) => {
+          const parts = line.split('|').map((part) => part.trim());
+          const twoPartPrice = parts.length === 2 && Number.isFinite(Number(parts[1]));
+          return {
+            id: twoPartPrice ? slugify(parts[0]) : parts[0],
+            label: twoPartPrice ? parts[0] : parts[1],
+            price: twoPartPrice ? parts[1] : parts[2]
+          };
+        });
+  return source
+    .map((extra, index) => {
+      const label = String(extra?.label || extra?.nombre || extra?.id || '').trim();
+      if (!label) return null;
+      return {
+        id: slugify(extra?.id || label) || `extra-${index + 1}`,
+        label,
+        price: Math.max(0, Number(extra?.price ?? extra?.precio ?? 0) || 0)
+      };
+    })
+    .filter(Boolean);
+}
+
+function getMesaMetadata(item) {
+  const metadata = item?.metadata || {};
+  const rawCapacity = metadata.capacity ?? metadata.capacidad;
+  const rawPrice = metadata.price ?? metadata.precio;
+  const hasPrice = rawPrice !== undefined && rawPrice !== null && String(rawPrice).trim() !== '';
+  const price = hasPrice ? Math.max(0, Number(rawPrice) || 0) : null;
+  const tags = normalizeTags(metadata.tags);
+  if (metadata.vip && !tags.some((tag) => tag.toLowerCase() === 'vip')) tags.unshift('VIP');
+  return {
+    name: metadata.publicName || metadata.nombrePublico || item?.label || item?.id || 'Mesa',
+    capacity: Math.max(1, parseInt(rawCapacity || '4', 10) || 4),
+    hasPrice,
+    price,
+    priceLabel: hasPrice ? moneyFormatter.format(price) : 'Precio por confirmar',
+    vip: Boolean(metadata.vip),
+    reservable: normalizeBoolean(metadata.reservable, true) && metadata.estadoVisual !== 'no_reservable',
+    zone: metadata.zone || metadata.zona || '',
+    description: metadata.description || metadata.descripcion || item?.notes || '',
+    tags,
+    extrasAllowed: normalizeBoolean(metadata.extrasAllowed, true),
+    extras: normalizeExtras(metadata.extras)
+  };
+}
+
 export default {
   async render() {
     const hoy = formatFechaDia();
@@ -69,6 +178,7 @@ export default {
           <span><i class="bg-amber-500"></i> Apartada por mí</span>
           <span><i class="bg-red-500"></i> Apartada</span>
           <span><i class="bg-indigo-600"></i> Ocupada</span>
+          <span><i class="bg-slate-500"></i> No reservable</span>
         </div>
 
         <div class="reservation-layout mt-6">
@@ -130,6 +240,7 @@ export default {
 
     let mapJson = '';
     let currentFecha = (fechaInput.value || '').trim() || formatFechaDia();
+    let selectedMesaId = '';
     let unsubscribeLive = null;
     let mesaViewer = null;
     const mesaViewerOptions = {
@@ -144,6 +255,18 @@ export default {
     const stateByMapItemId = new Map();
     /** @type {Set<string>} */
     const apartadas = new Set();
+    let mapData = parseDistribucionJson('');
+    const getMesaItemById = (id) => mapData.items.find((item) => item.id === id && isMesaItem(item));
+    const getMesaStatus = (item) => {
+      const meta = getMesaMetadata(item);
+      if (!meta.reservable) return 'no_reservable';
+      const liveState = stateByMapItemId.get(item.id);
+      if (liveState === 'ocupada') return 'ocupada';
+      if (apartadas.has(item.id) || liveState === 'apartada') {
+        return ownerByMapItemId.get(item.id) === auth.currentUser?.uid ? 'apartada_mia' : 'apartada';
+      }
+      return 'libre';
+    };
 
     const setMsg = (text, variant = 'muted') => {
       if (!msgEl) return;
@@ -182,15 +305,16 @@ export default {
 
     function setMapTooltip(item, _index, _point, pointer) {
       if (!mapTooltip) return;
-      if (!item || !pointer || window.matchMedia('(max-width: 640px)').matches) {
+      if (!item || !isMesaItem(item) || !pointer || window.matchMedia('(max-width: 640px)').matches) {
         mapTooltip.classList.add('hidden');
         return;
       }
       const rect = canvas.getBoundingClientRect();
-      const state = stateByMapItemId.get(item.id) || (apartadas.has(item.id) ? 'apartada' : 'libre');
+      const meta = getMesaMetadata(item);
+      const state = getMesaStatus(item);
       mapTooltip.innerHTML = `
-        <strong>${escapeHtml(item.label || item.id || 'Mesa')}</strong>
-        <span>${escapeHtml(state === 'libre' ? 'Disponible' : state === 'ocupada' ? 'Ocupada' : 'Apartada')}</span>
+        <strong>${escapeHtml(meta.name)}</strong>
+        <span>${escapeHtml(TABLE_STATUS_META[state]?.label || 'Mesa')}</span>
       `;
       mapTooltip.style.left = `${Math.min(rect.width - 190, Math.max(10, pointer.clientX - rect.left + 14))}px`;
       mapTooltip.style.top = `${Math.min(rect.height - 74, Math.max(10, pointer.clientY - rect.top + 14))}px`;
@@ -206,15 +330,19 @@ export default {
       mapJson = '';
     }
 
-    const parsedEmpty = !parseDistribucionJson(mapJson).items.length;
+    mapData = parseDistribucionJson(mapJson);
+    const parsedEmpty = !mapData.items.length;
 
     const redraw = () => {
-      const me = auth.currentUser?.uid || '';
       const statusByMapItemId = {};
+      mapData.items.filter(isMesaItem).forEach((item) => {
+        const state = getMesaStatus(item);
+        if (state !== 'libre') statusByMapItemId[item.id] = state;
+      });
       apartadas.forEach((id) => {
-        const state = stateByMapItemId.get(id) || 'apartada';
-        if (state === 'ocupada') statusByMapItemId[id] = 'ocupada';
-        else statusByMapItemId[id] = ownerByMapItemId.get(id) === me ? 'apartada_mia' : 'apartada';
+        const item = getMesaItemById(id);
+        if (!item) return;
+        statusByMapItemId[id] = getMesaStatus(item);
       });
       if (!mapJson || parsedEmpty) {
         canvas.classList.add('hidden');
@@ -287,6 +415,7 @@ export default {
             }
           });
           redraw();
+          if (selectedMesaId) openMesaDetail(getMesaItemById(selectedMesaId));
           setMsg('Sincronizado en vivo.', 'ok');
           setLivePill('En vivo', 'ok');
         },
@@ -316,13 +445,24 @@ export default {
         }
         misEl.innerHTML = mineToday
           .map(
-            (r) => `
-          <div class="flex items-center justify-between gap-2 rounded-xl border border-slate-100 bg-slate-50 px-3 py-2">
-            <span class="font-bold text-slate-800">${escapeHtml(r.mapItemId)}</span>
-            <button type="button" data-cancel-r="${r.id}" data-cancel-map="${escapeHtml(r.mapItemId)}" class="shrink-0 rounded-lg border border-rose-200 px-2 py-1 text-xs font-black text-rose-700 hover:bg-rose-50">
-              Cancelar
-            </button>
-          </div>`
+            (r) => {
+              const item = getMesaItemById(r.mapItemId);
+              const meta = item ? getMesaMetadata(item) : null;
+              return `
+          <div class="rounded-xl border border-slate-100 bg-slate-50 px-3 py-3">
+            <div class="flex items-start justify-between gap-3">
+              <div class="min-w-0">
+                <p class="truncate font-black text-slate-900">${escapeHtml(meta?.name || r.mapItemId)}</p>
+                <p class="mt-0.5 text-xs font-semibold text-slate-500">${escapeHtml(r.fechaDia || currentFecha)} · ${escapeHtml(r.estado || 'apartada')}</p>
+                ${meta?.zone ? `<p class="mt-1 text-xs font-bold text-teal-700">${escapeHtml(meta.zone)}</p>` : ''}
+                <p class="mt-1 text-xs font-semibold text-slate-600">${meta?.hasPrice ? escapeHtml(meta.priceLabel) : 'Precio por confirmar'}</p>
+              </div>
+              <button type="button" data-cancel-r="${r.id}" data-cancel-map="${escapeHtml(r.mapItemId)}" class="shrink-0 rounded-lg border border-rose-200 px-2 py-1 text-xs font-black text-rose-700 hover:bg-rose-50">
+                Cancelar
+              </button>
+            </div>
+          </div>`;
+            }
           )
           .join('');
         misEl.querySelectorAll('[data-cancel-r]').forEach((btn) => {
@@ -337,6 +477,7 @@ export default {
               await loadApartadasBase();
               connectLive();
               await renderMis();
+              if (selectedMesaId) openMesaDetail(getMesaItemById(selectedMesaId));
               setMsg('');
             } catch (e) {
               console.error(e);
@@ -358,6 +499,7 @@ export default {
       const v = (fechaInput.value || '').trim();
       if (!isValidFechaDia(v)) return;
       currentFecha = v;
+      selectedMesaId = '';
       setMsg('');
       setPanelOpen(false);
       if (detailEl) detailEl.innerHTML = 'Toca una mesa libre para revisar detalles y confirmar.';
@@ -368,78 +510,88 @@ export default {
 
     function openMesaDetail(item) {
       if (!detailEl) return;
-      if (!item || item.kind !== 'mesa') {
+      if (!item || !isMesaItem(item)) {
+        selectedMesaId = '';
         setPanelOpen(false);
         detailEl.innerHTML = '<p class="text-slate-500">Selecciona una mesa disponible del mapa.</p>';
         return;
       }
+      selectedMesaId = item.id;
       setPanelOpen(true);
-      const metadata = item.metadata || {};
-      const capacidad = Number(metadata.capacidad || 4);
-      const precio = Number(metadata.precio || 0);
-      const estado = stateByMapItemId.get(item.id) || (apartadas.has(item.id) ? 'apartada' : 'libre');
-      const mine = ownerByMapItemId.get(item.id) === auth.currentUser?.uid;
-      const statusText =
-        estado === 'ocupada'
-          ? 'Ocupada'
-          : apartadas.has(item.id)
-            ? (mine ? 'Apartada por mi' : 'Apartada por otro usuario')
-            : 'Disponible';
-      const canReserve = estado !== 'ocupada' && !apartadas.has(item.id) && metadata.reservable !== false;
-      const statusClass = canReserve
-        ? 'bg-emerald-50 text-emerald-800 ring-emerald-100'
-        : estado === 'ocupada'
-          ? 'bg-indigo-50 text-indigo-800 ring-indigo-100'
-          : mine
-            ? 'bg-amber-50 text-amber-800 ring-amber-100'
-            : 'bg-rose-50 text-rose-800 ring-rose-100';
+      const meta = getMesaMetadata(item);
+      const status = getMesaStatus(item);
+      const statusMeta = TABLE_STATUS_META[status] || TABLE_STATUS_META.libre;
+      const user = auth.currentUser;
+      const canReserve = status === 'libre' && meta.reservable && Boolean(user);
+      const needsLogin = status === 'libre' && meta.reservable && !user;
+      const tagsHtml = meta.tags.length
+        ? `<div class="flex flex-wrap gap-1.5">${meta.tags.map((tag) => `<span class="rounded-full bg-teal-50 px-2 py-1 text-[11px] font-black text-teal-700">${escapeHtml(tag)}</span>`).join('')}</div>`
+        : '<p class="text-xs font-semibold text-slate-400">Sin tags publicados.</p>';
+      const extras = meta.extrasAllowed ? meta.extras : [];
+      const extrasHtml = extras.length
+        ? extras.map((extra) => `
+            <label class="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-700">
+              <span class="flex items-center gap-2">
+                <input type="checkbox" data-reserva-extra="${escapeHtml(extra.id)}" data-extra-price="${extra.price}" class="h-4 w-4 rounded border-slate-300" />
+                ${escapeHtml(extra.label)}
+              </span>
+              <span class="text-xs font-black text-slate-500">${moneyFormatter.format(extra.price)}</span>
+            </label>
+          `).join('')
+        : `<p class="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-3 text-xs font-semibold text-slate-500">${meta.extrasAllowed ? 'Sin extras publicados para esta mesa.' : 'Extras no habilitados para esta mesa.'}</p>`;
       detailEl.innerHTML = `
         <div class="space-y-4">
           <div>
             <div class="flex items-start justify-between gap-3">
               <div>
-                <h2 class="text-xl font-black text-slate-900">${escapeHtml(item.label || item.id)}</h2>
+                <h2 class="text-xl font-black text-slate-900">${escapeHtml(meta.name)}</h2>
                 <p class="mt-1 text-xs font-bold uppercase tracking-wide text-slate-500">${escapeHtml(currentFecha)}</p>
               </div>
-              <span class="rounded-full px-3 py-1 text-[11px] font-black uppercase tracking-wide ring-1 ${statusClass}">${escapeHtml(statusText)}</span>
+              <span class="rounded-full px-3 py-1 text-[11px] font-black uppercase tracking-wide ring-1 ${statusMeta.className}">${escapeHtml(statusMeta.label)}</span>
             </div>
           </div>
           <dl class="grid grid-cols-2 gap-2 text-xs">
-            <div class="rounded-xl border border-slate-100 bg-slate-50 p-3"><dt class="font-black uppercase tracking-wide text-slate-500">Capacidad</dt><dd class="mt-1 font-bold text-slate-900">${capacidad} personas</dd></div>
-            <div class="rounded-xl border border-slate-100 bg-slate-50 p-3"><dt class="font-black uppercase tracking-wide text-slate-500">Base</dt><dd class="mt-1 font-bold text-slate-900">${precio > 0 ? `$${precio.toFixed(2)}` : 'Incluida'}</dd></div>
+            <div class="rounded-xl border border-slate-100 bg-slate-50 p-3"><dt class="font-black uppercase tracking-wide text-slate-500">Capacidad</dt><dd class="mt-1 font-bold text-slate-900">${meta.capacity} personas</dd></div>
+            <div class="rounded-xl border border-slate-100 bg-slate-50 p-3"><dt class="font-black uppercase tracking-wide text-slate-500">Precio base</dt><dd class="mt-1 font-bold text-slate-900">${escapeHtml(meta.priceLabel)}</dd></div>
+            <div class="rounded-xl border border-slate-100 bg-slate-50 p-3"><dt class="font-black uppercase tracking-wide text-slate-500">Zona</dt><dd class="mt-1 font-bold text-slate-900">${escapeHtml(meta.zone || 'Por definir')}</dd></div>
+            <div class="rounded-xl border border-slate-100 bg-slate-50 p-3"><dt class="font-black uppercase tracking-wide text-slate-500">Fecha</dt><dd class="mt-1 font-bold text-slate-900">${escapeHtml(currentFecha)}</dd></div>
           </dl>
-          ${item.notes || metadata.description ? `<p class="rounded-xl border border-cyan-100 bg-cyan-50 p-3 text-xs font-semibold leading-5 text-cyan-950">${escapeHtml(metadata.description || item.notes)}</p>` : ''}
-          <label class="block text-xs font-black uppercase tracking-wide text-slate-500">Extras
-            <select id="reservar-extra" class="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-900">
-              <option value="0">Sin extras</option>
-              <option value="80">Hielera / apoyo $80</option>
-              <option value="150">Decoracion sencilla $150</option>
-            </select>
-          </label>
-          <label class="block text-xs font-black uppercase tracking-wide text-slate-500">Codigo de descuento
-            <input id="reservar-descuento" class="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-900" placeholder="Opcional" />
-          </label>
-          <label class="block text-xs font-black uppercase tracking-wide text-slate-500">Metodo de pago
-            <select id="reservar-pago" class="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-900">
-              <option value="taquilla">Taquilla</option>
-              <option value="online">Online</option>
-            </select>
-          </label>
-          <div id="reservar-total" class="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm font-black text-slate-900">Total estimado: $${precio.toFixed(2)}</div>
-          <button type="button" id="reservar-confirmar-mesa" ${canReserve ? '' : 'disabled'} class="w-full rounded-xl ${canReserve ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-slate-300'} px-4 py-3 text-sm font-black text-white">
-            ${canReserve ? 'Confirmar apartado' : 'No disponible'}
-          </button>
+          ${meta.description ? `<p class="rounded-xl border border-cyan-100 bg-cyan-50 p-3 text-xs font-semibold leading-5 text-cyan-950">${escapeHtml(meta.description)}</p>` : ''}
+          <div>
+            <p class="mb-2 text-xs font-black uppercase tracking-wide text-slate-500">Tags</p>
+            ${tagsHtml}
+          </div>
+          ${needsLogin ? '<p class="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs font-bold leading-5 text-amber-800">Inicia sesion para confirmar esta mesa. Puedes revisar los detalles antes de entrar.</p>' : ''}
+          <div>
+            <p class="mb-2 text-xs font-black uppercase tracking-wide text-slate-500">Extras visuales</p>
+            <div class="space-y-2">${extrasHtml}</div>
+            <p class="mt-2 text-[11px] font-semibold leading-4 text-slate-500">Extras sujetos a confirmacion/pago en taquilla o checkout segun configuracion.</p>
+          </div>
+          <div id="reservar-total" class="space-y-1 rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700"></div>
+          <div class="grid gap-2">
+            ${needsLogin ? '<button type="button" id="reservar-login-mesa" class="w-full rounded-xl bg-slate-900 px-4 py-3 text-sm font-black text-white hover:bg-slate-700">Iniciar sesion para apartar</button>' : ''}
+            ${canReserve ? '<button type="button" id="reservar-confirmar-mesa" class="w-full rounded-xl bg-emerald-600 px-4 py-3 text-sm font-black text-white hover:bg-emerald-700">Confirmar apartado</button>' : (needsLogin ? '' : `<button type="button" disabled class="w-full rounded-xl bg-slate-300 px-4 py-3 text-sm font-black text-white">${escapeHtml(statusMeta.label)}</button>`)}
+            <button type="button" id="reservar-cerrar-detalle" class="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-black text-slate-700 hover:bg-slate-50">Cerrar</button>
+          </div>
         </div>
       `;
       const totalEl = document.getElementById('reservar-total');
       const updateTotal = () => {
-        const extra = Number(document.getElementById('reservar-extra')?.value || 0);
-        const code = String(document.getElementById('reservar-descuento')?.value || '').trim().toUpperCase();
-        const discount = code ? Math.min(50, (precio + extra) * 0.1) : 0;
-        if (totalEl) totalEl.textContent = `Total estimado: $${Math.max(0, precio + extra - discount).toFixed(2)}`;
+        const extraTotal = [...document.querySelectorAll('[data-reserva-extra]:checked')]
+          .reduce((sum, input) => sum + (Number(input.getAttribute('data-extra-price') || 0) || 0), 0);
+        if (!totalEl) return;
+        totalEl.innerHTML = `
+          <div class="flex justify-between gap-3"><span>Subtotal mesa</span><strong>${meta.hasPrice ? escapeHtml(meta.priceLabel) : 'Precio por confirmar'}</strong></div>
+          <div class="flex justify-between gap-3"><span>Extras seleccionados</span><strong>${moneyFormatter.format(extraTotal)}</strong></div>
+          <div class="mt-2 flex justify-between gap-3 border-t border-slate-200 pt-2 text-base font-black text-slate-900"><span>Total estimado</span><strong>${meta.hasPrice ? moneyFormatter.format((meta.price || 0) + extraTotal) : 'Por confirmar'}</strong></div>
+        `;
       };
-      document.getElementById('reservar-extra')?.addEventListener('change', updateTotal);
-      document.getElementById('reservar-descuento')?.addEventListener('input', updateTotal);
+      document.querySelectorAll('[data-reserva-extra]').forEach((input) => {
+        input.addEventListener('change', updateTotal);
+      });
+      updateTotal();
+      document.getElementById('reservar-login-mesa')?.addEventListener('click', () => navigateTo('/login'));
+      document.getElementById('reservar-cerrar-detalle')?.addEventListener('click', () => setPanelOpen(false));
       document.getElementById('reservar-confirmar-mesa')?.addEventListener('click', () => reserveMesa(item));
     }
 
@@ -450,6 +602,22 @@ export default {
         navigateTo('/login');
         return;
       }
+      const currentItem = getMesaItemById(item?.id);
+      if (!currentItem) {
+        await showAlert('La mesa ya no existe en el plano publicado.', { title: 'Mesa', variant: 'warning' });
+        return;
+      }
+      if (!isMesaItem(currentItem)) {
+        await showAlert('Selecciona una mesa valida del mapa.', { title: 'Mesa', variant: 'warning' });
+        return;
+      }
+      const meta = getMesaMetadata(currentItem);
+      if (!meta.reservable) {
+        await showAlert('Esta mesa no esta disponible para apartado en linea.', { title: 'Mesa', variant: 'warning' });
+        openMesaDetail(currentItem);
+        return;
+      }
+      item = currentItem;
 
       if (apartadas.has(item.id)) {
         if (stateByMapItemId.get(item.id) === 'ocupada') {
@@ -521,7 +689,7 @@ export default {
           userId: user.uid,
           estado: 'apartada'
         });
-        await showAlert(`Mesa ${item.label || item.id} apartada para el ${currentFecha}.`, {
+        await showAlert(`${meta.name} apartada para el ${currentFecha}.`, {
           title: 'Listo',
           variant: 'success'
         });
@@ -547,8 +715,7 @@ export default {
     canvas.addEventListener('click', async (ev) => {
       if (!mapJson || parsedEmpty || mesaViewer) return;
       const idx = findMapItemIndexAtClientPoint(canvas, mapJson, ev.clientX, ev.clientY);
-      const data = parseDistribucionJson(mapJson);
-      openMesaDetail(data.items[idx]);
+      openMesaDetail(mapData.items[idx]);
     });
 
     async function checkMine(mapItemId) {
@@ -580,6 +747,7 @@ export default {
     auth.onAuthStateChanged(() => {
       renderMis();
       redraw();
+      if (selectedMesaId) openMesaDetail(getMesaItemById(selectedMesaId));
     });
 
     const onPopstate = () => {

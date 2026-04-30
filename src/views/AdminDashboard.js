@@ -46,14 +46,10 @@ import { defaultScheduleConfig, parseScheduleConfig, serializeScheduleConfig, sc
 import { publishAppUpdate } from '../lib/realtimeSync.js';
 import { openImageCropModal } from '../lib/imageCropModal.js';
 import { uploadProductImage, uploadServiceImage } from '../lib/uploadProductImage.js';
+import { isDataConnectConnectorStale as isDataConnectNotDeployed } from '../lib/dataConnectErrors.js';
 
 const LANDING_PAGE_ID = 'main';
 const TICKET_CONFIG_ID = 'precios_base';
-
-function isDataConnectNotDeployed(error) {
-  const msg = String(error?.message || error || '');
-  return msg.includes('NOT_FOUND') || msg.includes('not found') || msg.includes('operation ');
-}
 
 function escapeHtml(text) {
   return String(text ?? '')
@@ -734,14 +730,36 @@ const AdminDashboard = {
                                 </section>
                                 <section class="mapa-inspector-section">
                                   <p class="mapa-inspector-section-title">Metadata especifica</p>
-                                <div id="mapa-item-metadata" class="grid grid-cols-2 gap-2 rounded-xl border border-white/10 bg-white/5 p-2">
-                                  <label class="text-[10px] font-bold uppercase text-slate-500">Capacidad<input id="mapa-meta-capacidad" type="number" min="1" class="mt-1 w-full rounded-lg border border-white/10 bg-slate-950/40 px-2 py-1.5 text-sm text-white" /></label>
-                                  <label class="text-[10px] font-bold uppercase text-slate-500">Precio<input id="mapa-meta-precio" type="number" min="0" step="1" class="mt-1 w-full rounded-lg border border-white/10 bg-slate-950/40 px-2 py-1.5 text-sm text-white" /></label>
-                                  <label class="flex items-center gap-2 text-xs font-semibold text-slate-300"><input id="mapa-meta-vip" type="checkbox" /> VIP</label>
-                                  <label class="flex items-center gap-2 text-xs font-semibold text-slate-300"><input id="mapa-meta-reservable" type="checkbox" /> Reservable</label>
-                                  <label class="text-[10px] font-bold uppercase text-slate-500">Codigo spot<input id="mapa-meta-spot" type="text" class="mt-1 w-full rounded-lg border border-white/10 bg-slate-950/40 px-2 py-1.5 text-sm text-white" /></label>
-                                  <label class="text-[10px] font-bold uppercase text-slate-500">Zona<input id="mapa-meta-zone" type="text" class="mt-1 w-full rounded-lg border border-white/10 bg-slate-950/40 px-2 py-1.5 text-sm text-white" /></label>
-                                  <label class="text-[10px] font-bold uppercase text-slate-500 sm:col-span-2">Descripcion publica<input id="mapa-meta-description" type="text" class="mt-1 w-full rounded-lg border border-white/10 bg-slate-950/40 px-2 py-1.5 text-sm text-white" /></label>
+                                <div id="mapa-item-metadata" class="space-y-3 rounded-xl border border-white/10 bg-white/5 p-2">
+                                  <div id="mapa-table-metadata" class="grid grid-cols-2 gap-2">
+                                    <label class="text-[10px] font-bold uppercase text-slate-500 sm:col-span-2">Nombre publico<input id="mapa-meta-public-name" type="text" class="mt-1 w-full rounded-lg border border-white/10 bg-slate-950/40 px-2 py-1.5 text-sm text-white" placeholder="Mesa VIP 01" /></label>
+                                    <label class="text-[10px] font-bold uppercase text-slate-500">Capacidad<input id="mapa-meta-capacidad" type="number" min="1" class="mt-1 w-full rounded-lg border border-white/10 bg-slate-950/40 px-2 py-1.5 text-sm text-white" /></label>
+                                    <label class="text-[10px] font-bold uppercase text-slate-500">Precio base<input id="mapa-meta-precio" type="number" min="0" step="1" class="mt-1 w-full rounded-lg border border-white/10 bg-slate-950/40 px-2 py-1.5 text-sm text-white" /></label>
+                                    <label class="flex items-center gap-2 text-xs font-semibold text-slate-300"><input id="mapa-meta-vip" type="checkbox" /> Mesa VIP</label>
+                                    <label class="flex items-center gap-2 text-xs font-semibold text-slate-300"><input id="mapa-meta-reservable" type="checkbox" /> Reservable</label>
+                                    <label class="flex items-center gap-2 text-xs font-semibold text-slate-300"><input id="mapa-meta-extras-allowed" type="checkbox" /> Extras permitidos</label>
+                                    <label class="text-[10px] font-bold uppercase text-slate-500">Estado visual
+                                      <select id="mapa-meta-visual-state" class="mt-1 w-full rounded-lg border border-white/10 bg-slate-950/40 px-2 py-1.5 text-sm text-white">
+                                        <option value="">Automatico</option>
+                                        <option value="libre">Libre</option>
+                                        <option value="apartada_mia">Apartada por mi</option>
+                                        <option value="apartada">Apartada por otro</option>
+                                        <option value="ocupada">Ocupada</option>
+                                        <option value="no_reservable">No reservable</option>
+                                      </select>
+                                    </label>
+                                    <label class="text-[10px] font-bold uppercase text-slate-500 sm:col-span-2">Zona<input id="mapa-meta-zone" type="text" class="mt-1 w-full rounded-lg border border-white/10 bg-slate-950/40 px-2 py-1.5 text-sm text-white" placeholder="Alberca de olas" /></label>
+                                    <label class="text-[10px] font-bold uppercase text-slate-500 sm:col-span-2">Tags separados por coma<input id="mapa-meta-tags" type="text" class="mt-1 w-full rounded-lg border border-white/10 bg-slate-950/40 px-2 py-1.5 text-sm text-white" placeholder="VIP, Sombra, Familiar" /></label>
+                                    <label class="text-[10px] font-bold uppercase text-slate-500 sm:col-span-2">Descripcion publica<input id="mapa-meta-description" type="text" class="mt-1 w-full rounded-lg border border-white/10 bg-slate-950/40 px-2 py-1.5 text-sm text-white" /></label>
+                                    <label class="text-[10px] font-bold uppercase text-slate-500 sm:col-span-2">Extras disponibles
+                                      <textarea id="mapa-meta-extras" rows="3" class="mt-1 w-full rounded-lg border border-white/10 bg-slate-950/40 px-2 py-1.5 text-sm text-white placeholder:text-slate-600" placeholder="asador | Asador portatil | 150&#10;hielera | Hielera con hielos | 120"></textarea>
+                                    </label>
+                                  </div>
+                                  <div id="mapa-generic-metadata" class="grid grid-cols-2 gap-2">
+                                    <label class="text-[10px] font-bold uppercase text-slate-500">Codigo spot<input id="mapa-meta-spot" type="text" class="mt-1 w-full rounded-lg border border-white/10 bg-slate-950/40 px-2 py-1.5 text-sm text-white" /></label>
+                                    <label class="text-[10px] font-bold uppercase text-slate-500">Zona<input id="mapa-meta-generic-zone" type="text" class="mt-1 w-full rounded-lg border border-white/10 bg-slate-950/40 px-2 py-1.5 text-sm text-white" /></label>
+                                    <label class="text-[10px] font-bold uppercase text-slate-500 sm:col-span-2">Descripcion publica<input id="mapa-meta-generic-description" type="text" class="mt-1 w-full rounded-lg border border-white/10 bg-slate-950/40 px-2 py-1.5 text-sm text-white" /></label>
+                                  </div>
                                 </div>
                                 </section>
                                 <section class="mapa-inspector-section">
@@ -1133,6 +1151,8 @@ const AdminDashboard = {
         const layersList = document.getElementById('mapa-layers-list');
         const layerCount = document.getElementById('mapa-layer-count');
         const previewLink = document.getElementById('mapa-preview-link');
+        const tableMetadataWrap = document.getElementById('mapa-table-metadata');
+        const genericMetadataWrap = document.getElementById('mapa-generic-metadata');
         const fieldIds = {
           id: 'mapa-item-id',
           kind: 'mapa-item-kind',
@@ -1148,13 +1168,20 @@ const AdminDashboard = {
           locked: 'mapa-item-locked',
           visible: 'mapa-item-visible',
           notes: 'mapa-item-notes',
+          publicName: 'mapa-meta-public-name',
           capacidad: 'mapa-meta-capacidad',
           precio: 'mapa-meta-precio',
           vip: 'mapa-meta-vip',
           reservable: 'mapa-meta-reservable',
+          extrasAllowed: 'mapa-meta-extras-allowed',
+          visualState: 'mapa-meta-visual-state',
+          tags: 'mapa-meta-tags',
+          extras: 'mapa-meta-extras',
           spotCode: 'mapa-meta-spot',
           zone: 'mapa-meta-zone',
-          description: 'mapa-meta-description'
+          genericZone: 'mapa-meta-generic-zone',
+          description: 'mapa-meta-description',
+          genericDescription: 'mapa-meta-generic-description'
         };
         let syncing = false;
 
@@ -1166,6 +1193,46 @@ const AdminDashboard = {
           if (!rgba) return fallback;
           return `#${[rgba[1], rgba[2], rgba[3]].map((n) => Math.max(0, Math.min(255, Number(n))).toString(16).padStart(2, '0')).join('')}`;
         };
+        const isTableKind = (value) => value === 'mesa' || value === 'table';
+        const isTableItem = (item) => isTableKind(item?.kind) || item?.type === 'table';
+        const splitTags = (value) =>
+          String(value || '')
+            .split(',')
+            .map((tag) => tag.trim())
+            .filter(Boolean);
+        const formatTags = (value) => (Array.isArray(value) ? value.join(', ') : String(value || ''));
+        const slugify = (value) =>
+          String(value || '')
+            .trim()
+            .toLowerCase()
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .replace(/[^a-z0-9]+/g, '-')
+            .replace(/^-+|-+$/g, '');
+        const formatExtras = (extras) => Array.isArray(extras)
+          ? extras
+              .map((extra) => `${extra.id || slugify(extra.label)} | ${extra.label || extra.id || 'Extra'} | ${Number(extra.price || 0)}`)
+              .join('\n')
+          : '';
+        const parseExtras = (value) =>
+          String(value || '')
+            .split('\n')
+            .map((line) => line.trim())
+            .filter(Boolean)
+            .map((line, index) => {
+              const parts = line.split('|').map((part) => part.trim());
+              const twoPartPrice = parts.length === 2 && Number.isFinite(Number(parts[1]));
+              const rawId = twoPartPrice ? slugify(parts[0]) : parts[0];
+              const rawLabel = twoPartPrice ? parts[0] : parts[1];
+              const rawPrice = twoPartPrice ? parts[1] : parts[2];
+              const label = rawLabel || rawId || 'Extra';
+              const id = rawId || slugify(label);
+              return {
+                id: slugify(id) || `extra-${index + 1}`,
+                label,
+                price: Math.max(0, parseFloat(rawPrice || '0') || 0)
+              };
+            });
         const updatePreviewLink = () => {
           if (!previewLink) return;
           previewLink.setAttribute('href', mapContext === 'mesas' ? '/reservar' : '/home#mapa');
@@ -1209,6 +1276,9 @@ const AdminDashboard = {
           }
           setInspectorMode('single');
           const kind = getMapKind(item.kind);
+          const tableItem = isTableItem(item);
+          tableMetadataWrap?.classList.toggle('hidden', !tableItem);
+          genericMetadataWrap?.classList.toggle('hidden', tableItem);
           if (pill) {
             pill.textContent = kind.label;
             pill.className = 'rounded-full px-2 py-1 text-[10px] font-bold text-white';
@@ -1228,13 +1298,20 @@ const AdminDashboard = {
           el('locked').checked = Boolean(item.locked);
           el('visible').checked = item.visible !== false;
           el('notes').value = item.notes || '';
-          el('capacidad').value = item.metadata?.capacidad ?? '';
-          el('precio').value = item.metadata?.precio ?? '';
+          el('publicName').value = item.metadata?.publicName || item.label || '';
+          el('capacidad').value = item.metadata?.capacity ?? item.metadata?.capacidad ?? '';
+          el('precio').value = item.metadata?.price ?? item.metadata?.precio ?? '';
           el('vip').checked = Boolean(item.metadata?.vip);
           el('reservable').checked = item.metadata?.reservable !== false;
+          el('extrasAllowed').checked = item.metadata?.extrasAllowed !== false;
+          el('visualState').value = item.metadata?.estadoVisual || '';
+          el('tags').value = formatTags(item.metadata?.tags);
+          el('extras').value = formatExtras(item.metadata?.extras);
           el('spotCode').value = item.metadata?.spotCode || '';
           el('zone').value = item.metadata?.zone || '';
+          el('genericZone').value = item.metadata?.zone || '';
           el('description').value = item.metadata?.description || '';
+          el('genericDescription').value = item.metadata?.description || '';
           renderLayers();
           syncing = false;
         };
@@ -1242,6 +1319,29 @@ const AdminDashboard = {
         const collectPatch = () => {
           const kindValue = el('kind')?.value || 'area';
           const kind = getMapKind(kindValue);
+          const tableItem = isTableKind(kindValue);
+          const capacity = Math.max(1, parseInt(el('capacidad')?.value || '4', 10) || 4);
+          const price = Math.max(0, parseFloat(el('precio')?.value || '0') || 0);
+          const metadataPatch = {
+            spotCode: el('spotCode')?.value || '',
+            zone: tableItem ? (el('zone')?.value || '') : (el('genericZone')?.value || ''),
+            description: tableItem ? (el('description')?.value || '') : (el('genericDescription')?.value || '')
+          };
+          if (tableItem) {
+            Object.assign(metadataPatch, {
+              publicName: el('publicName')?.value || '',
+              capacity,
+              capacidad: capacity,
+              price,
+              precio: price,
+              vip: el('vip')?.checked || false,
+              reservable: el('reservable')?.checked ?? true,
+              extrasAllowed: el('extrasAllowed')?.checked ?? true,
+              estadoVisual: el('visualState')?.value || '',
+              tags: splitTags(el('tags')?.value || ''),
+              extras: parseExtras(el('extras')?.value || '')
+            });
+          }
           return {
             id: el('id')?.value || '',
             kind: kindValue,
@@ -1257,15 +1357,7 @@ const AdminDashboard = {
             notes: el('notes')?.value || '',
             fill: el('fill')?.value || kind.fill,
             stroke: el('stroke')?.value || kind.stroke,
-            metadata: {
-              capacidad: parseInt(el('capacidad')?.value || '0', 10) || undefined,
-              precio: parseFloat(el('precio')?.value || '0') || 0,
-              vip: el('vip')?.checked || false,
-              reservable: el('reservable')?.checked ?? true,
-              spotCode: el('spotCode')?.value || '',
-              zone: el('zone')?.value || '',
-              description: el('description')?.value || ''
-            }
+            metadata: metadataPatch
           };
         };
 

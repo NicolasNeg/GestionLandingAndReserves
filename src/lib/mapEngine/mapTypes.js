@@ -63,7 +63,8 @@ export const TABLE_STATES = {
   LIBRE: 'libre',
   APARTADA_MIA: 'apartada_mia',
   APARTADA: 'apartada',
-  OCUPADA: 'ocupada'
+  OCUPADA: 'ocupada',
+  NO_RESERVABLE: 'no_reservable'
 };
 
 export const PARKING_STATES = {
@@ -87,4 +88,3 @@ export function normalizeMapView(view) {
 export function getMapKind(kind) {
   return KIND_BY_VALUE[kind] || KIND_BY_VALUE[DEFAULT_MAP_ITEM_KIND];
 }
-

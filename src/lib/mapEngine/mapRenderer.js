@@ -133,7 +133,12 @@ function colorsForItem(item, options = {}) {
   let stroke = item.stroke || kind.stroke;
   const state = options.statusByMapItemId?.[item.id] || item.metadata?.estadoVisual;
   if (item.kind === 'mesa' || item.type === 'table') {
-    if (state === TABLE_STATES.APARTADA) {
+    const explicitReservable = item.metadata?.reservable;
+    const noReservable = state === TABLE_STATES.NO_RESERVABLE || explicitReservable === false || explicitReservable === 'false';
+    if (noReservable) {
+      fill = 'rgba(100, 116, 139, 0.24)';
+      stroke = '#64748b';
+    } else if (state === TABLE_STATES.APARTADA) {
       fill = 'rgba(239, 68, 68, 0.34)';
       stroke = '#b91c1c';
     } else if (state === TABLE_STATES.APARTADA_MIA) {
@@ -171,17 +176,20 @@ function drawLabel(ctx, item, options, stroke) {
   const h = Number(item.height || 0);
   const showIds = options.showItemIds === true;
   const showKind = options.showKindBadge === true;
-  const label = String(item.label || '');
-  if (!label && !showIds && !showKind) return;
+  const view = options.view || options.docView;
+  const label = String(item.metadata?.publicName || item.label || '');
+  const fallbackId = !label && !showIds && view === 'mesas' && (item.kind === 'mesa' || item.type === 'table')
+    ? String(item.id || 'Mesa')
+    : '';
+  if (!label && !fallbackId && !showIds && !showKind) return;
 
   ctx.save();
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.font = item.type === 'text' ? '800 18px system-ui, sans-serif' : '800 13px system-ui, sans-serif';
-  const view = options.view || options.docView;
   const labelInk = view === 'estacionamiento' && item.type !== 'parkingSpot' ? '#e2e8f0' : '#0f172a';
   ctx.fillStyle = item.type === 'text' ? (item.fill || labelInk) : labelInk;
-  const text = showIds ? String(item.id || label) : label;
+  const text = showIds ? String(item.id || label) : (label || fallbackId);
   const yPos = item.type === 'table' ? y + h / 2 + 1 : y + h / 2;
   if (item.type !== 'text') {
     ctx.shadowColor = 'rgba(255,255,255,0.82)';
