@@ -278,6 +278,63 @@ mutation DeleteMesaReserva($id: UUID!) @auth(level: USER) {
   mesaReserva_delete(id: $id)
 }
 
+mutation UpsertConfiguracion(
+  $id: String!,
+  $precioAdulto: Float!,
+  $precioNino: Float!,
+  $precioMayor: Float!
+) @auth(level: USER) {
+  configuracion_upsert(data: {
+    id: $id,
+    precioAdulto: $precioAdulto,
+    precioNino: $precioNino,
+    precioMayor: $precioMayor
+  })
+}
+
+mutation CreateDescuento(
+  $codigo: String!,
+  $descuento: Float!,
+  $tipo: String!,
+  $usosRestantes: Int!,
+  $activo: Boolean!,
+  $reglasJson: String!
+) @auth(level: USER) {
+  descuento_insert(data: {
+    codigo: $codigo,
+    descuento: $descuento,
+    tipo: $tipo,
+    usosRestantes: $usosRestantes,
+    activo: $activo,
+    reglasJson: $reglasJson
+  })
+}
+
+mutation UpdateDescuento(
+  $id: UUID!,
+  $codigo: String!,
+  $descuento: Float!,
+  $tipo: String!,
+  $usosRestantes: Int!,
+  $activo: Boolean!,
+  $reglasJson: String!
+) @auth(level: USER) {
+  descuento_update(id: $id, data: {
+    codigo: $codigo,
+    descuento: $descuento,
+    tipo: $tipo,
+    usosRestantes: $usosRestantes,
+    activo: $activo,
+    reglasJson: $reglasJson
+  })
+}
+
+mutation ConsumeDescuento($id: UUID!, $usosRestantesNext: Int!) @auth(level: USER) {
+  descuento_update(id: $id, data: {
+    usosRestantes: $usosRestantesNext
+  })
+}
+
 
 mutation UpdateMesaReservaEstado($id: UUID!, $estado: String!) @auth(level: USER) {
   mesaReserva_update(id: $id, data: { estado: $estado })

@@ -143,6 +143,46 @@ query ListProductosPublic @auth(level: PUBLIC) {
   }
 }
 
+query GetConfiguracion($id: String!) @auth(level: PUBLIC) {
+  configuracion(id: $id) {
+    id
+    precioAdulto
+    precioNino
+    precioMayor
+  }
+}
+
+query GetDescuentoByCodigo($codigo: String!) @auth(level: PUBLIC) {
+  descuentos(
+    where: {
+      codigo: { eq: $codigo }
+      activo: { eq: true }
+      usosRestantes: { gt: 0 }
+    }
+    limit: 1
+  ) {
+    id
+    codigo
+    descuento
+    tipo
+    usosRestantes
+    activo
+    reglasJson
+  }
+}
+
+query ListDescuentosAdmin @auth(level: USER) {
+  descuentos(orderBy: [{ codigo: ASC }]) {
+    id
+    codigo
+    descuento
+    tipo
+    usosRestantes
+    activo
+    reglasJson
+  }
+}
+
 query ListMovimientosInventario($productoId: UUID!) @auth(level: USER) {
   movimientoInventarios(
     where: { productoId: { eq: $productoId } }

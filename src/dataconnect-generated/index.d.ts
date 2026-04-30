@@ -34,6 +34,15 @@ export interface Configuracion_Key {
   __typename?: 'Configuracion_Key';
 }
 
+export interface ConsumeDescuentoData {
+  descuento_update?: Descuento_Key | null;
+}
+
+export interface ConsumeDescuentoVariables {
+  id: UUIDString;
+  usosRestantesNext: number;
+}
+
 export interface CreateAnonymousTicketData {
   ticket_insert: Ticket_Key;
 }
@@ -44,6 +53,19 @@ export interface CreateAnonymousTicketVariables {
   metodoPago: string;
   estadoPago: string;
   precioTotal: number;
+}
+
+export interface CreateDescuentoData {
+  descuento_insert: Descuento_Key;
+}
+
+export interface CreateDescuentoVariables {
+  codigo: string;
+  descuento: number;
+  tipo: string;
+  usosRestantes: number;
+  activo: boolean;
+  reglasJson: string;
 }
 
 export interface CreateMesaReservaData {
@@ -201,6 +223,35 @@ export interface Descuento_Key {
   __typename?: 'Descuento_Key';
 }
 
+export interface GetConfiguracionData {
+  configuracion?: {
+    id: string;
+    precioAdulto: number;
+    precioNino: number;
+    precioMayor: number;
+  } & Configuracion_Key;
+}
+
+export interface GetConfiguracionVariables {
+  id: string;
+}
+
+export interface GetDescuentoByCodigoData {
+  descuentos: ({
+    id: UUIDString;
+    codigo: string;
+    descuento: number;
+    tipo: string;
+    usosRestantes: number;
+    activo: boolean;
+    reglasJson: string;
+  } & Descuento_Key)[];
+}
+
+export interface GetDescuentoByCodigoVariables {
+  codigo: string;
+}
+
 export interface GetLandingPageData {
   landingPage?: {
     id: string;
@@ -261,6 +312,18 @@ export interface GetUserProfileVariables {
 export interface LandingPage_Key {
   id: string;
   __typename?: 'LandingPage_Key';
+}
+
+export interface ListDescuentosAdminData {
+  descuentos: ({
+    id: UUIDString;
+    codigo: string;
+    descuento: number;
+    tipo: string;
+    usosRestantes: number;
+    activo: boolean;
+    reglasJson: string;
+  } & Descuento_Key)[];
 }
 
 export interface ListMesaReservasActivasPorFechaData {
@@ -465,6 +528,20 @@ export interface Ticket_Key {
   __typename?: 'Ticket_Key';
 }
 
+export interface UpdateDescuentoData {
+  descuento_update?: Descuento_Key | null;
+}
+
+export interface UpdateDescuentoVariables {
+  id: UUIDString;
+  codigo: string;
+  descuento: number;
+  tipo: string;
+  usosRestantes: number;
+  activo: boolean;
+  reglasJson: string;
+}
+
 export interface UpdateMesaReservaEstadoData {
   mesaReserva_update?: MesaReserva_Key | null;
 }
@@ -519,6 +596,17 @@ export interface UpdateTicketStatusVariables {
   id: UUIDString;
   estadoTicket: string;
   estadoPago: string;
+}
+
+export interface UpsertConfiguracionData {
+  configuracion_upsert: Configuracion_Key;
+}
+
+export interface UpsertConfiguracionVariables {
+  id: string;
+  precioAdulto: number;
+  precioNino: number;
+  precioMayor: number;
 }
 
 export interface UpsertLandingPageData {
@@ -853,6 +941,54 @@ export const deleteMesaReservaRef: DeleteMesaReservaRef;
 export function deleteMesaReserva(vars: DeleteMesaReservaVariables): MutationPromise<DeleteMesaReservaData, DeleteMesaReservaVariables>;
 export function deleteMesaReserva(dc: DataConnect, vars: DeleteMesaReservaVariables): MutationPromise<DeleteMesaReservaData, DeleteMesaReservaVariables>;
 
+interface UpsertConfiguracionRef {
+  /* Allow users to create refs without passing in DataConnect */
+  (vars: UpsertConfiguracionVariables): MutationRef<UpsertConfiguracionData, UpsertConfiguracionVariables>;
+  /* Allow users to pass in custom DataConnect instances */
+  (dc: DataConnect, vars: UpsertConfiguracionVariables): MutationRef<UpsertConfiguracionData, UpsertConfiguracionVariables>;
+  operationName: string;
+}
+export const upsertConfiguracionRef: UpsertConfiguracionRef;
+
+export function upsertConfiguracion(vars: UpsertConfiguracionVariables): MutationPromise<UpsertConfiguracionData, UpsertConfiguracionVariables>;
+export function upsertConfiguracion(dc: DataConnect, vars: UpsertConfiguracionVariables): MutationPromise<UpsertConfiguracionData, UpsertConfiguracionVariables>;
+
+interface CreateDescuentoRef {
+  /* Allow users to create refs without passing in DataConnect */
+  (vars: CreateDescuentoVariables): MutationRef<CreateDescuentoData, CreateDescuentoVariables>;
+  /* Allow users to pass in custom DataConnect instances */
+  (dc: DataConnect, vars: CreateDescuentoVariables): MutationRef<CreateDescuentoData, CreateDescuentoVariables>;
+  operationName: string;
+}
+export const createDescuentoRef: CreateDescuentoRef;
+
+export function createDescuento(vars: CreateDescuentoVariables): MutationPromise<CreateDescuentoData, CreateDescuentoVariables>;
+export function createDescuento(dc: DataConnect, vars: CreateDescuentoVariables): MutationPromise<CreateDescuentoData, CreateDescuentoVariables>;
+
+interface UpdateDescuentoRef {
+  /* Allow users to create refs without passing in DataConnect */
+  (vars: UpdateDescuentoVariables): MutationRef<UpdateDescuentoData, UpdateDescuentoVariables>;
+  /* Allow users to pass in custom DataConnect instances */
+  (dc: DataConnect, vars: UpdateDescuentoVariables): MutationRef<UpdateDescuentoData, UpdateDescuentoVariables>;
+  operationName: string;
+}
+export const updateDescuentoRef: UpdateDescuentoRef;
+
+export function updateDescuento(vars: UpdateDescuentoVariables): MutationPromise<UpdateDescuentoData, UpdateDescuentoVariables>;
+export function updateDescuento(dc: DataConnect, vars: UpdateDescuentoVariables): MutationPromise<UpdateDescuentoData, UpdateDescuentoVariables>;
+
+interface ConsumeDescuentoRef {
+  /* Allow users to create refs without passing in DataConnect */
+  (vars: ConsumeDescuentoVariables): MutationRef<ConsumeDescuentoData, ConsumeDescuentoVariables>;
+  /* Allow users to pass in custom DataConnect instances */
+  (dc: DataConnect, vars: ConsumeDescuentoVariables): MutationRef<ConsumeDescuentoData, ConsumeDescuentoVariables>;
+  operationName: string;
+}
+export const consumeDescuentoRef: ConsumeDescuentoRef;
+
+export function consumeDescuento(vars: ConsumeDescuentoVariables): MutationPromise<ConsumeDescuentoData, ConsumeDescuentoVariables>;
+export function consumeDescuento(dc: DataConnect, vars: ConsumeDescuentoVariables): MutationPromise<ConsumeDescuentoData, ConsumeDescuentoVariables>;
+
 interface UpdateMesaReservaEstadoRef {
   /* Allow users to create refs without passing in DataConnect */
   (vars: UpdateMesaReservaEstadoVariables): MutationRef<UpdateMesaReservaEstadoData, UpdateMesaReservaEstadoVariables>;
@@ -996,6 +1132,42 @@ export const listProductosPublicRef: ListProductosPublicRef;
 
 export function listProductosPublic(options?: ExecuteQueryOptions): QueryPromise<ListProductosPublicData, undefined>;
 export function listProductosPublic(dc: DataConnect, options?: ExecuteQueryOptions): QueryPromise<ListProductosPublicData, undefined>;
+
+interface GetConfiguracionRef {
+  /* Allow users to create refs without passing in DataConnect */
+  (vars: GetConfiguracionVariables): QueryRef<GetConfiguracionData, GetConfiguracionVariables>;
+  /* Allow users to pass in custom DataConnect instances */
+  (dc: DataConnect, vars: GetConfiguracionVariables): QueryRef<GetConfiguracionData, GetConfiguracionVariables>;
+  operationName: string;
+}
+export const getConfiguracionRef: GetConfiguracionRef;
+
+export function getConfiguracion(vars: GetConfiguracionVariables, options?: ExecuteQueryOptions): QueryPromise<GetConfiguracionData, GetConfiguracionVariables>;
+export function getConfiguracion(dc: DataConnect, vars: GetConfiguracionVariables, options?: ExecuteQueryOptions): QueryPromise<GetConfiguracionData, GetConfiguracionVariables>;
+
+interface GetDescuentoByCodigoRef {
+  /* Allow users to create refs without passing in DataConnect */
+  (vars: GetDescuentoByCodigoVariables): QueryRef<GetDescuentoByCodigoData, GetDescuentoByCodigoVariables>;
+  /* Allow users to pass in custom DataConnect instances */
+  (dc: DataConnect, vars: GetDescuentoByCodigoVariables): QueryRef<GetDescuentoByCodigoData, GetDescuentoByCodigoVariables>;
+  operationName: string;
+}
+export const getDescuentoByCodigoRef: GetDescuentoByCodigoRef;
+
+export function getDescuentoByCodigo(vars: GetDescuentoByCodigoVariables, options?: ExecuteQueryOptions): QueryPromise<GetDescuentoByCodigoData, GetDescuentoByCodigoVariables>;
+export function getDescuentoByCodigo(dc: DataConnect, vars: GetDescuentoByCodigoVariables, options?: ExecuteQueryOptions): QueryPromise<GetDescuentoByCodigoData, GetDescuentoByCodigoVariables>;
+
+interface ListDescuentosAdminRef {
+  /* Allow users to create refs without passing in DataConnect */
+  (): QueryRef<ListDescuentosAdminData, undefined>;
+  /* Allow users to pass in custom DataConnect instances */
+  (dc: DataConnect): QueryRef<ListDescuentosAdminData, undefined>;
+  operationName: string;
+}
+export const listDescuentosAdminRef: ListDescuentosAdminRef;
+
+export function listDescuentosAdmin(options?: ExecuteQueryOptions): QueryPromise<ListDescuentosAdminData, undefined>;
+export function listDescuentosAdmin(dc: DataConnect, options?: ExecuteQueryOptions): QueryPromise<ListDescuentosAdminData, undefined>;
 
 interface ListMovimientosInventarioRef {
   /* Allow users to create refs without passing in DataConnect */

@@ -122,6 +122,10 @@ export default {
     const misEl = document.getElementById('reservar-mis');
     const placeholder = document.getElementById('reservar-canvas-placeholder');
     const detailEl = document.getElementById('reservar-mesa-detail');
+    const panelEl = document.getElementById('reservar-mesa-panel');
+    const closePanelBtn = document.getElementById('reservar-close-panel');
+    const livePill = document.getElementById('reservar-live-pill');
+    const mapTooltip = document.getElementById('reservar-map-tooltip');
     if (!canvas || !fechaInput) return;
 
     let mapJson = '';
@@ -133,6 +137,7 @@ export default {
       showItemIds: false,
       showKindBadge: false,
       statusByMapItemId: {},
+      onHover: setMapTooltip,
       onSelect: (item) => openMesaDetail(item)
     };
     const ownerByMapItemId = new Map();
@@ -150,6 +155,47 @@ export default {
             ? 'mt-3 text-sm font-semibold text-emerald-700'
             : 'mt-3 text-sm font-semibold text-slate-500';
     };
+
+    const setLivePill = (text, variant = 'muted') => {
+      if (!livePill) return;
+      const dot =
+        variant === 'ok'
+          ? 'bg-emerald-500'
+          : variant === 'danger'
+            ? 'bg-rose-500'
+            : 'bg-amber-500';
+      livePill.className = `inline-flex items-center gap-2 rounded-full px-3 py-2 text-xs font-black ${
+        variant === 'ok'
+          ? 'bg-emerald-50 text-emerald-800'
+          : variant === 'danger'
+            ? 'bg-rose-50 text-rose-800'
+            : 'bg-amber-50 text-amber-800'
+      }`;
+      livePill.innerHTML = `<span class="h-2.5 w-2.5 rounded-full ${dot}"></span>${escapeHtml(text)}`;
+    };
+
+    const setPanelOpen = (open) => {
+      panelEl?.classList.toggle('is-open', open);
+      closePanelBtn?.classList.toggle('hidden', !open);
+    };
+    closePanelBtn?.addEventListener('click', () => setPanelOpen(false));
+
+    function setMapTooltip(item, _index, _point, pointer) {
+      if (!mapTooltip) return;
+      if (!item || !pointer || window.matchMedia('(max-width: 640px)').matches) {
+        mapTooltip.classList.add('hidden');
+        return;
+      }
+      const rect = canvas.getBoundingClientRect();
+      const state = stateByMapItemId.get(item.id) || (apartadas.has(item.id) ? 'apartada' : 'libre');
+      mapTooltip.innerHTML = `
+        <strong>${escapeHtml(item.label || item.id || 'Mesa')}</strong>
+        <span>${escapeHtml(state === 'libre' ? 'Disponible' : state === 'ocupada' ? 'Ocupada' : 'Apartada')}</span>
+      `;
+      mapTooltip.style.left = `${Math.min(rect.width - 190, Math.max(10, pointer.clientX - rect.left + 14))}px`;
+      mapTooltip.style.top = `${Math.min(rect.height - 74, Math.max(10, pointer.clientY - rect.top + 14))}px`;
+      mapTooltip.classList.remove('hidden');
+    }
 
     try {
       const lp = await getLandingPage({ id: LANDING_PAGE_ID });
@@ -226,6 +272,7 @@ export default {
         unsubscribeLive = null;
       }
       setMsg('Sincronizando en vivo...');
+      setLivePill('Sincronizando', 'muted');
       unsubscribeLive = subscribeMesaReservasByFecha(
         currentFecha,
         (rows) => {
@@ -241,10 +288,12 @@ export default {
           });
           redraw();
           setMsg('Sincronizado en vivo.', 'ok');
+          setLivePill('En vivo', 'ok');
         },
         (e) => {
           console.warn('mesa realtime', e);
           setMsg('Sin realtime; mostrando último estado.', 'danger');
+          setLivePill('Sin realtime', 'danger');
         }
       );
     };
@@ -310,6 +359,7 @@ export default {
       if (!isValidFechaDia(v)) return;
       currentFecha = v;
       setMsg('');
+      setPanelOpen(false);
       if (detailEl) detailEl.innerHTML = 'Toca una mesa libre para revisar detalles y confirmar.';
       await loadApartadasBase();
       connectLive();
@@ -319,9 +369,11 @@ export default {
     function openMesaDetail(item) {
       if (!detailEl) return;
       if (!item || item.kind !== 'mesa') {
+        setPanelOpen(false);
         detailEl.innerHTML = '<p class="text-slate-500">Selecciona una mesa disponible del mapa.</p>';
         return;
       }
+      setPanelOpen(true);
       const metadata = item.metadata || {};
       const capacidad = Number(metadata.capacidad || 4);
       const precio = Number(metadata.precio || 0);
@@ -334,17 +386,29 @@ export default {
             ? (mine ? 'Apartada por mi' : 'Apartada por otro usuario')
             : 'Disponible';
       const canReserve = estado !== 'ocupada' && !apartadas.has(item.id) && metadata.reservable !== false;
+      const statusClass = canReserve
+        ? 'bg-emerald-50 text-emerald-800 ring-emerald-100'
+        : estado === 'ocupada'
+          ? 'bg-indigo-50 text-indigo-800 ring-indigo-100'
+          : mine
+            ? 'bg-amber-50 text-amber-800 ring-amber-100'
+            : 'bg-rose-50 text-rose-800 ring-rose-100';
       detailEl.innerHTML = `
-        <div class="space-y-3">
+        <div class="space-y-4">
           <div>
-            <h2 class="text-lg font-black text-slate-900">${escapeHtml(item.label || item.id)}</h2>
-            <p class="text-xs font-bold uppercase tracking-wide ${canReserve ? 'text-emerald-700' : 'text-amber-700'}">${escapeHtml(statusText)}</p>
+            <div class="flex items-start justify-between gap-3">
+              <div>
+                <h2 class="text-xl font-black text-slate-900">${escapeHtml(item.label || item.id)}</h2>
+                <p class="mt-1 text-xs font-bold uppercase tracking-wide text-slate-500">${escapeHtml(currentFecha)}</p>
+              </div>
+              <span class="rounded-full px-3 py-1 text-[11px] font-black uppercase tracking-wide ring-1 ${statusClass}">${escapeHtml(statusText)}</span>
+            </div>
           </div>
           <dl class="grid grid-cols-2 gap-2 text-xs">
-            <div class="rounded-xl bg-slate-50 p-2"><dt class="font-black text-slate-500">Capacidad</dt><dd class="mt-1 font-bold text-slate-900">${capacidad} personas</dd></div>
-            <div class="rounded-xl bg-slate-50 p-2"><dt class="font-black text-slate-500">Base</dt><dd class="mt-1 font-bold text-slate-900">${precio > 0 ? `$${precio.toFixed(2)}` : 'Incluida'}</dd></div>
+            <div class="rounded-xl border border-slate-100 bg-slate-50 p-3"><dt class="font-black uppercase tracking-wide text-slate-500">Capacidad</dt><dd class="mt-1 font-bold text-slate-900">${capacidad} personas</dd></div>
+            <div class="rounded-xl border border-slate-100 bg-slate-50 p-3"><dt class="font-black uppercase tracking-wide text-slate-500">Base</dt><dd class="mt-1 font-bold text-slate-900">${precio > 0 ? `$${precio.toFixed(2)}` : 'Incluida'}</dd></div>
           </dl>
-          ${item.notes || metadata.description ? `<p class="rounded-xl bg-cyan-50 p-3 text-xs font-semibold leading-5 text-cyan-950">${escapeHtml(metadata.description || item.notes)}</p>` : ''}
+          ${item.notes || metadata.description ? `<p class="rounded-xl border border-cyan-100 bg-cyan-50 p-3 text-xs font-semibold leading-5 text-cyan-950">${escapeHtml(metadata.description || item.notes)}</p>` : ''}
           <label class="block text-xs font-black uppercase tracking-wide text-slate-500">Extras
             <select id="reservar-extra" class="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-900">
               <option value="0">Sin extras</option>

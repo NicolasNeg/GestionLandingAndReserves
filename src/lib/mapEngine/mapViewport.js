@@ -80,10 +80,19 @@ export function createMapViewer(canvas, jsonOrDoc, options = {}) {
     if (options.interactive === false) return;
     const hit = hitAtClient(ev.clientX, ev.clientY);
     const nextHoveredId = hit.item?.id || '';
+    const mapPoint = clientToMap(ev.clientX, ev.clientY);
     canvas.style.cursor = hit.item ? 'pointer' : 'grab';
-    if (nextHoveredId === hoveredId) return;
+    if (nextHoveredId === hoveredId) {
+      if (hit.item) {
+        options.onHover?.(hit.item, hit.index, mapPoint, {
+          clientX: ev.clientX,
+          clientY: ev.clientY
+        });
+      }
+      return;
+    }
     hoveredId = nextHoveredId;
-    options.onHover?.(hit.item || null, hit.index, clientToMap(ev.clientX, ev.clientY), {
+    options.onHover?.(hit.item || null, hit.index, mapPoint, {
       clientX: ev.clientX,
       clientY: ev.clientY
     });

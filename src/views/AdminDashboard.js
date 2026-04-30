@@ -16,6 +16,11 @@ import {
   deleteServicio,
   deleteProducto,
   updateTicketStatus,
+  getConfiguracion,
+  upsertConfiguracion,
+  listDescuentosAdmin,
+  createDescuento,
+  updateDescuento,
   deleteUserRecord,
   deleteConfiguracion,
   deletePaquete,
@@ -43,6 +48,7 @@ import { openImageCropModal } from '../lib/imageCropModal.js';
 import { uploadProductImage, uploadServiceImage } from '../lib/uploadProductImage.js';
 
 const LANDING_PAGE_ID = 'main';
+const TICKET_CONFIG_ID = 'precios_base';
 
 function isDataConnectNotDeployed(error) {
   const msg = String(error?.message || error || '');
@@ -222,6 +228,66 @@ const AdminDashboard = {
                     </div>
                 </div>
 
+                ${canAdminPanel ? `<div class="grid grid-cols-1 gap-6 mb-8 xl:grid-cols-2">
+                  <section class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm space-y-4">
+                    <h2 class="text-lg font-black text-slate-900">Precios de tickets</h2>
+                    <p class="text-xs text-slate-500">Configura los precios base para Adulto, Niño y Mayor.</p>
+                    <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                      <label class="text-xs font-semibold text-slate-600">Adulto
+                        <input id="cfg-precio-adulto" type="number" min="0" step="0.01" class="mt-1 w-full rounded border p-2 text-sm" />
+                      </label>
+                      <label class="text-xs font-semibold text-slate-600">Niño
+                        <input id="cfg-precio-nino" type="number" min="0" step="0.01" class="mt-1 w-full rounded border p-2 text-sm" />
+                      </label>
+                      <label class="text-xs font-semibold text-slate-600">Mayor
+                        <input id="cfg-precio-mayor" type="number" min="0" step="0.01" class="mt-1 w-full rounded border p-2 text-sm" />
+                      </label>
+                    </div>
+                    <div class="flex items-center gap-3">
+                      <button type="button" id="cfg-save-prices" class="rounded bg-blue-600 px-4 py-2 text-sm font-bold text-white hover:bg-blue-700">Guardar precios</button>
+                      <span id="cfg-prices-status" class="text-xs font-semibold text-slate-600"></span>
+                    </div>
+                  </section>
+                  <section class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm space-y-4">
+                    <h2 class="text-lg font-black text-slate-900">Crear descuento</h2>
+                    <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <label class="text-xs font-semibold text-slate-600 sm:col-span-2">Código
+                        <input id="disc-code" type="text" class="mt-1 w-full rounded border p-2 text-sm uppercase" placeholder="EJEMPLO10" />
+                      </label>
+                      <label class="text-xs font-semibold text-slate-600">Tipo
+                        <select id="disc-type" class="mt-1 w-full rounded border p-2 text-sm">
+                          <option value="porcentaje">Porcentaje</option>
+                          <option value="monto">Monto fijo</option>
+                        </select>
+                      </label>
+                      <label class="text-xs font-semibold text-slate-600">Valor
+                        <input id="disc-value" type="number" min="0" step="0.01" class="mt-1 w-full rounded border p-2 text-sm" placeholder="10" />
+                      </label>
+                      <label class="text-xs font-semibold text-slate-600">Usos restantes
+                        <input id="disc-uses" type="number" min="1" step="1" class="mt-1 w-full rounded border p-2 text-sm" value="1" />
+                      </label>
+                      <label class="flex items-center gap-2 text-xs font-semibold text-slate-700 mt-5">
+                        <input id="disc-active" type="checkbox" class="h-4 w-4" checked />
+                        Activo
+                      </label>
+                      <label class="text-xs font-semibold text-slate-600 sm:col-span-2">Reglas (JSON)
+                        <textarea id="disc-rules-json" rows="2" class="mt-1 w-full rounded border p-2 text-xs font-mono" placeholder='[{"type":"minSubtotal","value":500},{"type":"minTotalQty","value":2}]'></textarea>
+                      </label>
+                    </div>
+                    <div class="flex items-center gap-3">
+                      <button type="button" id="disc-create-btn" class="rounded bg-emerald-600 px-4 py-2 text-sm font-bold text-white hover:bg-emerald-700">Crear descuento</button>
+                      <span id="disc-create-status" class="text-xs font-semibold text-slate-600"></span>
+                    </div>
+                  </section>
+                  <section class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm xl:col-span-2">
+                    <div class="mb-3 flex items-center justify-between gap-3">
+                      <h2 class="text-lg font-black text-slate-900">Descuentos existentes</h2>
+                      <button type="button" id="disc-refresh-btn" class="text-sm font-semibold text-blue-600 hover:underline">Actualizar</button>
+                    </div>
+                    <div id="disc-list" class="space-y-3 text-sm text-slate-600">Cargando descuentos...</div>
+                  </section>
+                </div>` : ''}
+
                 ${canPackages ? `<div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden mb-8 p-6">
                     <h2 class="font-bold text-lg mb-4">Crear paquete especial</h2>
                     <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -258,22 +324,37 @@ const AdminDashboard = {
                 </div>
                 </div>
 
-                ${canParking ? `<div id="admin-panel-parking" class="hidden space-y-6">
-                  <div class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-                    <h2 class="text-2xl font-black text-slate-900">Mapa de estacionamiento (tiempo real)</h2>
-                    <p class="mt-1 text-sm text-slate-600">Arrastra spots para ubicarlos y actualiza estado/vehículo en vivo.</p>
-                  </div>
-                  <div id="parking-counters" class="grid gap-3 sm:grid-cols-3 xl:grid-cols-6"></div>
-                  <div class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm space-y-3">
-                    <div class="flex flex-wrap items-center gap-2">
-                      <input id="parking-new-id" class="rounded border p-2 text-sm" placeholder="ID spot (ej. P-01)" />
-                      <button id="btn-parking-add" class="rounded bg-emerald-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-700">Agregar spot</button>
+                ${canParking ? `<div id="admin-panel-parking" class="hidden space-y-5">
+                  <div class="parking-hero">
+                    <div>
+                      <p class="text-xs font-black uppercase tracking-widest text-cyan-300">Tiempo real</p>
+                      <h2 class="mt-1 text-2xl font-black text-white">Mapa operativo de estacionamiento</h2>
+                      <p class="mt-2 max-w-3xl text-sm text-slate-300">Plano de patio con cajones, estado de unidades y movimiento por drag & drop para personal autorizado.</p>
                     </div>
-                    <div id="parking-editor-map" class="relative h-[460px] overflow-hidden rounded-lg border border-slate-200 bg-slate-100"></div>
+                    <span class="rounded-full border border-emerald-400/30 bg-emerald-400/10 px-3 py-1 text-xs font-black text-emerald-200">parking.manage</span>
                   </div>
-                  <div class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-                    <h3 class="font-bold text-lg mb-3">Spots y estado</h3>
-                    <div id="parking-spots-list" class="space-y-2 text-sm text-slate-600">Cargando...</div>
+                  <div id="parking-counters" class="grid gap-3 sm:grid-cols-3 xl:grid-cols-7"></div>
+                  <div class="grid gap-4 xl:grid-cols-[minmax(0,1fr)_390px]">
+                    <section class="parking-operational-card">
+                      <div class="flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                          <h3 class="text-sm font-black uppercase tracking-wide text-slate-900">Plano del patio</h3>
+                          <p class="text-xs text-slate-500">Arrastra una unidad para actualizar su ubicacion.</p>
+                        </div>
+                        <div class="flex flex-wrap items-center gap-2">
+                          <input id="parking-new-id" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold" placeholder="ID spot (ej. P-01)" />
+                          <button id="btn-parking-add" class="rounded-lg bg-emerald-600 px-3 py-2 text-sm font-black text-white hover:bg-emerald-700">Agregar spot</button>
+                        </div>
+                      </div>
+                      <div id="parking-editor-map" class="parking-operational-map relative h-[520px] overflow-hidden"></div>
+                    </section>
+                    <section class="parking-list-card">
+                      <div class="mb-3 flex items-center justify-between gap-2">
+                        <h3 class="text-lg font-black text-slate-900">Spots y estado</h3>
+                        <span class="rounded-full bg-slate-100 px-2 py-1 text-[11px] font-black text-slate-500">Realtime</span>
+                      </div>
+                      <div id="parking-spots-list" class="space-y-2 text-sm text-slate-600">Cargando...</div>
+                    </section>
                   </div>
                 </div>` : ''}
 
@@ -454,7 +535,7 @@ const AdminDashboard = {
                             <strong>Balneario</strong>
                         </article>
                     </div>
-                    <section class="rounded-2xl border border-rose-300 bg-rose-50/70 p-5 shadow-sm">
+                    ${access.isProgramador ? `<section class="rounded-2xl border border-rose-300 bg-rose-50/70 p-5 shadow-sm">
                         <div class="flex items-start gap-3">
                             <span class="mt-0.5 text-rose-700">${icon('warning', 'h-5 w-5')}</span>
                             <div class="min-w-0">
@@ -490,7 +571,7 @@ const AdminDashboard = {
                             <span id="admin-db-delete-status" class="text-xs font-semibold text-slate-600"></span>
                         </div>
                         <p class="mt-2 text-[11px] text-rose-800">Nota: borrar usuario puede fallar si tiene relaciones activas. En ese caso limpia relaciones primero o usa mantenimiento SQL controlado.</p>
-                    </section>
+                    </section>` : ''}
                 </div>` : ''}
 
                 ${canSitioPanel ? `<div id="admin-panel-sitio" class="hidden space-y-8">
@@ -539,32 +620,31 @@ const AdminDashboard = {
                         <p class="text-sm text-slate-600">El mapa se guarda con el boton <strong>Guardar contenido del sitio</strong> al final de esta pagina. Vista previa en vivo en el lienzo.</p>
 
                         <div class="mapa-editor-shell overflow-hidden rounded-2xl border border-slate-700 bg-gradient-to-b from-slate-900 via-slate-900 to-slate-950 text-slate-100 shadow-xl ring-1 ring-white/10">
-                          <header class="flex flex-wrap items-center gap-3 border-b border-white/10 px-4 py-3">
+                          <header class="mapa-editor-topbar flex flex-wrap items-center gap-3 border-b border-white/10 px-4 py-3">
                             <div class="flex min-w-0 flex-1 items-start gap-3">
                               <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-cyan-500/15 text-cyan-400">${icon('map', 'h-6 w-6')}</span>
                               <div class="min-w-0">
                                 <h2 class="text-base font-black tracking-tight text-white">Editor del mapa del parque</h2>
-                                <p class="text-xs text-slate-400">Elige tipo → <strong class="text-cyan-300">Dibujar</strong> en el lienzo (arrastra) · mueve y redimensiona con el raton · <kbd class="rounded bg-white/10 px-1">Esc</kbd> cancela dibujo</p>
+                                <p class="text-xs text-slate-400">Un motor, tres vistas. Dibuja, selecciona, arrastra y ajusta sin salir del panel.</p>
                               </div>
                             </div>
-                            <div class="flex flex-wrap gap-2">
+                            <div class="mapa-command-bar flex flex-wrap gap-2">
                               <label class="sr-only" for="map-context-select">Vista del mapa</label>
                               <select id="map-context-select" class="rounded-lg border border-cyan-400/30 bg-cyan-500/10 px-3 py-2 text-xs font-black text-cyan-100">
                                 <option value="parque">Mapa Global</option>
                                 <option value="mesas">Mapa Mesas</option>
                                 <option value="estacionamiento">Mapa Estacionamiento</option>
                               </select>
-                              <button type="button" data-map-mode="select" class="mapa-mode-btn rounded-lg border border-white/15 bg-white/10 px-3 py-2 text-xs font-bold text-white" title="Seleccionar">Seleccionar</button>
-                              <button type="button" data-map-mode="pan" class="mapa-mode-btn rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-xs font-bold text-slate-200 hover:bg-white/10" title="Mano / pan">Mano</button>
-                              <button type="button" id="mapa-undo" class="rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-xs font-bold text-slate-200 hover:bg-white/10" title="Deshacer">Undo</button>
-                              <button type="button" id="mapa-redo" class="rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-xs font-bold text-slate-200 hover:bg-white/10" title="Rehacer">Redo</button>
-                              <button type="button" id="mapa-preset-row" class="rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-xs font-bold text-slate-200 hover:bg-white/10" title="Tres piezas en fila del tipo activo">Fila ×3</button>
-                              <button type="button" id="mapa-preset-wide" class="rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-xs font-bold text-slate-200 hover:bg-white/10" title="Rectangulo ancho">Bloque ancho</button>
-                              <button type="button" id="mapa-add-quick" class="rounded-lg bg-cyan-600 px-3 py-2 text-xs font-black text-white hover:bg-cyan-500">+ Pieza rapida</button>
+                              <button type="button" id="mapa-save-shortcut" class="mapa-command-primary" title="Guardar contenido del sitio">${icon('check', 'h-4 w-4')} Guardar</button>
+                              <button type="button" data-map-mode="select" class="mapa-mode-btn mapa-command-btn is-active" title="Seleccionar">${icon('cursor', 'h-4 w-4')} Seleccionar</button>
+                              <button type="button" data-map-mode="pan" class="mapa-mode-btn mapa-command-btn" title="Mano / pan">${icon('move', 'h-4 w-4')} Mano</button>
+                              <button type="button" id="mapa-undo" class="mapa-command-btn" title="Deshacer">${icon('undo', 'h-4 w-4')} Undo</button>
+                              <button type="button" id="mapa-redo" class="mapa-command-btn" title="Rehacer">${icon('redo', 'h-4 w-4')} Redo</button>
+                              <a id="mapa-preview-link" href="/home#mapa" data-link class="mapa-command-btn" title="Vista previa publica">${icon('eye', 'h-4 w-4')} Preview</a>
                             </div>
                           </header>
 
-                          <div class="flex flex-wrap gap-2 border-b border-white/5 bg-black/25 px-4 py-2">
+                          <div class="mapa-tool-strip flex flex-wrap gap-2 border-b border-white/5 bg-black/25 px-4 py-2">
                             ${MAP_ITEM_KINDS.map(
                               (kind) => `
                               <button type="button" class="mapa-tool-btn inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-2.5 py-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-300 hover:bg-white/10"
@@ -573,6 +653,10 @@ const AdminDashboard = {
                                 ${kind.label}
                               </button>`
                             ).join('')}
+                            <span class="grow"></span>
+                            <button type="button" id="mapa-preset-row" class="mapa-command-btn" title="Tres piezas en fila del tipo activo">Fila x3</button>
+                            <button type="button" id="mapa-preset-wide" class="mapa-command-btn" title="Rectangulo ancho">Bloque ancho</button>
+                            <button type="button" id="mapa-add-quick" class="mapa-command-primary">+ Pieza rapida</button>
                           </div>
 
                           <p id="mapa-draw-hint" class="hidden border-b border-amber-500/20 bg-amber-500/10 px-4 py-2 text-center text-[11px] font-semibold text-amber-200">Modo dibujo activo: arrastra sobre el lienzo para crear el rectangulo.</p>
@@ -610,7 +694,19 @@ const AdminDashboard = {
                                 <span id="mapa-selected-kind-pill" class="rounded-full bg-slate-700 px-2 py-1 text-[10px] font-bold text-slate-300">Sin seleccion</span>
                               </div>
                               <p id="mapa-empty-state" class="rounded-xl border border-dashed border-white/15 bg-white/5 p-4 text-xs leading-relaxed text-slate-400">Haz clic en una pieza del lienzo. Flechas del teclado mueven 1px (Shift = 10px).</p>
+                              <div id="mapa-multi-state" class="hidden rounded-xl border border-cyan-400/20 bg-cyan-400/10 p-4 text-xs leading-relaxed text-cyan-100">
+                                <p class="font-black uppercase tracking-wide">Seleccion multiple</p>
+                                <p id="mapa-multi-count" class="mt-1 text-cyan-100/80">0 piezas seleccionadas.</p>
+                                <div class="mt-3 grid grid-cols-2 gap-2">
+                                  <button type="button" id="mapa-multi-duplicate" class="mapa-command-btn justify-center">Duplicar</button>
+                                  <button type="button" id="mapa-multi-delete" class="rounded-lg border border-rose-400/30 bg-rose-500/10 px-3 py-2 text-xs font-bold text-rose-200 hover:bg-rose-500/20">Eliminar</button>
+                                  <button type="button" id="mapa-multi-front" class="mapa-command-btn justify-center">Frente</button>
+                                  <button type="button" id="mapa-multi-back" class="mapa-command-btn justify-center">Atras</button>
+                                </div>
+                              </div>
                               <div id="mapa-editor-fields" class="hidden flex-1 space-y-3">
+                                <section class="mapa-inspector-section">
+                                  <p class="mapa-inspector-section-title">Identidad</p>
                                 <label class="block text-[10px] font-bold uppercase text-slate-500">ID unico
                                   <input id="mapa-item-id" type="text" class="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-slate-600" placeholder="mesa-01" />
                                 </label>
@@ -622,6 +718,9 @@ const AdminDashboard = {
                                 <label class="block text-[10px] font-bold uppercase text-slate-500">Etiqueta visible
                                   <input id="mapa-item-label" type="text" class="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white" placeholder="Zona sombra" />
                                 </label>
+                                </section>
+                                <section class="mapa-inspector-section">
+                                  <p class="mapa-inspector-section-title">Posicion y tamaño</p>
                                 <div class="grid grid-cols-2 gap-2">
                                   <label class="text-[10px] font-bold uppercase text-slate-500">X<input id="mapa-item-x" type="number" class="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 text-sm text-white" /></label>
                                   <label class="text-[10px] font-bold uppercase text-slate-500">Y<input id="mapa-item-y" type="number" class="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 text-sm text-white" /></label>
@@ -632,6 +731,9 @@ const AdminDashboard = {
                                   <label class="text-[10px] font-bold uppercase text-slate-500">Relleno<input id="mapa-item-fill" type="color" class="mt-1 h-9 w-full rounded-lg border border-white/10 bg-white/5 p-1" /></label>
                                   <label class="text-[10px] font-bold uppercase text-slate-500">Borde<input id="mapa-item-stroke" type="color" class="mt-1 h-9 w-full rounded-lg border border-white/10 bg-white/5 p-1" /></label>
                                 </div>
+                                </section>
+                                <section class="mapa-inspector-section">
+                                  <p class="mapa-inspector-section-title">Metadata especifica</p>
                                 <div id="mapa-item-metadata" class="grid grid-cols-2 gap-2 rounded-xl border border-white/10 bg-white/5 p-2">
                                   <label class="text-[10px] font-bold uppercase text-slate-500">Capacidad<input id="mapa-meta-capacidad" type="number" min="1" class="mt-1 w-full rounded-lg border border-white/10 bg-slate-950/40 px-2 py-1.5 text-sm text-white" /></label>
                                   <label class="text-[10px] font-bold uppercase text-slate-500">Precio<input id="mapa-meta-precio" type="number" min="0" step="1" class="mt-1 w-full rounded-lg border border-white/10 bg-slate-950/40 px-2 py-1.5 text-sm text-white" /></label>
@@ -641,6 +743,9 @@ const AdminDashboard = {
                                   <label class="text-[10px] font-bold uppercase text-slate-500">Zona<input id="mapa-meta-zone" type="text" class="mt-1 w-full rounded-lg border border-white/10 bg-slate-950/40 px-2 py-1.5 text-sm text-white" /></label>
                                   <label class="text-[10px] font-bold uppercase text-slate-500 sm:col-span-2">Descripcion publica<input id="mapa-meta-description" type="text" class="mt-1 w-full rounded-lg border border-white/10 bg-slate-950/40 px-2 py-1.5 text-sm text-white" /></label>
                                 </div>
+                                </section>
+                                <section class="mapa-inspector-section">
+                                  <p class="mapa-inspector-section-title">Comportamiento</p>
                                 <div>
                                   <p class="mb-1 text-[10px] font-bold uppercase text-slate-500">Ajuste fino</p>
                                   <div class="grid max-w-[140px] grid-cols-3 gap-1">
@@ -666,6 +771,9 @@ const AdminDashboard = {
                                 <label class="block text-[10px] font-bold uppercase text-slate-500">Notas internas
                                   <textarea id="mapa-item-notes" rows="2" class="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-slate-600"></textarea>
                                 </label>
+                                </section>
+                                <section class="mapa-inspector-section">
+                                  <p class="mapa-inspector-section-title">Acciones rapidas</p>
                                 <div class="grid grid-cols-2 gap-2 pt-1">
                                   <button type="button" id="mapa-duplicate" class="rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-xs font-bold text-white hover:bg-white/10">Duplicar</button>
                                   <button type="button" id="mapa-delete" class="rounded-lg border border-rose-400/30 bg-rose-500/10 px-3 py-2 text-xs font-bold text-rose-300 hover:bg-rose-500/20">Eliminar</button>
@@ -683,6 +791,7 @@ const AdminDashboard = {
                                   <button type="button" data-map-distribute="vertical" class="rounded-lg border border-white/15 bg-white/5 px-2 py-2 text-[11px] font-bold text-slate-300 hover:bg-white/10">Dist V</button>
                                   <label class="flex items-center justify-center gap-1 rounded-lg border border-white/15 bg-white/5 px-2 py-2 text-[11px] font-bold text-slate-300"><input id="mapa-snap-grid" type="checkbox" checked /> Snap</label>
                                 </div>
+                                </section>
                               </div>
                               <div class="mt-4 border-t border-white/10 pt-4">
                                 <div class="mb-2 flex items-center justify-between">
@@ -694,8 +803,10 @@ const AdminDashboard = {
                             </aside>
                           </div>
 
-                          <footer class="flex flex-wrap gap-2 border-t border-white/10 bg-black/30 px-4 py-3">
-                            <span class="text-[10px] font-bold uppercase tracking-wide text-slate-500">Leyenda</span>
+                          <footer class="flex flex-wrap items-center gap-2 border-t border-white/10 bg-black/30 px-4 py-3">
+                            <span class="text-[10px] font-bold uppercase tracking-wide text-slate-500">Estado</span>
+                            <span class="rounded-full bg-white/5 px-2 py-1 text-[10px] font-semibold text-slate-400">Ctrl/Cmd+Z deshace</span>
+                            <span class="rounded-full bg-white/5 px-2 py-1 text-[10px] font-semibold text-slate-400">Shift + click suma seleccion</span>
                             ${MAP_ITEM_KINDS.map((kind) => `<span class="inline-flex items-center gap-1 rounded-full bg-white/5 px-2 py-1 text-[10px] font-semibold text-slate-400"><i style="background:${kind.stroke}" class="h-2 w-2 rounded-full"></i>${kind.label}</span>`).join('')}
                           </footer>
                         </div>
@@ -756,6 +867,7 @@ const AdminDashboard = {
     const sidebar = document.getElementById('admin-sidebar');
     const collapse = document.getElementById('admin-sidebar-collapse');
     const access = await getUserAccess(auth.currentUser);
+    const canScan = access.can('tickets.scan');
     const dangerousDeleteMutations = {
       ticket: deleteTicket,
       mesaReserva: deleteMesaReserva,
@@ -815,7 +927,14 @@ const AdminDashboard = {
         await publishAppUpdate('general', `admin-delete:${entity}:${id}`);
       } catch (error) {
         console.error('Error eliminando registro global:', error);
-        setDangerousDeleteStatus(error?.message || 'No se pudo eliminar el registro.', 'err');
+        const msg = String(error?.message || '');
+        if (msg.includes('operation') && msg.includes('not found')) {
+          setDangerousDeleteStatus('Operacion no desplegada en Data Connect. Ejecuta deploy de dataconnect.', 'err');
+        } else if (msg.toLowerCase().includes('insufficient permissions')) {
+          setDangerousDeleteStatus('Permisos insuficientes para esta operacion.', 'err');
+        } else {
+          setDangerousDeleteStatus(error?.message || 'No se pudo eliminar el registro.', 'err');
+        }
       } finally {
         dangerousDeleteBtn.disabled = false;
       }
@@ -1008,9 +1127,12 @@ const AdminDashboard = {
       const wireMapEditorUi = () => {
         const fieldsWrap = document.getElementById('mapa-editor-fields');
         const emptyState = document.getElementById('mapa-empty-state');
+        const multiState = document.getElementById('mapa-multi-state');
+        const multiCount = document.getElementById('mapa-multi-count');
         const pill = document.getElementById('mapa-selected-kind-pill');
         const layersList = document.getElementById('mapa-layers-list');
         const layerCount = document.getElementById('mapa-layer-count');
+        const previewLink = document.getElementById('mapa-preview-link');
         const fieldIds = {
           id: 'mapa-item-id',
           kind: 'mapa-item-kind',
@@ -1044,27 +1166,48 @@ const AdminDashboard = {
           if (!rgba) return fallback;
           return `#${[rgba[1], rgba[2], rgba[3]].map((n) => Math.max(0, Math.min(255, Number(n))).toString(16).padStart(2, '0')).join('')}`;
         };
-        const setDisabled = (disabled) => {
-          fieldsWrap?.classList.toggle('hidden', disabled);
-          emptyState?.classList.toggle('hidden', !disabled);
+        const updatePreviewLink = () => {
+          if (!previewLink) return;
+          previewLink.setAttribute('href', mapContext === 'mesas' ? '/reservar' : '/home#mapa');
+          previewLink.setAttribute('title', mapContext === 'mesas' ? 'Vista previa de reservas' : 'Vista previa publica');
+        };
+        const setInspectorMode = (mode) => {
+          const disabled = mode !== 'single';
+          fieldsWrap?.classList.toggle('hidden', mode !== 'single');
+          emptyState?.classList.toggle('hidden', mode !== 'empty');
+          multiState?.classList.toggle('hidden', mode !== 'multi');
           document.querySelectorAll('#mapa-editor-fields input, #mapa-editor-fields select, #mapa-editor-fields textarea, #mapa-editor-fields button').forEach((node) => {
             node.disabled = disabled;
           });
         };
-        const fillFields = (item) => {
+        const fillFields = (item, _index, selection = []) => {
           syncing = true;
           const drawHint = document.getElementById('mapa-draw-hint');
           if (drawHint && item) drawHint.classList.add('hidden');
-          if (!item) {
-            setDisabled(true);
+          if (selection.length > 1) {
+            setInspectorMode('multi');
+            if (multiCount) multiCount.textContent = `${selection.length} piezas seleccionadas. Puedes moverlas juntas, duplicarlas, ordenarlas o eliminarlas.`;
             if (pill) {
-              pill.textContent = 'Sin seleccion';
-              pill.className = 'rounded-full bg-slate-700 px-2 py-1 text-[10px] font-bold text-slate-300';
+              pill.textContent = `${selection.length} piezas`;
+              pill.className = 'rounded-full bg-cyan-500/20 px-2 py-1 text-[10px] font-bold text-cyan-100';
+              pill.removeAttribute('style');
             }
+            renderLayers();
             syncing = false;
             return;
           }
-          setDisabled(false);
+          if (!item) {
+            setInspectorMode('empty');
+            if (pill) {
+              pill.textContent = 'Sin seleccion';
+              pill.className = 'rounded-full bg-slate-700 px-2 py-1 text-[10px] font-bold text-slate-300';
+              pill.removeAttribute('style');
+            }
+            renderLayers();
+            syncing = false;
+            return;
+          }
+          setInspectorMode('single');
           const kind = getMapKind(item.kind);
           if (pill) {
             pill.textContent = kind.label;
@@ -1092,6 +1235,7 @@ const AdminDashboard = {
           el('spotCode').value = item.metadata?.spotCode || '';
           el('zone').value = item.metadata?.zone || '';
           el('description').value = item.metadata?.description || '';
+          renderLayers();
           syncing = false;
         };
 
@@ -1128,6 +1272,7 @@ const AdminDashboard = {
         const renderLayers = () => {
           if (!layersList) return;
           const items = mapEditor?.getItems?.() || [];
+          const selectedIds = new Set((mapEditor?.getSelection?.() || []).map((item) => item.id));
           if (layerCount) layerCount.textContent = `${items.length}`;
           if (!items.length) {
             layersList.innerHTML = '<p class="rounded-lg border border-dashed border-white/10 p-3 text-slate-500">Sin items en esta vista.</p>';
@@ -1135,13 +1280,21 @@ const AdminDashboard = {
           }
           layersList.innerHTML = [...items]
             .reverse()
-            .map((item) => `
-              <div class="flex items-center gap-1 rounded-lg border border-white/10 bg-white/5 px-2 py-1.5">
-                <button type="button" data-layer-select="${escapeHtml(item.id)}" class="min-w-0 flex-1 truncate text-left font-bold text-slate-200 hover:text-white">${escapeHtml(item.label || item.id)}</button>
-                <button type="button" data-layer-lock="${escapeHtml(item.id)}" class="rounded px-1.5 py-1 text-[10px] font-black ${item.locked ? 'bg-amber-500/20 text-amber-200' : 'text-slate-500 hover:bg-white/10'}">${item.locked ? 'L' : 'U'}</button>
-                <button type="button" data-layer-visible="${escapeHtml(item.id)}" class="rounded px-1.5 py-1 text-[10px] font-black ${item.visible === false ? 'bg-slate-700 text-slate-400' : 'text-cyan-200 hover:bg-white/10'}">${item.visible === false ? 'Oculto' : 'Ver'}</button>
+            .map((item) => {
+              const kind = getMapKind(item.kind);
+              const active = selectedIds.has(item.id);
+              return `
+              <div class="mapa-layer-row ${active ? 'is-active' : ''}">
+                <span class="h-2.5 w-2.5 shrink-0 rounded-full ring-2 ring-white/10" style="background:${kind.stroke}"></span>
+                <button type="button" data-layer-select="${escapeHtml(item.id)}" class="min-w-0 flex-1 text-left">
+                  <span class="block truncate font-bold text-slate-100">${escapeHtml(item.label || kind.label)}</span>
+                  <small class="block truncate text-[10px] font-semibold text-slate-500">${escapeHtml(kind.label)}</small>
+                </button>
+                <button type="button" data-layer-lock="${escapeHtml(item.id)}" class="mapa-layer-icon ${item.locked ? 'is-locked' : ''}" title="${item.locked ? 'Desbloquear' : 'Bloquear'}">${item.locked ? 'L' : 'U'}</button>
+                <button type="button" data-layer-visible="${escapeHtml(item.id)}" class="mapa-layer-icon ${item.visible === false ? 'is-hidden' : ''}" title="${item.visible === false ? 'Mostrar' : 'Ocultar'}">${item.visible === false ? 'Off' : 'On'}</button>
               </div>
-            `)
+            `;
+            })
             .join('');
           layersList.querySelectorAll('[data-layer-select]').forEach((btn) => {
             btn.addEventListener('click', () => mapEditor?.selectItemById?.(btn.getAttribute('data-layer-select') || ''));
@@ -1156,48 +1309,62 @@ const AdminDashboard = {
 
         Object.values(fieldIds).forEach((id) => {
           const node = document.getElementById(id);
-          node?.addEventListener('input', () => {
+          if (!node) return;
+          node.oninput = () => {
             if (syncing) return;
             mapEditor?.updateSelected(collectPatch());
-          });
-          node?.addEventListener('change', () => {
+          };
+          node.onchange = () => {
             if (syncing) return;
             mapEditor?.updateSelected(collectPatch());
-          });
+          };
         });
 
-        document.getElementById('mapa-delete')?.addEventListener('click', () => mapEditor?.deleteSelected());
-        document.getElementById('mapa-duplicate')?.addEventListener('click', () => mapEditor?.duplicateSelected());
-        document.getElementById('mapa-layer-back')?.addEventListener('click', () => mapEditor?.moveSelectedLayer(-1));
-        document.getElementById('mapa-layer-front')?.addEventListener('click', () => mapEditor?.moveSelectedLayer(1));
-        document.getElementById('mapa-undo')?.addEventListener('click', () => mapEditor?.undo?.());
-        document.getElementById('mapa-redo')?.addEventListener('click', () => mapEditor?.redo?.());
+        const setClick = (id, handler) => {
+          const node = document.getElementById(id);
+          if (node) node.onclick = handler;
+        };
+        setClick('mapa-delete', () => mapEditor?.deleteSelected());
+        setClick('mapa-duplicate', () => mapEditor?.duplicateSelected());
+        setClick('mapa-layer-back', () => mapEditor?.moveSelectedLayer(-1));
+        setClick('mapa-layer-front', () => mapEditor?.moveSelectedLayer(1));
+        setClick('mapa-multi-delete', () => mapEditor?.deleteSelected());
+        setClick('mapa-multi-duplicate', () => mapEditor?.duplicateSelected());
+        setClick('mapa-multi-front', () => mapEditor?.bringToFront?.());
+        setClick('mapa-multi-back', () => mapEditor?.sendToBack?.());
+        setClick('mapa-save-shortcut', () => document.getElementById('lp-save')?.click());
+        setClick('mapa-undo', () => mapEditor?.undo?.());
+        setClick('mapa-redo', () => mapEditor?.redo?.());
         document.querySelectorAll('[data-map-mode]').forEach((btn) => {
-          btn.addEventListener('click', () => {
+          btn.onclick = () => {
             const mode = btn.getAttribute('data-map-mode') || 'select';
             mapEditor?.setTool?.(mode);
-            document.querySelectorAll('[data-map-mode]').forEach((node) => node.classList.toggle('bg-white/10', node === btn));
-          });
+            document.querySelectorAll('[data-map-mode]').forEach((node) => node.classList.toggle('is-active', node === btn));
+          };
         });
         document.querySelectorAll('[data-map-align]').forEach((btn) => {
-          btn.addEventListener('click', () => mapEditor?.alignSelected?.(btn.getAttribute('data-map-align') || 'left'));
+          btn.onclick = () => mapEditor?.alignSelected?.(btn.getAttribute('data-map-align') || 'left');
         });
         document.querySelectorAll('[data-map-distribute]').forEach((btn) => {
-          btn.addEventListener('click', () => mapEditor?.distributeSelected?.(btn.getAttribute('data-map-distribute') || 'horizontal'));
+          btn.onclick = () => mapEditor?.distributeSelected?.(btn.getAttribute('data-map-distribute') || 'horizontal');
         });
-        document.getElementById('mapa-snap-grid')?.addEventListener('change', (ev) => {
-          mapEditor?.setSnap?.(ev.currentTarget.checked);
-        });
+        const snapGrid = document.getElementById('mapa-snap-grid');
+        if (snapGrid) {
+          snapGrid.onchange = (ev) => {
+            mapEditor?.setSnap?.(ev.currentTarget.checked);
+          };
+        }
         document.querySelectorAll('[data-map-nudge]').forEach((btn) => {
-          btn.addEventListener('click', () => {
+          btn.onclick = () => {
             if (syncing) return;
             const dx = parseInt(btn.getAttribute('data-dx') || '0', 10);
             const dy = parseInt(btn.getAttribute('data-dy') || '0', 10);
             const cur = mapEditor?.getSelected();
             if (!cur || cur.locked) return;
             mapEditor?.updateSelected({ x: cur.x + dx, y: cur.y + dy });
-          });
+          };
         });
+        updatePreviewLink();
         mapEditor?.onSelectionChange(fillFields);
         mapEditor?.onDocumentChange?.(renderLayers);
         renderLayers();
@@ -1514,27 +1681,44 @@ const AdminDashboard = {
         console.warn('Mapa de estacionamiento no disponible:', error);
       }
 
+      const parkingStateMeta = (spot = {}) => {
+        const state = ['libre', 'reservado', 'ocupado', 'sucio', 'mantenimiento', 'taller'].includes(spot.estado)
+          ? spot.estado
+          : 'ocupado';
+        const labels = {
+          libre: 'Libre',
+          reservado: 'Reservado',
+          ocupado: 'Ocupado',
+          sucio: 'Sucio',
+          mantenimiento: 'Mantenimiento',
+          taller: 'Taller'
+        };
+        return { state, label: labels[state] || 'Ocupado' };
+      };
+
       const renderCounters = () => {
         if (!countersEl) return;
         const total = current.length;
         const libres = current.filter((s) => s.estado === 'libre').length;
-        const sucios = current.filter((s) => s.estado === 'sucio').length;
-        const mantenimiento = current.filter((s) => s.estado === 'mantenimiento').length;
+        const ocupados = current.filter((s) => s.estado === 'ocupado').length;
+        const reservados = current.filter((s) => s.estado === 'reservado').length;
+        const mantenimiento = current.filter((s) => s.estado === 'mantenimiento' || s.estado === 'sucio').length;
         const patio = current.filter((s) => (s.ubicacion || 'patio') === 'patio').length;
         const taller = current.filter((s) => s.estado === 'taller' || s.ubicacion === 'taller').length;
         const cards = [
-          ['Totales', total, 'text-slate-900'],
-          ['Libres/listos', libres, 'text-emerald-700'],
-          ['Sucios', sucios, 'text-amber-700'],
-          ['Mantenimiento', mantenimiento, 'text-rose-700'],
-          ['En patio', patio, 'text-cyan-700'],
-          ['En taller', taller, 'text-indigo-700']
+          ['Totales', total, 'total'],
+          ['Libres/listos', libres, 'free'],
+          ['Ocupados', ocupados, 'busy'],
+          ['Reservados', reservados, 'reserved'],
+          ['Mantenimiento', mantenimiento, 'maintenance'],
+          ['En patio', patio, 'yard'],
+          ['En taller', taller, 'shop']
         ];
         countersEl.innerHTML = cards
-          .map(([label, value, cls]) => `
-            <article class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          .map(([label, value, tone]) => `
+            <article class="parking-counter-card is-${tone}">
               <p class="text-[11px] font-black uppercase tracking-wide text-slate-500">${label}</p>
-              <p class="mt-1 text-2xl font-black ${cls}">${value}</p>
+              <p class="mt-1 text-2xl font-black">${value}</p>
             </article>
           `)
           .join('');
@@ -1544,23 +1728,29 @@ const AdminDashboard = {
         renderCounters();
         mapEl.innerHTML = `
           <canvas id="parking-editor-canvas" width="1000" height="620" class="absolute inset-0 h-full w-full"></canvas>
-          <div class="pointer-events-none absolute left-3 top-3 z-10 rounded-lg border border-white/70 bg-white/85 px-3 py-2 text-xs font-black uppercase tracking-wide text-slate-600 shadow">Plano operativo</div>
+          <div class="parking-map-label left-4 top-4">Plano operativo</div>
+          <div class="parking-map-label right-4 top-4">Entrada / Salida</div>
+          <div class="parking-map-zone bottom-4 left-4">Patio</div>
+          <div class="parking-map-zone bottom-4 right-4">Taller</div>
+          <div class="parking-map-legend">
+            <span><i class="state-libre"></i>Libre</span>
+            <span><i class="state-reservado"></i>Reservado</span>
+            <span><i class="state-ocupado"></i>Ocupado</span>
+            <span><i class="state-mantenimiento"></i>Mantenimiento</span>
+          </div>
           ${current
           .map((s) => {
             const x = Math.max(0, Math.min(95, Number(s.x || 0)));
             const y = Math.max(0, Math.min(90, Number(s.y || 0)));
-            const color =
-              s.estado === 'libre'
-                ? 'bg-emerald-500'
-                : s.estado === 'reservado'
-                  ? 'bg-amber-500'
-                  : s.estado === 'mantenimiento' || s.estado === 'sucio'
-                    ? 'bg-slate-600'
-                    : s.estado === 'taller'
-                      ? 'bg-indigo-600'
-                      : 'bg-rose-600';
-            const vehicle = s.placas || s.modelo ? `<span class="mt-0.5 block text-[10px] font-semibold opacity-90">${escapeHtml(s.placas || s.modelo)}</span>` : '';
-            return `<button type="button" data-park-node="${escapeHtml(s.id)}" class="absolute z-20 min-w-14 rounded-lg ${color} px-2 py-1 text-[11px] font-black leading-tight text-white shadow-lg cursor-move" style="left:${x}%;top:${y}%">${escapeHtml(s.id)}${vehicle}</button>`;
+            const meta = parkingStateMeta(s);
+            const vehicle = s.placas || s.modelo
+              ? `<span class="parking-chip-vehicle">${escapeHtml(s.placas || s.modelo)}</span>`
+              : '<span class="parking-chip-vehicle is-empty">Sin unidad</span>';
+            return `<button type="button" data-park-node="${escapeHtml(s.id)}" class="parking-vehicle-chip state-${meta.state}" style="left:${x}%;top:${y}%">
+              <span class="parking-chip-id">${escapeHtml(s.id)}</span>
+              <span class="parking-chip-state">${meta.label}</span>
+              ${vehicle}
+            </button>`;
           })
           .join('')}
         `;
@@ -1572,11 +1762,23 @@ const AdminDashboard = {
         }
 
         listEl.innerHTML = current
-          .map((s) => `
-            <div class="rounded border border-slate-200 p-2">
-              <div class="font-semibold">${escapeHtml(s.id)}</div>
-              <div class="mt-1 grid gap-2 sm:grid-cols-6">
-                <select data-park-status="${escapeHtml(s.id)}" class="rounded border p-1 text-xs">
+          .map((s) => {
+            const meta = parkingStateMeta(s);
+            const vehicleLabel = s.placas || s.modelo || 'Sin unidad';
+            return `
+            <div class="parking-spot-row">
+              <div class="flex items-center justify-between gap-2">
+                <div class="min-w-0">
+                  <div class="flex items-center gap-2">
+                    <span class="parking-state-dot state-${meta.state}"></span>
+                    <span class="font-black text-slate-900">${escapeHtml(s.id)}</span>
+                  </div>
+                  <p class="truncate text-xs text-slate-500">${escapeHtml(vehicleLabel)} · ${escapeHtml(s.ubicacion || 'patio')}</p>
+                </div>
+                <span class="parking-state-badge state-${meta.state}">${meta.label}</span>
+              </div>
+              <div class="parking-spot-grid mt-3">
+                <select data-park-status="${escapeHtml(s.id)}" class="rounded-lg border border-slate-300 p-2 text-xs font-semibold">
                   <option value="libre" ${s.estado === 'libre' ? 'selected' : ''}>Libre</option>
                   <option value="reservado" ${s.estado === 'reservado' ? 'selected' : ''}>Reservado</option>
                   <option value="ocupado" ${s.estado === 'ocupado' ? 'selected' : ''}>Ocupado</option>
@@ -1584,21 +1786,22 @@ const AdminDashboard = {
                   <option value="mantenimiento" ${s.estado === 'mantenimiento' ? 'selected' : ''}>Mantenimiento</option>
                   <option value="taller" ${s.estado === 'taller' ? 'selected' : ''}>Taller</option>
                 </select>
-                <input data-park-placas="${escapeHtml(s.id)}" class="rounded border p-1 text-xs" placeholder="Placas" value="${escapeHtml(s.placas || '')}" />
-                <input data-park-modelo="${escapeHtml(s.id)}" class="rounded border p-1 text-xs" placeholder="Modelo (si no hay placas)" value="${escapeHtml(s.modelo || '')}" />
-                <input data-park-resby="${escapeHtml(s.id)}" class="rounded border p-1 text-xs" placeholder="Auto de / reservado por" value="${escapeHtml(s.reservadoPor || '')}" />
-                <select data-park-ubicacion="${escapeHtml(s.id)}" class="rounded border p-1 text-xs">
+                <input data-park-placas="${escapeHtml(s.id)}" class="rounded-lg border border-slate-300 p-2 text-xs" placeholder="Placas" value="${escapeHtml(s.placas || '')}" />
+                <input data-park-modelo="${escapeHtml(s.id)}" class="rounded-lg border border-slate-300 p-2 text-xs" placeholder="Modelo" value="${escapeHtml(s.modelo || '')}" />
+                <input data-park-resby="${escapeHtml(s.id)}" class="rounded-lg border border-slate-300 p-2 text-xs" placeholder="Reservado por" value="${escapeHtml(s.reservadoPor || '')}" />
+                <select data-park-ubicacion="${escapeHtml(s.id)}" class="rounded-lg border border-slate-300 p-2 text-xs font-semibold">
                   <option value="patio" ${(s.ubicacion || 'patio') === 'patio' ? 'selected' : ''}>Patio</option>
                   <option value="taller" ${s.ubicacion === 'taller' ? 'selected' : ''}>Taller</option>
                   <option value="entrada" ${s.ubicacion === 'entrada' ? 'selected' : ''}>Entrada</option>
                 </select>
                 <div class="flex gap-1">
-                  <button data-park-save="${escapeHtml(s.id)}" class="rounded bg-slate-900 px-2 py-1 text-xs font-semibold text-white">Guardar</button>
-                  <button data-park-del="${escapeHtml(s.id)}" class="rounded bg-rose-600 px-2 py-1 text-xs font-semibold text-white">Eliminar</button>
+                  <button data-park-save="${escapeHtml(s.id)}" class="rounded-lg bg-slate-900 px-3 py-2 text-xs font-black text-white hover:bg-slate-700">Guardar</button>
+                  <button data-park-del="${escapeHtml(s.id)}" class="rounded-lg bg-rose-600 px-3 py-2 text-xs font-black text-white hover:bg-rose-700">Eliminar</button>
                 </div>
               </div>
             </div>
-          `)
+          `;
+          })
           .join('');
 
         document.querySelectorAll('[data-park-save]').forEach((btn) => {
@@ -2217,6 +2420,186 @@ const AdminDashboard = {
         });
       }
     }
+
+    const cfgAdulto = document.getElementById('cfg-precio-adulto');
+    const cfgNino = document.getElementById('cfg-precio-nino');
+    const cfgMayor = document.getElementById('cfg-precio-mayor');
+    const cfgSaveBtn = document.getElementById('cfg-save-prices');
+    const cfgStatus = document.getElementById('cfg-prices-status');
+    const discCreateBtn = document.getElementById('disc-create-btn');
+    const discRefreshBtn = document.getElementById('disc-refresh-btn');
+    const discList = document.getElementById('disc-list');
+    const discCreateStatus = document.getElementById('disc-create-status');
+    const discCode = document.getElementById('disc-code');
+    const discType = document.getElementById('disc-type');
+    const discValue = document.getElementById('disc-value');
+    const discUses = document.getElementById('disc-uses');
+    const discActive = document.getElementById('disc-active');
+    const discRulesJson = document.getElementById('disc-rules-json');
+
+    const setCfgStatus = (msg, ok = false) => {
+      if (!cfgStatus) return;
+      cfgStatus.textContent = msg || '';
+      cfgStatus.className = `text-xs font-semibold ${ok ? 'text-emerald-700' : 'text-slate-600'}`;
+    };
+    const setDiscStatus = (msg, ok = false) => {
+      if (!discCreateStatus) return;
+      discCreateStatus.textContent = msg || '';
+      discCreateStatus.className = `text-xs font-semibold ${ok ? 'text-emerald-700' : 'text-slate-600'}`;
+    };
+    const safeRulesJson = (value) => {
+      try {
+        const parsed = JSON.parse(value || '[]');
+        return JSON.stringify(Array.isArray(parsed) ? parsed : []);
+      } catch {
+        throw new Error('Reglas JSON invalido.');
+      }
+    };
+    const renderDescuentos = async () => {
+      if (!discList) return;
+      discList.innerHTML = 'Cargando descuentos...';
+      try {
+        const res = await listDescuentosAdmin();
+        const rows = res.data?.descuentos || [];
+        if (!rows.length) {
+          discList.innerHTML = '<p class="text-slate-500">Sin descuentos configurados.</p>';
+          return;
+        }
+        discList.innerHTML = rows
+          .map((d) => `
+            <article class="rounded-lg border border-slate-200 p-3" data-disc-row="${d.id}">
+              <div class="grid grid-cols-1 gap-2 sm:grid-cols-6">
+                <input data-disc-code type="text" value="${escapeHtml(d.codigo)}" class="rounded border p-2 text-sm uppercase" />
+                <select data-disc-type class="rounded border p-2 text-sm">
+                  <option value="porcentaje" ${d.tipo === 'porcentaje' ? 'selected' : ''}>Porcentaje</option>
+                  <option value="monto" ${d.tipo === 'monto' ? 'selected' : ''}>Monto</option>
+                </select>
+                <input data-disc-value type="number" min="0" step="0.01" value="${Number(d.descuento || 0)}" class="rounded border p-2 text-sm" />
+                <input data-disc-uses type="number" min="0" step="1" value="${Number(d.usosRestantes || 0)}" class="rounded border p-2 text-sm" />
+                <label class="inline-flex items-center gap-2 rounded border px-3 py-2 text-sm font-semibold"><input data-disc-active type="checkbox" ${d.activo ? 'checked' : ''} /> Activo</label>
+                <div class="flex items-center justify-end gap-2">
+                  <button type="button" data-disc-save class="rounded bg-blue-600 px-3 py-2 text-xs font-bold text-white hover:bg-blue-700">Guardar</button>
+                  <button type="button" data-disc-del class="rounded bg-rose-600 px-3 py-2 text-xs font-bold text-white hover:bg-rose-700">Eliminar</button>
+                </div>
+              </div>
+              <textarea data-disc-rules rows="2" class="mt-2 w-full rounded border p-2 text-xs font-mono">${escapeHtml(d.reglasJson || '[]')}</textarea>
+              <p data-disc-status class="mt-2 text-xs font-semibold text-slate-500"></p>
+            </article>
+          `)
+          .join('');
+
+        discList.querySelectorAll('[data-disc-save]').forEach((btn) => {
+          btn.addEventListener('click', async () => {
+            const row = btn.closest('[data-disc-row]');
+            if (!row) return;
+            const id = row.getAttribute('data-disc-row');
+            const status = row.querySelector('[data-disc-status]');
+            const setStatus = (msg, ok = false) => {
+              if (!status) return;
+              status.textContent = msg || '';
+              status.className = `mt-2 text-xs font-semibold ${ok ? 'text-emerald-700' : 'text-slate-500'}`;
+            };
+            try {
+              const reglas = safeRulesJson(row.querySelector('[data-disc-rules]')?.value || '[]');
+              await updateDescuento({
+                id,
+                codigo: String(row.querySelector('[data-disc-code]')?.value || '').trim().toUpperCase(),
+                tipo: String(row.querySelector('[data-disc-type]')?.value || 'porcentaje'),
+                descuento: Number(row.querySelector('[data-disc-value]')?.value || 0),
+                usosRestantes: Math.max(0, Number(row.querySelector('[data-disc-uses]')?.value || 0)),
+                activo: Boolean(row.querySelector('[data-disc-active]')?.checked),
+                reglasJson: reglas
+              });
+              setStatus('Descuento actualizado.', true);
+              await publishAppUpdate('sales', `discount-update:${id}`);
+            } catch (e) {
+              setStatus(e?.message || 'No se pudo guardar.');
+            }
+          });
+        });
+        discList.querySelectorAll('[data-disc-del]').forEach((btn) => {
+          btn.addEventListener('click', async () => {
+            const row = btn.closest('[data-disc-row]');
+            if (!row) return;
+            const id = row.getAttribute('data-disc-row');
+            const status = row.querySelector('[data-disc-status]');
+            try {
+              await deleteDescuento({ id });
+              if (status) status.textContent = 'Eliminado.';
+              await publishAppUpdate('sales', `discount-delete:${id}`);
+              await renderDescuentos();
+            } catch (e) {
+              if (status) status.textContent = e?.message || 'No se pudo eliminar.';
+            }
+          });
+        });
+      } catch (e) {
+        discList.innerHTML = `<p class="text-rose-600">${escapeHtml(e?.message || 'No se pudieron cargar descuentos.')}</p>`;
+      }
+    };
+
+    if (cfgSaveBtn && cfgAdulto && cfgNino && cfgMayor) {
+      try {
+        const cfg = await getConfiguracion({ id: TICKET_CONFIG_ID });
+        const row = cfg.data?.configuracion;
+        if (row) {
+          cfgAdulto.value = String(Number(row.precioAdulto || 0));
+          cfgNino.value = String(Number(row.precioNino || 0));
+          cfgMayor.value = String(Number(row.precioMayor || 0));
+        }
+      } catch (e) {
+        setCfgStatus('Sin configuracion previa, completa y guarda.');
+      }
+      cfgSaveBtn.addEventListener('click', async () => {
+        try {
+          cfgSaveBtn.disabled = true;
+          setCfgStatus('Guardando...');
+          await upsertConfiguracion({
+            id: TICKET_CONFIG_ID,
+            precioAdulto: Number(cfgAdulto.value || 0),
+            precioNino: Number(cfgNino.value || 0),
+            precioMayor: Number(cfgMayor.value || 0)
+          });
+          setCfgStatus('Precios guardados.', true);
+          await publishAppUpdate('sales', 'ticket-prices-updated');
+        } catch (e) {
+          setCfgStatus(e?.message || 'No se pudo guardar precios.');
+        } finally {
+          cfgSaveBtn.disabled = false;
+        }
+      });
+    }
+    if (discCreateBtn) {
+      discCreateBtn.addEventListener('click', async () => {
+        try {
+          discCreateBtn.disabled = true;
+          setDiscStatus('Creando...');
+          const reglas = safeRulesJson(discRulesJson?.value || '[]');
+          await createDescuento({
+            codigo: String(discCode?.value || '').trim().toUpperCase(),
+            tipo: String(discType?.value || 'porcentaje'),
+            descuento: Number(discValue?.value || 0),
+            usosRestantes: Math.max(1, Number(discUses?.value || 1)),
+            activo: Boolean(discActive?.checked),
+            reglasJson: reglas
+          });
+          setDiscStatus('Descuento creado.', true);
+          if (discCode) discCode.value = '';
+          if (discValue) discValue.value = '';
+          if (discUses) discUses.value = '1';
+          if (discRulesJson) discRulesJson.value = '';
+          if (discActive) discActive.checked = true;
+          await publishAppUpdate('sales', 'discount-created');
+          await renderDescuentos();
+        } catch (e) {
+          setDiscStatus(e?.message || 'No se pudo crear descuento.');
+        } finally {
+          discCreateBtn.disabled = false;
+        }
+      });
+    }
+    discRefreshBtn?.addEventListener('click', renderDescuentos);
+    if (discList) await renderDescuentos();
 
     const btnCreatePkg = document.getElementById('btn-create-pkg');
     const btnRefresh = document.getElementById('btn-refresh');

@@ -343,6 +343,62 @@ exports.deleteMesaReserva = function deleteMesaReserva(dcOrVars, vars) {
 }
 ;
 
+const upsertConfiguracionRef = (dcOrVars, vars) => {
+  const { dc: dcInstance, vars: inputVars} = validateArgs(connectorConfig, dcOrVars, vars, true);
+  dcInstance._useGeneratedSdk();
+  return mutationRef(dcInstance, 'UpsertConfiguracion', inputVars);
+}
+upsertConfiguracionRef.operationName = 'UpsertConfiguracion';
+exports.upsertConfiguracionRef = upsertConfiguracionRef;
+
+exports.upsertConfiguracion = function upsertConfiguracion(dcOrVars, vars) {
+  const { dc: dcInstance, vars: inputVars } = validateArgs(connectorConfig, dcOrVars, vars, true);
+  return executeMutation(upsertConfiguracionRef(dcInstance, inputVars));
+}
+;
+
+const createDescuentoRef = (dcOrVars, vars) => {
+  const { dc: dcInstance, vars: inputVars} = validateArgs(connectorConfig, dcOrVars, vars, true);
+  dcInstance._useGeneratedSdk();
+  return mutationRef(dcInstance, 'CreateDescuento', inputVars);
+}
+createDescuentoRef.operationName = 'CreateDescuento';
+exports.createDescuentoRef = createDescuentoRef;
+
+exports.createDescuento = function createDescuento(dcOrVars, vars) {
+  const { dc: dcInstance, vars: inputVars } = validateArgs(connectorConfig, dcOrVars, vars, true);
+  return executeMutation(createDescuentoRef(dcInstance, inputVars));
+}
+;
+
+const updateDescuentoRef = (dcOrVars, vars) => {
+  const { dc: dcInstance, vars: inputVars} = validateArgs(connectorConfig, dcOrVars, vars, true);
+  dcInstance._useGeneratedSdk();
+  return mutationRef(dcInstance, 'UpdateDescuento', inputVars);
+}
+updateDescuentoRef.operationName = 'UpdateDescuento';
+exports.updateDescuentoRef = updateDescuentoRef;
+
+exports.updateDescuento = function updateDescuento(dcOrVars, vars) {
+  const { dc: dcInstance, vars: inputVars } = validateArgs(connectorConfig, dcOrVars, vars, true);
+  return executeMutation(updateDescuentoRef(dcInstance, inputVars));
+}
+;
+
+const consumeDescuentoRef = (dcOrVars, vars) => {
+  const { dc: dcInstance, vars: inputVars} = validateArgs(connectorConfig, dcOrVars, vars, true);
+  dcInstance._useGeneratedSdk();
+  return mutationRef(dcInstance, 'ConsumeDescuento', inputVars);
+}
+consumeDescuentoRef.operationName = 'ConsumeDescuento';
+exports.consumeDescuentoRef = consumeDescuentoRef;
+
+exports.consumeDescuento = function consumeDescuento(dcOrVars, vars) {
+  const { dc: dcInstance, vars: inputVars } = validateArgs(connectorConfig, dcOrVars, vars, true);
+  return executeMutation(consumeDescuentoRef(dcInstance, inputVars));
+}
+;
+
 const updateMesaReservaEstadoRef = (dcOrVars, vars) => {
   const { dc: dcInstance, vars: inputVars} = validateArgs(connectorConfig, dcOrVars, vars, true);
   dcInstance._useGeneratedSdk();
@@ -518,6 +574,51 @@ exports.listProductosPublic = function listProductosPublic(dcOrOptions, options)
   
   const { dc: dcInstance, vars: inputVars, options: inputOpts } = validateArgsWithOptions(connectorConfig, dcOrOptions, options, undefined,false, false);
   return executeQuery(listProductosPublicRef(dcInstance, inputVars), inputOpts && inputOpts.fetchPolicy);
+}
+;
+
+const getConfiguracionRef = (dcOrVars, vars) => {
+  const { dc: dcInstance, vars: inputVars} = validateArgs(connectorConfig, dcOrVars, vars, true);
+  dcInstance._useGeneratedSdk();
+  return queryRef(dcInstance, 'GetConfiguracion', inputVars);
+}
+getConfiguracionRef.operationName = 'GetConfiguracion';
+exports.getConfiguracionRef = getConfiguracionRef;
+
+exports.getConfiguracion = function getConfiguracion(dcOrVars, varsOrOptions, options) {
+  
+  const { dc: dcInstance, vars: inputVars, options: inputOpts } = validateArgsWithOptions(connectorConfig, dcOrVars, varsOrOptions, options, true, true);
+  return executeQuery(getConfiguracionRef(dcInstance, inputVars), inputOpts && inputOpts.fetchPolicy);
+}
+;
+
+const getDescuentoByCodigoRef = (dcOrVars, vars) => {
+  const { dc: dcInstance, vars: inputVars} = validateArgs(connectorConfig, dcOrVars, vars, true);
+  dcInstance._useGeneratedSdk();
+  return queryRef(dcInstance, 'GetDescuentoByCodigo', inputVars);
+}
+getDescuentoByCodigoRef.operationName = 'GetDescuentoByCodigo';
+exports.getDescuentoByCodigoRef = getDescuentoByCodigoRef;
+
+exports.getDescuentoByCodigo = function getDescuentoByCodigo(dcOrVars, varsOrOptions, options) {
+  
+  const { dc: dcInstance, vars: inputVars, options: inputOpts } = validateArgsWithOptions(connectorConfig, dcOrVars, varsOrOptions, options, true, true);
+  return executeQuery(getDescuentoByCodigoRef(dcInstance, inputVars), inputOpts && inputOpts.fetchPolicy);
+}
+;
+
+const listDescuentosAdminRef = (dc) => {
+  const { dc: dcInstance} = validateArgs(connectorConfig, dc, undefined);
+  dcInstance._useGeneratedSdk();
+  return queryRef(dcInstance, 'ListDescuentosAdmin');
+}
+listDescuentosAdminRef.operationName = 'ListDescuentosAdmin';
+exports.listDescuentosAdminRef = listDescuentosAdminRef;
+
+exports.listDescuentosAdmin = function listDescuentosAdmin(dcOrOptions, options) {
+  
+  const { dc: dcInstance, vars: inputVars, options: inputOpts } = validateArgsWithOptions(connectorConfig, dcOrOptions, options, undefined,false, false);
+  return executeQuery(listDescuentosAdminRef(dcInstance, inputVars), inputOpts && inputOpts.fetchPolicy);
 }
 ;
 

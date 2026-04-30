@@ -82,6 +82,8 @@ type Descuento @table {
   descuento: Float!
   tipo: String! # "monto" | "porcentaje"
   usosRestantes: Int!
+  activo: Boolean! @default(expr: "true")
+  reglasJson: String! @default(expr: "'[]'")
 }
 
 # Tickets de Acceso / Reservas

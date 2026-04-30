@@ -734,9 +734,12 @@ export default {
               <div class="mx-auto max-w-5xl">
                 <h2 class="text-2xl font-black text-slate-900 sm:text-3xl">Estacionamiento en tiempo real</h2>
                 <p class="mt-2 text-sm text-slate-500">Visualiza spots libres, reservados y ocupados.</p>
-                <div class="mt-4 rounded-xl border border-slate-200 bg-white p-4">
-                  <div class="mb-2 text-sm text-slate-600" id="parking-summary">Cargando spots...</div>
-                  <div class="relative h-[360px] overflow-hidden rounded-lg border border-slate-200 bg-slate-100">
+                <div class="public-parking-card mt-5">
+                  <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+                    <div class="text-sm font-bold text-slate-700" id="parking-summary">Cargando spots...</div>
+                    <span class="rounded-full bg-emerald-50 px-3 py-1 text-[11px] font-black uppercase tracking-wide text-emerald-700">Solo lectura</span>
+                  </div>
+                  <div class="public-parking-map relative h-[360px] overflow-hidden">
                     <canvas id="landing-parking-canvas" width="800" height="440" class="absolute inset-0 h-full w-full"></canvas>
                     <div id="landing-parking-map" class="absolute inset-0"></div>
                   </div>
@@ -1072,16 +1075,9 @@ export default {
             .map((s) => {
               const x = Math.max(0, Math.min(95, Number(s.x || 0)));
               const y = Math.max(0, Math.min(90, Number(s.y || 0)));
-              const cls =
-                s.estado === 'libre'
-                  ? 'bg-emerald-500'
-                  : s.estado === 'reservado'
-                    ? 'bg-amber-500'
-                    : s.estado === 'mantenimiento' || s.estado === 'taller'
-                      ? 'bg-slate-600'
-                      : 'bg-rose-600';
+              const state = ['libre', 'reservado', 'ocupado', 'mantenimiento', 'taller'].includes(s.estado) ? s.estado : 'ocupado';
               const title = `${s.id} · ${s.estado || 'libre'}`;
-              return `<div title="${escapeHtml(title)}" class="absolute h-7 min-w-7 rounded px-2 text-[11px] font-bold text-white ${cls} flex items-center justify-center" style="left:${x}%; top:${y}%">${escapeHtml(s.id)}</div>`;
+              return `<div title="${escapeHtml(title)}" class="public-parking-spot state-${state}" style="left:${x}%; top:${y}%">${escapeHtml(s.id)}</div>`;
             })
             .join('');
         },
