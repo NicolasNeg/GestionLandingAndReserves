@@ -2,6 +2,13 @@ import { collection, doc, getDoc, getDocs, serverTimestamp, setDoc } from 'fireb
 import { db } from '../firebase-config.js';
 import { getCurrentUser } from '../lib/authProvider.js';
 import { DEFAULT_ROLE_PERMISSIONS, PERMISSIONS, getUserAccess, labelRole, normalizeRole } from '../lib/accessControl.js';
+import { isBackendSupabase } from '../lib/migrationEnv.js';
+import { getUserProfile } from '../lib/dataLayer.js';
+import {
+  listUsersProgramadorView,
+  fetchRolePermissionsMatrix,
+  updateUserRolPermissionsPg
+} from '../lib/supabaseData.js';
 import { icon } from '../lib/icons.js';
 import { DEFAULT_THEME, applyTheme, readThemeConfig } from '../lib/theme.js';
 import { refreshAppTheme } from '../lib/layout.js';
@@ -328,6 +335,42 @@ const ProgramadorDashboard = {
       if (!list) return;
       list.innerHTML = '<p class="text-sm text-slate-500">Cargando...</p>';
       try {
+        if (isBackendSupabase()) {
+          const matrix = await fetchRolePermissionsMatrix();
+          const defaults = Object.entries(DEFAULT_ROLE_PERMISSIONS).map(([id, permissions]) => ({
+            id,
+            name: labelRole(id),
+            permissions,
+            custom: false,
+            dbPerms: matrix[id] || []
+          }));
+          const merged = defaults.map((role) => ({
+            ...role,
+            permissions: role.dbPerms.length ? role.dbPerms : role.permissions
+          }));
+          rolesCache = merged;
+          renderRoleOptions();
+          list.innerHTML = `
+            <p class="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+              Modo Supabase: permisos por rol vienen de <code>public.role_permissions</code> (seeds en schema.sql).
+              Para cambios masivos usa el SQL Editor; guardar rol desde esta UI está desactivado.
+            </p>
+            ${merged
+              .map((role) => {
+                const permissions = Array.isArray(role.permissions) ? role.permissions : [];
+                return `
+            <article class="programador-role-row">
+              <div class="min-w-0">
+                <p class="truncate font-bold text-slate-900">${escapeHtml(role.name || labelRole(role.id))}</p>
+                <p class="truncate text-xs text-slate-500">${escapeHtml(role.id)} · ${permissions.length} permisos</p>
+              </div>
+            </article>
+          `;
+              })
+              .join('')}
+          `;
+          return;
+        }
         const snaps = await getDocs(collection(db, 'roles'));
         const custom = snaps.docs.map((snap) => ({ id: snap.id, ...snap.data(), custom: true }));
         const defaults = Object.entries(DEFAULT_ROLE_PERMISSIONS).map(([id, permissions]) => ({
@@ -372,6 +415,14 @@ const ProgramadorDashboard = {
 
     document.getElementById('roles-refresh')?.addEventListener('click', renderRoles);
     document.getElementById('role-save')?.addEventListener('click', async () => {
+      if (isBackendSupabase()) {
+        const msg = document.getElementById('role-msg');
+        if (msg) {
+          msg.textContent =
+            'En Supabase edita public.role_permissions en SQL Editor (o espera la UI 5C.1).';
+        }
+        return;
+      }
       const msg = document.getElementById('role-msg');
       const roleId = normalizeRole(document.getElementById('role-id')?.value || '');
       const roleName = document.getElementById('role-name')?.value?.trim() || labelRole(roleId);
@@ -423,6 +474,17 @@ const ProgramadorDashboard = {
       }
       if (msg) msg.textContent = 'Cargando usuario...';
       try {
+        if (isBackendSupabase()) {
+          const pr = await getUserProfile({ id: uid });
+          const userData = pr.data?.user || {};
+          const permissions = Array.isArray(userData.permissions) ? userData.permissions : [];
+          setSelectedUserUi(uid, userData, permissions);
+          document.querySelectorAll('[data-user-edit]').forEach((btn) => {
+            btn.classList.toggle('is-active', btn.getAttribute('data-user-edit') === uid);
+          });
+          if (msg) msg.textContent = userData?.email || userData?.nombre ? 'Usuario cargado.' : 'UID sin fila en Postgres.';
+          return;
+        }
         const [userSnap, permissionSnap] = await Promise.all([
           getDoc(doc(db, 'users', uid)),
           getDoc(doc(db, 'userPermissions', uid))
@@ -491,6 +553,21 @@ const ProgramadorDashboard = {
       const list = document.getElementById('users-list');
       if (list) list.innerHTML = '<p class="text-sm text-slate-500">Cargando usuarios...</p>';
       try {
+        if (isBackendSupabase()) {
+          const rows = await listUsersProgramadorView();
+          usersCache = rows
+            .map((r) => ({
+              id: r.id,
+              nombre: r.nombre,
+              email: r.email,
+              rol: r.rol
+            }))
+            .sort((a, b) =>
+              String(a.nombre || a.email || a.id).localeCompare(String(b.nombre || b.email || b.id))
+            );
+          filterUsers();
+          return;
+        }
         const snaps = await getDocs(collection(db, 'users'));
         usersCache = snaps.docs
           .map((snap) => ({ id: snap.id, ...snap.data() }))
@@ -522,6 +599,17 @@ const ProgramadorDashboard = {
       }
       if (msg) msg.textContent = 'Guardando...';
       try {
+        if (isBackendSupabase()) {
+          await updateUserRolPermissionsPg({
+            id: uid,
+            rol: role,
+            permissions: readChecked('user-permission')
+          });
+          await publishAppUpdate('users', `Permisos usuario ${uid}`);
+          if (msg) msg.textContent = 'Usuario guardado en Postgres.';
+          await loadUsers();
+          return;
+        }
         await Promise.all([
           setDoc(doc(db, 'users', uid), {
             rol: role,

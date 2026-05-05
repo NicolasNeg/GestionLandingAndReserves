@@ -47,6 +47,7 @@ export async function getUserAccessFirebase(user) {
   if (!u) {
     return {
       user: null,
+      userId: null,
       uid: null,
       name: 'Invitado',
       email: '',
@@ -55,7 +56,9 @@ export async function getUserAccessFirebase(user) {
       roleLabel: 'Invitado',
       permissions: [],
       can: () => false,
-      isProgramador: false
+      isProgramador: false,
+      isAdmin: false,
+      isStaff: false
     };
   }
 
@@ -115,6 +118,7 @@ export async function getUserAccessFirebase(user) {
 
   return {
     user: u,
+    userId: uid,
     uid,
     name,
     email,
@@ -123,6 +127,8 @@ export async function getUserAccessFirebase(user) {
     roleLabel: labelRole(role),
     permissions,
     can: (permission) => role === 'programador' || permissions.includes(permission),
-    isProgramador: role === 'programador'
+    isProgramador: role === 'programador',
+    isAdmin: role === 'jefe',
+    isStaff: role === 'trabajador'
   };
 }

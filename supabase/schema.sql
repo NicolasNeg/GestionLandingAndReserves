@@ -22,6 +22,8 @@ create table if not exists public.role_permissions (
   primary key (role, permission)
 );
 
+alter table public.role_permissions add column if not exists created_at timestamptz not null default now();
+
 create table if not exists public.configuracion (
   id text primary key,
   precio_adulto numeric(10,2) not null default 0,
@@ -155,27 +157,401 @@ alter table public.descuentos enable row level security;
 alter table public.tickets enable row level security;
 alter table public.mesa_reservas enable row level security;
 
--- Baseline policies (start permissive for reads, tighten by role after data validation).
+-- =============================================================================
+-- Fase 5C — Funciones de permiso (SECURITY DEFINER, search_path fijo)
+-- =============================================================================
+
+create or replace function public.app_is_role_manager()
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1 from public.users u
+    where u.id = auth.uid()::text and u.rol in ('jefe', 'programador')
+  );
+$$;
+
+create or replace function public.app_has_permission(p_perm text)
+returns boolean
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+declare
+  u_rol text;
+  extra jsonb;
+  elem text;
+begin
+  if auth.uid() is null then
+    return false;
+  end if;
+  select rol, permissions into u_rol, extra
+  from public.users where id = auth.uid()::text;
+  if not found then
+    return false;
+  end if;
+  if u_rol = 'programador' then
+    return true;
+  end if;
+  if extra is not null then
+    for elem in select jsonb_array_elements_text(coalesce(extra, '[]'::jsonb))
+    loop
+      if elem = p_perm then return true; end if;
+    end loop;
+  end if;
+  return exists (
+    select 1 from public.role_permissions rp
+    where rp.role = u_rol and rp.permission = p_perm
+  );
+end;
+$$;
+
+revoke all on function public.app_has_permission(text) from public;
+grant execute on function public.app_has_permission(text) to authenticated;
+
+revoke all on function public.app_is_role_manager() from public;
+grant execute on function public.app_is_role_manager() to authenticated;
+
+-- Impide que un no gestor cambie su propio rol o permissions jsonb (los gestores siguen usando políticas).
+create or replace function public.users_block_priv_change_by_non_manager()
+returns trigger
+language plpgsql
+as $$
+begin
+  if tg_op = 'update' and auth.uid() is not null and auth.uid()::text = old.id then
+    if not public.app_is_role_manager() then
+      if new.rol is distinct from old.rol or new.permissions is distinct from old.permissions then
+        raise exception 'No autorizado a modificar rol o permisos';
+      end if;
+    end if;
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists tr_users_priv on public.users;
+create trigger tr_users_priv before update on public.users
+for each row execute procedure public.users_block_priv_change_by_non_manager();
+
+-- =============================================================================
+-- Seeds idempotentes: permisos por rol (tabla role_permissions)
+-- =============================================================================
+
+insert into public.role_permissions (role, permission) values
+  ('trabajador', 'dashboard.manage'),
+  ('trabajador', 'tickets.monitor'),
+  ('trabajador', 'tickets.scan'),
+  ('trabajador', 'inventory.adjust'),
+  ('trabajador', 'sales.physical'),
+  ('trabajador', 'parking.manage'),
+  ('jefe', 'dashboard.manage'),
+  ('jefe', 'tickets.monitor'),
+  ('jefe', 'tickets.scan'),
+  ('jefe', 'packages.manage'),
+  ('jefe', 'inventory.manage'),
+  ('jefe', 'inventory.adjust'),
+  ('jefe', 'sales.physical'),
+  ('jefe', 'parking.manage'),
+  ('jefe', 'landing.manage'),
+  ('jefe', 'finance.view'),
+  ('jefe', 'admin.panel'),
+  ('jefe', 'theme.manage'),
+  ('jefe', 'roles.manage'),
+  ('jefe', 'users.permissions'),
+  ('programador', 'dashboard.manage'),
+  ('programador', 'tickets.monitor'),
+  ('programador', 'tickets.scan'),
+  ('programador', 'packages.manage'),
+  ('programador', 'inventory.manage'),
+  ('programador', 'inventory.adjust'),
+  ('programador', 'sales.physical'),
+  ('programador', 'parking.manage'),
+  ('programador', 'landing.manage'),
+  ('programador', 'finance.view'),
+  ('programador', 'admin.panel'),
+  ('programador', 'theme.manage'),
+  ('programador', 'roles.manage'),
+  ('programador', 'users.permissions'),
+  ('programador', 'programador.access')
+on conflict (role, permission) do nothing;
+
+comment on table public.role_permissions is 'Permisos base por rol; combinar en app con users.permissions jsonb.';
+
+-- =============================================================================
+-- RLS: role_permissions (solo lectura para sesiones autenticadas)
+-- =============================================================================
+
+alter table public.role_permissions enable row level security;
+
+drop policy if exists "role_permissions_select_authenticated" on public.role_permissions;
+create policy "role_permissions_select_authenticated" on public.role_permissions
+  for select to authenticated using (true);
+
+-- =============================================================================
+-- RLS: users
+-- =============================================================================
+
+drop policy if exists "users_select_self" on public.users;
+create policy "users_select_self" on public.users for select
+  using (auth.uid() is not null and auth.uid()::text = id);
+
+drop policy if exists "users_select_managers" on public.users;
+create policy "users_select_managers" on public.users for select
+  using (public.app_is_role_manager());
+
+drop policy if exists "users_insert_self" on public.users;
+create policy "users_insert_self" on public.users for insert
+  with check (auth.uid() is not null and auth.uid()::text = id);
+
+drop policy if exists "users_update_self" on public.users;
+create policy "users_update_self" on public.users for update
+  using (auth.uid()::text = id)
+  with check (auth.uid()::text = id);
+
+drop policy if exists "users_update_managers" on public.users;
+create policy "users_update_managers" on public.users for update
+  using (public.app_is_role_manager())
+  with check (public.app_is_role_manager());
+
+-- =============================================================================
+-- Catálogo público (solo filas activas para anon / cliente)
+-- =============================================================================
+
 drop policy if exists "public read productos" on public.productos;
-create policy "public read productos" on public.productos for select using (true);
+drop policy if exists "productos_select_catalog" on public.productos;
+create policy "productos_select_catalog" on public.productos for select using (activo = true);
+
+drop policy if exists "productos_select_staff_all" on public.productos;
+create policy "productos_select_staff_all" on public.productos for select to authenticated
+  using (
+    public.app_has_permission('inventory.manage')
+    or public.app_has_permission('inventory.adjust')
+    or public.app_has_permission('sales.physical')
+  );
 
 drop policy if exists "public read servicios" on public.servicios;
-create policy "public read servicios" on public.servicios for select using (true);
+drop policy if exists "servicios_select_catalog" on public.servicios;
+create policy "servicios_select_catalog" on public.servicios for select using (activo = true);
+
+drop policy if exists "servicios_select_staff" on public.servicios;
+create policy "servicios_select_staff" on public.servicios for select to authenticated
+  using (
+    public.app_has_permission('inventory.manage')
+    or public.app_has_permission('sales.physical')
+    or public.app_has_permission('landing.manage')
+  );
 
 drop policy if exists "public read paquetes" on public.paquetes;
-create policy "public read paquetes" on public.paquetes for select using (true);
+drop policy if exists "paquetes_select_catalog" on public.paquetes;
+create policy "paquetes_select_catalog" on public.paquetes for select using (activo = true);
+
+drop policy if exists "paquetes_select_staff" on public.paquetes;
+create policy "paquetes_select_staff" on public.paquetes for select to authenticated
+  using (public.app_has_permission('packages.manage') or public.app_has_permission('dashboard.manage'));
 
 drop policy if exists "public read landing" on public.landing_page;
-create policy "public read landing" on public.landing_page for select using (true);
+drop policy if exists "landing_select_public" on public.landing_page;
+create policy "landing_select_public" on public.landing_page for select using (true);
+
+drop policy if exists "landing_write_staff" on public.landing_page;
+create policy "landing_write_staff" on public.landing_page for insert to authenticated
+  with check (
+    public.app_has_permission('landing.manage')
+    or public.app_has_permission('admin.panel')
+    or public.app_is_role_manager()
+  );
+
+drop policy if exists "landing_update_staff" on public.landing_page;
+create policy "landing_update_staff" on public.landing_page for update to authenticated
+  using (
+    public.app_has_permission('landing.manage')
+    or public.app_has_permission('admin.panel')
+    or public.app_is_role_manager()
+  )
+  with check (
+    public.app_has_permission('landing.manage')
+    or public.app_has_permission('admin.panel')
+    or public.app_is_role_manager()
+  );
 
 drop policy if exists "public read config" on public.configuracion;
-create policy "public read config" on public.configuracion for select using (true);
+drop policy if exists "config_select_public" on public.configuracion;
+create policy "config_select_public" on public.configuracion for select using (true);
+
+drop policy if exists "config_write_manager" on public.configuracion;
+create policy "config_write_manager" on public.configuracion for insert to authenticated
+  with check (public.app_is_role_manager());
+
+drop policy if exists "config_update_manager" on public.configuracion;
+create policy "config_update_manager" on public.configuracion for update to authenticated
+  using (public.app_is_role_manager())
+  with check (public.app_is_role_manager());
 
 drop policy if exists "public read descuentos activos" on public.descuentos;
 create policy "public read descuentos activos" on public.descuentos for select using (activo = true and usos_restantes > 0);
 
--- Authenticated users can read own tickets.
+drop policy if exists "descuentos_write_manager" on public.descuentos;
+drop policy if exists "descuentos_insert_manager" on public.descuentos;
+create policy "descuentos_insert_manager" on public.descuentos for insert to authenticated
+  with check (public.app_is_role_manager());
+
+drop policy if exists "descuentos_update_manager" on public.descuentos;
+create policy "descuentos_update_manager" on public.descuentos for update to authenticated
+  using (public.app_is_role_manager())
+  with check (public.app_is_role_manager());
+
+drop policy if exists "descuentos_delete_manager" on public.descuentos;
+create policy "descuentos_delete_manager" on public.descuentos for delete to authenticated
+  using (public.app_is_role_manager());
+
+-- =============================================================================
+-- Tickets
+-- =============================================================================
+
 drop policy if exists "read own tickets" on public.tickets;
-create policy "read own tickets" on public.tickets for select
-using (auth.uid()::text = user_id);
+drop policy if exists "tickets_select_own" on public.tickets;
+create policy "tickets_select_own" on public.tickets for select
+  using (
+    user_id is not null
+    and auth.uid() is not null
+    and auth.uid()::text = user_id
+  );
+
+drop policy if exists "tickets_select_staff" on public.tickets;
+create policy "tickets_select_staff" on public.tickets for select
+  using (
+    auth.uid() is not null
+    and (
+      public.app_has_permission('tickets.scan')
+      or public.app_has_permission('tickets.monitor')
+      or public.app_has_permission('dashboard.manage')
+    )
+  );
+
+drop policy if exists "tickets_insert_anonymous" on public.tickets;
+create policy "tickets_insert_anonymous" on public.tickets for insert to anon
+  with check (user_id is null);
+
+drop policy if exists "tickets_insert_authenticated" on public.tickets;
+create policy "tickets_insert_authenticated" on public.tickets for insert to authenticated
+  with check (user_id is null or user_id = auth.uid()::text);
+
+drop policy if exists "tickets_update_staff" on public.tickets;
+create policy "tickets_update_staff" on public.tickets for update to authenticated
+  using (
+    public.app_has_permission('tickets.scan')
+    or public.app_has_permission('dashboard.manage')
+  )
+  with check (
+    public.app_has_permission('tickets.scan')
+    or public.app_has_permission('dashboard.manage')
+  );
+
+-- =============================================================================
+-- Mesa reservas
+-- =============================================================================
+
+drop policy if exists "mesa_select_own" on public.mesa_reservas;
+create policy "mesa_select_own" on public.mesa_reservas for select
+  using (auth.uid() is not null and auth.uid()::text = user_id);
+
+drop policy if exists "mesa_select_staff" on public.mesa_reservas;
+create policy "mesa_select_staff" on public.mesa_reservas for select
+  using (
+    auth.uid() is not null
+    and (
+      public.app_has_permission('dashboard.manage')
+      or public.app_has_permission('parking.manage')
+      or public.app_has_permission('tickets.scan')
+    )
+  );
+
+drop policy if exists "mesa_insert_own" on public.mesa_reservas;
+create policy "mesa_insert_own" on public.mesa_reservas for insert to authenticated
+  with check (user_id = auth.uid()::text);
+
+drop policy if exists "mesa_update_staff" on public.mesa_reservas;
+create policy "mesa_update_staff" on public.mesa_reservas for update to authenticated
+  using (
+    public.app_has_permission('dashboard.manage')
+    or public.app_has_permission('parking.manage')
+  )
+  with check (
+    public.app_has_permission('dashboard.manage')
+    or public.app_has_permission('parking.manage')
+  );
+
+drop policy if exists "mesa_update_own" on public.mesa_reservas;
+create policy "mesa_update_own" on public.mesa_reservas for update to authenticated
+  using (auth.uid()::text = user_id)
+  with check (auth.uid()::text = user_id);
+
+-- =============================================================================
+-- Movimientos inventario
+-- =============================================================================
+
+drop policy if exists "mov_select_staff" on public.movimiento_inventarios;
+create policy "mov_select_staff" on public.movimiento_inventarios for select to authenticated
+  using (
+    public.app_has_permission('inventory.manage')
+    or public.app_has_permission('inventory.adjust')
+    or public.app_has_permission('sales.physical')
+  );
+
+drop policy if exists "mov_insert_staff" on public.movimiento_inventarios;
+create policy "mov_insert_staff" on public.movimiento_inventarios for insert to authenticated
+  with check (
+    public.app_has_permission('inventory.adjust')
+    or public.app_has_permission('inventory.manage')
+  );
+
+-- Escritura catálogo (productos / servicios / paquetes)
+drop policy if exists "productos_write_inventory" on public.productos;
+create policy "productos_write_inventory" on public.productos for insert to authenticated
+  with check (public.app_has_permission('inventory.manage'));
+
+drop policy if exists "productos_update_inventory" on public.productos;
+create policy "productos_update_inventory" on public.productos for update to authenticated
+  using (
+    public.app_has_permission('inventory.manage')
+    or public.app_has_permission('inventory.adjust')
+  )
+  with check (
+    public.app_has_permission('inventory.manage')
+    or public.app_has_permission('inventory.adjust')
+  );
+
+drop policy if exists "servicios_write" on public.servicios;
+create policy "servicios_write" on public.servicios for insert to authenticated
+  with check (
+    public.app_has_permission('landing.manage')
+    or public.app_has_permission('inventory.manage')
+    or public.app_is_role_manager()
+  );
+
+drop policy if exists "servicios_update" on public.servicios;
+create policy "servicios_update" on public.servicios for update to authenticated
+  using (
+    public.app_has_permission('landing.manage')
+    or public.app_has_permission('inventory.manage')
+    or public.app_is_role_manager()
+  )
+  with check (
+    public.app_has_permission('landing.manage')
+    or public.app_has_permission('inventory.manage')
+    or public.app_is_role_manager()
+  );
+
+drop policy if exists "paquetes_write" on public.paquetes;
+create policy "paquetes_write" on public.paquetes for insert to authenticated
+  with check (public.app_has_permission('packages.manage') or public.app_is_role_manager());
+
+drop policy if exists "paquetes_update" on public.paquetes;
+create policy "paquetes_update" on public.paquetes for update to authenticated
+  using (public.app_has_permission('packages.manage') or public.app_is_role_manager())
+  with check (public.app_has_permission('packages.manage') or public.app_is_role_manager());
 

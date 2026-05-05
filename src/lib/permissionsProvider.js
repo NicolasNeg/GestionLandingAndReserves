@@ -8,6 +8,7 @@ import { isPermissionsSupabase } from './migrationEnv.js';
 function guestAccess() {
   return {
     user: null,
+    userId: null,
     uid: null,
     name: 'Invitado',
     email: '',
@@ -16,7 +17,9 @@ function guestAccess() {
     roleLabel: 'Invitado',
     permissions: [],
     can: () => false,
-    isProgramador: false
+    isProgramador: false,
+    isAdmin: false,
+    isStaff: false
   };
 }
 

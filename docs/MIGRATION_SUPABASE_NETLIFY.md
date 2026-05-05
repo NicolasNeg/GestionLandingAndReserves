@@ -37,6 +37,17 @@ VITE_STORAGE_PROVIDER=firebase
 - Para Google OAuth, añade **Redirect URLs**: `http://localhost:5173/login` y tu dominio en producción con `/login`.
 - Los roles/RLS completos siguen en **Fase 5C**; sin fila en `public.users` la app cae en rol **cliente** (nunca admin por defecto).
 
+### Programador bootstrap (Fase 5B → 5C)
+
+- La inserción automática de fila en `public.users` **ya no asigna `programador` por email** (evita promoción insegura).
+- Otorgar rol `programador` o `jefe` solo vía **SQL** en Supabase o con un usuario que ya sea `jefe`/`programador` en el panel programador (cuando RLS lo permita):
+
+```sql
+update public.users set rol = 'programador', permissions = '[]'::jsonb where email = 'tu@correo.com';
+```
+
+(Revisa también filas en `role_permissions` si personalizas permisos por rol.)
+
 En Netlify (Site settings -> Environment variables):
 
 - `VITE_BACKEND_PROVIDER=supabase`

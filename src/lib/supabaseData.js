@@ -1,6 +1,5 @@
 import { supabase } from '../supabase/client.js';
 import { getCanonicalUserId } from './authCanonical.js';
-import { isBootstrapProgramadorEmail, PERMISSIONS } from './permissionsConstants.js';
 
 function requireClient() {
   if (!supabase) throw new Error('Supabase no inicializado');
@@ -37,8 +36,9 @@ export async function mergeUserProfileFromAuth(userLike) {
   const now = new Date().toISOString();
 
   if (!row) {
-    const rol = isBootstrapProgramadorEmail(email) ? 'programador' : 'cliente';
-    const permissions = rol === 'programador' ? PERMISSIONS.map((p) => p.key) : [];
+    /** Nunca promover a programador/admin por email (Fase 5C); usar SQL o panel cuando exista. */
+    const rol = 'cliente';
+    const permissions = [];
     const { error } = await sb.from('users').upsert(
       {
         id,
@@ -68,6 +68,44 @@ export async function mergeUserProfileFromAuth(userLike) {
     },
     { onConflict: 'id' }
   );
+  if (error) throw error;
+}
+
+/** Lista usuarios para panel programador (requiere RLS que permita lectura a jefe/programador). */
+export async function listUsersProgramadorView() {
+  const sb = requireClient();
+  const { data, error } = await sb
+    .from('users')
+    .select('id,nombre,email,rol,permissions,avatar_url')
+    .order('nombre', { ascending: true })
+    .limit(800);
+  if (error) throw error;
+  return data || [];
+}
+
+/** Mapa rol -> lista de permisos desde public.role_permissions. */
+export async function fetchRolePermissionsMatrix() {
+  const sb = requireClient();
+  const { data, error } = await sb.from('role_permissions').select('role,permission').order('role');
+  if (error) throw error;
+  const map = {};
+  for (const row of data || []) {
+    if (!map[row.role]) map[row.role] = [];
+    map[row.role].push(row.permission);
+  }
+  return map;
+}
+
+export async function updateUserRolPermissionsPg({ id, rol, permissions }) {
+  const sb = requireClient();
+  const { error } = await sb
+    .from('users')
+    .update({
+      rol,
+      permissions: Array.isArray(permissions) ? permissions : [],
+      updated_at: new Date().toISOString()
+    })
+    .eq('id', id);
   if (error) throw error;
 }
 
