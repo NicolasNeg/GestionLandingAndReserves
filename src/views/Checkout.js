@@ -1,4 +1,4 @@
-import { auth } from '../firebase-config.js';
+import { getCurrentUser, onAuthChange } from '../lib/authProvider.js';
 import {
     createAnonymousTicket,
     createUserTicket,
@@ -6,7 +6,7 @@ import {
     listProductosAdmin,
     updateProductoStock,
     createMovimientoInventario
-} from '../dataconnect-generated';
+} from '../lib/dataLayer.js';
 import { navigateTo } from '../router.js';
 import { showAlert } from '../lib/appDialog.js';
 import { downloadTicketPdf } from '../lib/ticketPdf.js';
@@ -182,7 +182,7 @@ const Checkout = {
         const fillUserData = async (user) => {
             if (user) {
                 try {
-                    const profileRes = await getUserProfile({ id: user.uid });
+                    const profileRes = await getUserProfile({ id: user.uid ?? user.id });
                     const profile = profileRes.data?.user;
                     inputName.value = profile?.nombre || user.displayName || '';
                     inputEmail.value = profile?.email || user.email || '';
@@ -208,10 +208,11 @@ const Checkout = {
             }
         };
 
-        if (auth.currentUser) {
-            fillUserData(auth.currentUser);
+        const cur = getCurrentUser();
+        if (cur) {
+            fillUserData(cur);
         } else {
-            const unsubscribe = auth.onAuthStateChanged((u) => {
+            const unsubscribe = onAuthChange((u) => {
                 fillUserData(u);
                 unsubscribe();
             });
@@ -270,7 +271,7 @@ const Checkout = {
                     precioTotal: totalCarrito
                 };
 
-                const isAuthed = auth.currentUser != null;
+                const isAuthed = getCurrentUser() != null;
 
                 let ticketId;
                 if (isAuthed) {

@@ -11,7 +11,7 @@ import {
   normalizeRole,
   PERMISSIONS,
   uniquePermissions
-} from './accessControl.js';
+} from './permissionsConstants.js';
 
 function guestAccess() {
   return {

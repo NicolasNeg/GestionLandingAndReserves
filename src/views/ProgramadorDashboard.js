@@ -1,5 +1,6 @@
 import { collection, doc, getDoc, getDocs, serverTimestamp, setDoc } from 'firebase/firestore';
-import { auth, db } from '../firebase-config.js';
+import { db } from '../firebase-config.js';
+import { getCurrentUser } from '../lib/authProvider.js';
 import { DEFAULT_ROLE_PERMISSIONS, PERMISSIONS, getUserAccess, labelRole, normalizeRole } from '../lib/accessControl.js';
 import { icon } from '../lib/icons.js';
 import { DEFAULT_THEME, applyTheme, readThemeConfig } from '../lib/theme.js';
@@ -48,7 +49,7 @@ function initials(name, email) {
 
 const ProgramadorDashboard = {
   render: async () => {
-    const access = await getUserAccess(auth.currentUser);
+    const access = await getUserAccess(getCurrentUser());
     const avatar = access.photoURL
       ? `<img src="${escapeHtml(access.photoURL)}" alt="${escapeHtml(access.name)}" class="h-10 w-10 rounded-full object-cover" referrerpolicy="no-referrer" />`
       : `<span class="app-avatar-initials h-10 w-10">${escapeHtml(access.name.slice(0, 1).toUpperCase())}</span>`;
@@ -225,7 +226,7 @@ const ProgramadorDashboard = {
   },
 
   mount: async () => {
-    const access = await getUserAccess(auth.currentUser);
+    const access = await getUserAccess(getCurrentUser());
     if (!access.isProgramador) {
       document.getElementById('app').innerHTML = `
         <div class="mx-auto max-w-xl p-8 text-center">
@@ -292,7 +293,7 @@ const ProgramadorDashboard = {
         text: document.getElementById('theme-text')?.value || DEFAULT_THEME.text,
         promoText: document.getElementById('theme-promo')?.value || DEFAULT_THEME.promoText,
         updatedAt: serverTimestamp(),
-        updatedBy: auth.currentUser?.uid || null
+        updatedBy: (getCurrentUser()?.uid ?? getCurrentUser()?.id) || null
       };
       if (msg) msg.textContent = 'Guardando...';
       try {
@@ -382,7 +383,7 @@ const ProgramadorDashboard = {
         name: roleName,
         permissions: readChecked('role-permission'),
         updatedAt: serverTimestamp(),
-        updatedBy: auth.currentUser?.uid || null
+        updatedBy: (getCurrentUser()?.uid ?? getCurrentUser()?.id) || null
       };
       if (msg) msg.textContent = 'Guardando...';
       try {
@@ -529,7 +530,7 @@ const ProgramadorDashboard = {
           setDoc(doc(db, 'userPermissions', uid), {
             permissions: readChecked('user-permission'),
             updatedAt: serverTimestamp(),
-            updatedBy: auth.currentUser?.uid || null
+            updatedBy: (getCurrentUser()?.uid ?? getCurrentUser()?.id) || null
           }, { merge: true })
         ]);
         await publishAppUpdate('users', `Permisos usuario ${uid}`);

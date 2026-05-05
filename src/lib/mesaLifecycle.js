@@ -1,5 +1,5 @@
-import { listMesaReservasVencibles, updateMesaReservaEstado } from '../dataconnect-generated';
-import { auth } from '../firebase-config.js';
+import { listMesaReservasVencibles, updateMesaReservaEstado } from './dataLayer.js';
+import { getCurrentUser } from './authProvider.js';
 import { getDataConnectErrorMessage, isDataConnectNotDeployed, isPermissionError } from './dataConnectErrors.js';
 import { clearMesaReservaLive } from './mesaRealtime.js';
 import { formatFechaDia } from './fechaDiaMexico.js';
@@ -15,7 +15,7 @@ function warnSweepSkipped(error, context = 'consulta') {
  * de backend aún no están desplegadas.
  */
 export async function sweepExpiredMesaReservas({ rethrowUnexpected = false } = {}) {
-  if (!auth.currentUser) return 0;
+  if (!getCurrentUser()) return 0;
 
   const hoy = formatFechaDia();
   let res;

@@ -1,21 +1,44 @@
 import { auth, googleProvider, facebookProvider } from '../firebase-config.js';
 import {
-    signInWithPopup,
-    signInWithEmailAndPassword,
-    createUserWithEmailAndPassword,
-    sendEmailVerification,
-    sendPasswordResetEmail,
-    signOut,
-    applyActionCode,
-    confirmPasswordReset
+  applyActionCode,
+  confirmPasswordReset,
+  signInWithEmailAndPassword,
+  signInWithPopup
 } from 'firebase/auth';
 import { navigateTo } from '../router.js';
 import { getAuthActionParams } from '../lib/authUrlParams.js';
 import { isBootstrapProgramadorEmail, syncFirestoreUserProfile } from '../lib/accessControl.js';
-import { getUserProfile, upsertUser } from '../dataconnect-generated';
+import { getUserProfile, upsertUser } from '../lib/dataLayer.js';
+import {
+  resolveAuthProvider,
+  signInWithGoogle,
+  signInWithFacebook,
+  signInWithEmail,
+  signUpWithEmail,
+  sendPasswordReset,
+  logout,
+  normalizeAuthUser,
+  resendEmailVerification
+} from '../lib/authProvider.js';
+import { sendEmailVerificationForUser } from '../lib/authFirebase.js';
+import { mergeUserProfileFromAuth } from '../lib/supabaseData.js';
+import { isAuthSupabase, isBackendSupabase } from '../lib/migrationEnv.js';
+
+function profilePayloadFromSupabaseUser(su) {
+  if (!su) return null;
+  const meta = su.user_metadata || {};
+  return {
+    uid: su.id,
+    id: su.id,
+    email: su.email ?? '',
+    displayName: meta.full_name || meta.name || '',
+    photoURL: meta.avatar_url || '',
+    emailVerified: !!su.email_confirmed_at
+  };
+}
 
 const Login = {
-    render: () => `
+  render: () => `
         <div class="balneario-page-bg flex min-h-full items-center justify-center p-4 pt-12 pb-12">
             <div class="login-card max-w-md w-full bg-white rounded-2xl shadow-xl overflow-hidden">
                 <div class="p-8">
@@ -125,343 +148,447 @@ const Login = {
             </div>
         </div>
     `,
-    mount: () => {
-        let isRegistering = false;
-        let resetOobCode = null;
+  mount: () => {
+    let isRegistering = false;
+    let resetOobCode = null;
 
-        const getActionCodeSettings = () => {
-            const fallback = `${window.location.origin}/login`;
-            const fromEnv = import.meta.env.VITE_AUTH_CONTINUE_URL;
-            const url = (typeof fromEnv === 'string' && fromEnv.trim()) ? fromEnv.trim() : fallback;
-            return {
-                url,
-                handleCodeInApp: false
-            };
-        };
+    const getActionCodeSettings = () => {
+      const fallback = `${window.location.origin}/login`;
+      const fromEnv = import.meta.env.VITE_AUTH_CONTINUE_URL;
+      const url = typeof fromEnv === 'string' && fromEnv.trim() ? fromEnv.trim() : fallback;
+      return {
+        url,
+        handleCodeInApp: false
+      };
+    };
 
-        const form = document.getElementById('auth-form');
-        const emailInput = document.getElementById('email');
-        const passwordInput = document.getElementById('password');
-        const nameInput = document.getElementById('name');
-        
-        const nameField = document.getElementById('name-field');
-        const btnSubmit = document.getElementById('btn-submit');
-        const toggleText = document.getElementById('toggle-text');
-        const btnToggleMode = document.getElementById('btn-toggle-mode');
-        const formSubtitle = document.getElementById('form-subtitle');
-        const errorMsg = document.getElementById('error-message');
-        const successMsg = document.getElementById('success-message');
-        const resendWrap = document.getElementById('resend-verification-wrap');
-        const btnForgotPassword = document.getElementById('btn-forgot-password');
-        const btnTogglePassword = document.getElementById('btn-toggle-password');
-        const iconPwdMasked = document.getElementById('icon-password-masked');
-        const iconPwdVisible = document.getElementById('icon-password-visible');
-        const loginMainFlow = document.getElementById('login-main-flow');
-        const resetPanel = document.getElementById('reset-password-panel');
-        const resetPassInput = document.getElementById('reset-pass');
-        const resetConfirmInput = document.getElementById('reset-pass-confirm');
+    const form = document.getElementById('auth-form');
+    const emailInput = document.getElementById('email');
+    const passwordInput = document.getElementById('password');
+    const nameInput = document.getElementById('name');
 
-        const bindPasswordToggle = (inputEl, btnEl, iconMaskedEl, iconVisibleEl) => {
-            if (!inputEl || !btnEl) return;
-            let shown = false;
-            btnEl.addEventListener('click', () => {
-                shown = !shown;
-                inputEl.type = shown ? 'text' : 'password';
-                iconMaskedEl?.classList.toggle('hidden', shown);
-                iconVisibleEl?.classList.toggle('hidden', !shown);
-                const lab = shown ? 'Ocultar contraseña' : 'Mostrar contraseña';
-                btnEl.setAttribute('aria-label', lab);
-                btnEl.setAttribute('title', lab);
-            });
-        };
+    const nameField = document.getElementById('name-field');
+    const btnSubmit = document.getElementById('btn-submit');
+    const toggleText = document.getElementById('toggle-text');
+    const btnToggleMode = document.getElementById('btn-toggle-mode');
+    const formSubtitle = document.getElementById('form-subtitle');
+    const errorMsg = document.getElementById('error-message');
+    const successMsg = document.getElementById('success-message');
+    const resendWrap = document.getElementById('resend-verification-wrap');
+    const btnForgotPassword = document.getElementById('btn-forgot-password');
+    const btnTogglePassword = document.getElementById('btn-toggle-password');
+    const iconPwdMasked = document.getElementById('icon-password-masked');
+    const iconPwdVisible = document.getElementById('icon-password-visible');
+    const loginMainFlow = document.getElementById('login-main-flow');
+    const resetPanel = document.getElementById('reset-password-panel');
+    const resetPassInput = document.getElementById('reset-pass');
+    const resetConfirmInput = document.getElementById('reset-pass-confirm');
 
-        let passwordShown = false;
-        const syncPasswordToggleUi = () => {
-            passwordInput.type = passwordShown ? 'text' : 'password';
-            iconPwdMasked?.classList.toggle('hidden', passwordShown);
-            iconPwdVisible?.classList.toggle('hidden', !passwordShown);
-            const label = passwordShown ? 'Ocultar contraseña' : 'Mostrar contraseña';
-            btnTogglePassword?.setAttribute('aria-label', label);
-            btnTogglePassword?.setAttribute('title', label);
-        };
+    const bindPasswordToggle = (inputEl, btnEl, iconMaskedEl, iconVisibleEl) => {
+      if (!inputEl || !btnEl) return;
+      let shown = false;
+      btnEl.addEventListener('click', () => {
+        shown = !shown;
+        inputEl.type = shown ? 'text' : 'password';
+        iconMaskedEl?.classList.toggle('hidden', shown);
+        iconVisibleEl?.classList.toggle('hidden', !shown);
+        const lab = shown ? 'Ocultar contraseña' : 'Mostrar contraseña';
+        btnEl.setAttribute('aria-label', lab);
+        btnEl.setAttribute('title', lab);
+      });
+    };
 
-        btnTogglePassword?.addEventListener('click', () => {
-            passwordShown = !passwordShown;
-            syncPasswordToggleUi();
-        });
+    let passwordShown = false;
+    const syncPasswordToggleUi = () => {
+      passwordInput.type = passwordShown ? 'text' : 'password';
+      iconPwdMasked?.classList.toggle('hidden', passwordShown);
+      iconPwdVisible?.classList.toggle('hidden', !passwordShown);
+      const label = passwordShown ? 'Ocultar contraseña' : 'Mostrar contraseña';
+      btnTogglePassword?.setAttribute('aria-label', label);
+      btnTogglePassword?.setAttribute('title', label);
+    };
 
-        bindPasswordToggle(
-            resetPassInput,
-            document.getElementById('btn-toggle-reset-pass'),
-            document.getElementById('icon-reset-a-masked'),
-            document.getElementById('icon-reset-a-visible')
-        );
-        bindPasswordToggle(
-            resetConfirmInput,
-            document.getElementById('btn-toggle-reset-confirm'),
-            document.getElementById('icon-reset-b-masked'),
-            document.getElementById('icon-reset-b-visible')
-        );
+    btnTogglePassword?.addEventListener('click', () => {
+      passwordShown = !passwordShown;
+      syncPasswordToggleUi();
+    });
 
-        const showError = (msg) => {
-            errorMsg.textContent = msg;
-            errorMsg.classList.remove('hidden');
-            successMsg.classList.add('hidden');
-            if (resendWrap && !msg.includes('verifica')) resendWrap.classList.add('hidden');
-        };
+    bindPasswordToggle(
+      resetPassInput,
+      document.getElementById('btn-toggle-reset-pass'),
+      document.getElementById('icon-reset-a-masked'),
+      document.getElementById('icon-reset-a-visible')
+    );
+    bindPasswordToggle(
+      resetConfirmInput,
+      document.getElementById('btn-toggle-reset-confirm'),
+      document.getElementById('icon-reset-b-masked'),
+      document.getElementById('icon-reset-b-visible')
+    );
 
-        const showSuccess = (msg) => {
-            successMsg.textContent = msg;
-            successMsg.classList.remove('hidden');
-            errorMsg.classList.add('hidden');
-            if (resendWrap) resendWrap.classList.add('hidden');
-        };
+    const showError = (msg) => {
+      errorMsg.textContent = msg;
+      errorMsg.classList.remove('hidden');
+      successMsg.classList.add('hidden');
+      if (resendWrap && !msg.includes('verifica') && !msg.includes('Verifica')) resendWrap.classList.add('hidden');
+    };
 
-        const toggleMode = () => {
-            isRegistering = !isRegistering;
-            if (isRegistering) {
-                nameField.classList.remove('hidden');
-                nameInput.required = true;
-                btnSubmit.textContent = 'Crear Cuenta';
-                formSubtitle.textContent = 'Crea una cuenta para obtener beneficios';
-                toggleText.textContent = '¿Ya tienes cuenta?';
-                btnToggleMode.textContent = 'Inicia sesión';
-                btnForgotPassword?.classList.add('hidden');
-            } else {
-                nameField.classList.add('hidden');
-                nameInput.required = false;
-                btnSubmit.textContent = 'Entrar';
-                formSubtitle.textContent = 'Inicia sesión en tu cuenta';
-                toggleText.textContent = '¿No tienes cuenta?';
-                btnToggleMode.textContent = 'Regístrate';
-                btnForgotPassword?.classList.remove('hidden');
-            }
-            errorMsg.classList.add('hidden');
-            successMsg.classList.add('hidden');
-            if (resendWrap) resendWrap.classList.add('hidden');
-        };
+    const showSuccess = (msg) => {
+      successMsg.textContent = msg;
+      successMsg.classList.remove('hidden');
+      errorMsg.classList.add('hidden');
+      if (resendWrap) resendWrap.classList.add('hidden');
+    };
 
+    const toggleMode = () => {
+      isRegistering = !isRegistering;
+      if (isRegistering) {
+        nameField.classList.remove('hidden');
+        nameInput.required = true;
+        btnSubmit.textContent = 'Crear Cuenta';
+        formSubtitle.textContent = 'Crea una cuenta para obtener beneficios';
+        toggleText.textContent = '¿Ya tienes cuenta?';
+        btnToggleMode.textContent = 'Inicia sesión';
+        btnForgotPassword?.classList.add('hidden');
+      } else {
+        nameField.classList.add('hidden');
+        nameInput.required = false;
+        btnSubmit.textContent = 'Entrar';
+        formSubtitle.textContent = 'Inicia sesión en tu cuenta';
+        toggleText.textContent = '¿No tienes cuenta?';
+        btnToggleMode.textContent = 'Regístrate';
         btnForgotPassword?.classList.remove('hidden');
+      }
+      errorMsg.classList.add('hidden');
+      successMsg.classList.add('hidden');
+      if (resendWrap) resendWrap.classList.add('hidden');
+    };
 
-        btnToggleMode.addEventListener('click', toggleMode);
+    btnForgotPassword?.classList.remove('hidden');
 
-        const showLoginFlow = () => {
-            resetOobCode = null;
-            loginMainFlow?.classList.remove('hidden');
-            resetPanel?.classList.add('hidden');
-            if (resetPassInput) resetPassInput.value = '';
-            if (resetConfirmInput) resetConfirmInput.value = '';
-            formSubtitle.textContent = isRegistering
-                ? 'Crea una cuenta para obtener beneficios'
-                : 'Inicia sesión en tu cuenta';
-        };
+    btnToggleMode.addEventListener('click', toggleMode);
 
-        document.getElementById('btn-cancel-reset')?.addEventListener('click', () => {
-            showLoginFlow();
-            window.history.replaceState({}, '', `${window.location.pathname}${window.location.hash}`);
+    const showLoginFlow = () => {
+      resetOobCode = null;
+      loginMainFlow?.classList.remove('hidden');
+      resetPanel?.classList.add('hidden');
+      if (resetPassInput) resetPassInput.value = '';
+      if (resetConfirmInput) resetConfirmInput.value = '';
+      formSubtitle.textContent = isRegistering
+        ? 'Crea una cuenta para obtener beneficios'
+        : 'Inicia sesión en tu cuenta';
+    };
+
+    document.getElementById('btn-cancel-reset')?.addEventListener('click', () => {
+      showLoginFlow();
+      window.history.replaceState({}, '', `${window.location.pathname}${window.location.hash}`);
+    });
+
+    document.getElementById('btn-submit-reset')?.addEventListener('click', async () => {
+      const btn = document.getElementById('btn-submit-reset');
+      const p1 = resetPassInput?.value || '';
+      const p2 = resetConfirmInput?.value || '';
+      if (resolveAuthProvider() !== 'firebase') {
+        showError('El restablecimiento desde este formulario es para Firebase. Con Supabase usa el enlace del correo de recuperación.');
+        return;
+      }
+      if (!resetOobCode) {
+        showError(
+          'El enlace de restablecimiento no es válido. Solicita uno nuevo desde «¿Olvidaste tu contraseña?».'
+        );
+        return;
+      }
+      if (p1.length < 6) {
+        showError('La contraseña debe tener al menos 6 caracteres.');
+        return;
+      }
+      if (p1 !== p2) {
+        showError('Las contraseñas no coinciden.');
+        return;
+      }
+      btn.disabled = true;
+      btn.textContent = 'Guardando...';
+      errorMsg.classList.add('hidden');
+      successMsg.classList.add('hidden');
+      try {
+        await confirmPasswordReset(auth, resetOobCode, p1);
+        showSuccess('Contraseña actualizada. Ya puedes iniciar sesión.');
+        showLoginFlow();
+      } catch (err) {
+        console.error(err);
+        showError(
+          err.message.replace('Firebase: ', '') || 'No se pudo actualizar la contraseña. Solicita un nuevo enlace.'
+        );
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Guardar contraseña';
+      }
+    });
+
+    const syncUserToDataConnect = async (user, displayName) => {
+      let profileUser = null;
+      const targetRole = isBootstrapProgramadorEmail(user.email) ? 'programador' : 'cliente';
+      const targetName = displayName || user.displayName || 'Usuario';
+      try {
+        const uid = user.uid ?? user.id;
+        const profileRes = await getUserProfile({ id: uid });
+        profileUser = profileRes.data?.user || null;
+        if (!profileUser || (targetRole === 'programador' && profileUser.rol !== 'programador')) {
+          await upsertUser({
+            id: uid,
+            email: user.email,
+            nombre: profileUser?.nombre || targetName,
+            rol: targetRole
+          });
+          profileUser = {
+            ...profileUser,
+            email: user.email,
+            nombre: profileUser?.nombre || targetName,
+            rol: targetRole
+          };
+        }
+      } catch (err) {
+        console.error('Error sincronizando Data Connect:', err);
+      }
+      try {
+        await syncFirestoreUserProfile(user, profileUser || {
+          email: user.email,
+          nombre: targetName,
+          rol: targetRole
         });
+      } catch (err) {
+        console.error('Error sincronizando Firestore:', err);
+      }
+    };
 
-        document.getElementById('btn-submit-reset')?.addEventListener('click', async () => {
-            const btn = document.getElementById('btn-submit-reset');
-            const p1 = resetPassInput?.value || '';
-            const p2 = resetConfirmInput?.value || '';
-            if (!resetOobCode) {
-                showError('El enlace de restablecimiento no es válido. Solicita uno nuevo desde «¿Olvidaste tu contraseña?».');
-                return;
-            }
-            if (p1.length < 6) {
-                showError('La contraseña debe tener al menos 6 caracteres.');
-                return;
-            }
-            if (p1 !== p2) {
-                showError('Las contraseñas no coinciden.');
-                return;
-            }
-            btn.disabled = true;
-            btn.textContent = 'Guardando...';
-            errorMsg.classList.add('hidden');
-            successMsg.classList.add('hidden');
+    const afterLoginProfileSync = async (userLike, displayNameHint) => {
+      if (!userLike) return;
+      if (isBackendSupabase() && isAuthSupabase()) {
+        try {
+          await mergeUserProfileFromAuth(userLike);
+        } catch (e) {
+          console.warn('[perfil]', e?.message || e);
+        }
+        return;
+      }
+      await syncUserToDataConnect(userLike, displayNameHint);
+    };
+
+    const friendlyAuthMessage = (err) => {
+      const raw = String(err?.message || err || '');
+      const low = raw.toLowerCase();
+      if (low.includes('network') || low.includes('fetch')) {
+        return 'Error de red. Comprueba tu conexión e inténtalo de nuevo.';
+      }
+      if (low.includes('invalid login') || low.includes('invalid_credentials') || low.includes('wrong password')) {
+        return 'Credenciales incorrectas.';
+      }
+      if (low.includes('email not confirmed')) {
+        return 'Debes confirmar tu correo antes de continuar.';
+      }
+      return raw.replace(/^Firebase:\s*/i, '').replace(/^AuthApiError:\s*/i, '') || 'No se pudo completar la acción.';
+    };
+
+    (async () => {
+      const { mode, oobCode } = getAuthActionParams();
+      const params = new URLSearchParams(window.location.search);
+
+      if (mode === 'resetPassword' && oobCode) {
+        if (resolveAuthProvider() !== 'firebase') {
+          showError(
+            'Los enlaces ?mode=resetPassword de Firebase no aplican con VITE_AUTH_PROVIDER=supabase. Usa «¿Olvidaste tu contraseña?» para recibir el correo de Supabase.'
+          );
+          window.history.replaceState({}, '', window.location.pathname);
+          return;
+        }
+        resetOobCode = oobCode;
+        loginMainFlow?.classList.add('hidden');
+        resetPanel?.classList.remove('hidden');
+        formSubtitle.textContent = 'Establece una nueva contraseña';
+        window.history.replaceState({}, '', window.location.pathname);
+        return;
+      }
+
+      if (mode === 'verifyEmail' && oobCode) {
+        if (resolveAuthProvider() !== 'firebase') {
+          showError(
+            'Este enlace de verificación es para Firebase. Con Supabase abre el enlace que envía Supabase desde tu correo.'
+          );
+          window.history.replaceState({}, '', window.location.pathname);
+          return;
+        }
+        try {
+          await applyActionCode(auth, oobCode);
+          if (auth.currentUser) {
+            await auth.currentUser.reload();
+          }
+          showSuccess('Correo verificado correctamente. Ya puedes iniciar sesión con tu correo y contraseña.');
+        } catch (err) {
+          console.error(err);
+          showError(
+            'El enlace de verificación expiró o ya fue usado. Inicia sesión e intenta "Reenviar correo de verificación".'
+          );
+        }
+        window.history.replaceState({}, '', window.location.pathname);
+        return;
+      }
+      if (params.get('verified') === '1') {
+        showSuccess('Correo verificado. Inicia sesión cuando quieras.');
+        window.history.replaceState({}, '', window.location.pathname);
+      }
+    })();
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      btnSubmit.disabled = true;
+      btnSubmit.textContent = 'Procesando...';
+      errorMsg.classList.add('hidden');
+      successMsg.classList.add('hidden');
+
+      try {
+        if (isRegistering) {
+          if (resolveAuthProvider() === 'firebase') {
+            const cred = await signUpWithEmail(emailInput.value, passwordInput.value, {
+              nombre: nameInput.value
+            });
+            await sendEmailVerificationForUser(cred.user, getActionCodeSettings());
             try {
-                await confirmPasswordReset(auth, resetOobCode, p1);
-                showSuccess('Contraseña actualizada. Ya puedes iniciar sesión.');
-                showLoginFlow();
-            } catch (err) {
-                console.error(err);
-                showError(err.message.replace('Firebase: ', '') || 'No se pudo actualizar la contraseña. Solicita un nuevo enlace.');
-            } finally {
-                btn.disabled = false;
-                btn.textContent = 'Guardar contraseña';
+              await syncUserToDataConnect(cred.user, nameInput.value);
+            } catch (syncErr) {
+              console.error('syncUserToDataConnect tras registro:', syncErr);
             }
-        });
-
-        (async () => {
-            const { mode, oobCode } = getAuthActionParams();
-            const params = new URLSearchParams(window.location.search);
-
-            if (mode === 'resetPassword' && oobCode) {
-                resetOobCode = oobCode;
-                loginMainFlow?.classList.add('hidden');
-                resetPanel?.classList.remove('hidden');
-                formSubtitle.textContent = 'Establece una nueva contraseña';
-                window.history.replaceState({}, '', window.location.pathname);
-                return;
+            await logout();
+            showSuccess(
+              '¡Cuenta creada! Te enviamos un correo con un enlace para verificar tu dirección (revisa spam). Después podrás iniciar sesión.'
+            );
+            toggleMode();
+          } else {
+            const data = await signUpWithEmail(emailInput.value, passwordInput.value, {
+              nombre: nameInput.value
+            });
+            const su = data?.user;
+            if (data?.session && su) {
+              const payload = profilePayloadFromSupabaseUser(su);
+              await afterLoginProfileSync(payload, payload.displayName);
+              navigateTo('/home');
+            } else {
+              showSuccess(
+                'Si tu proyecto exige confirmación por correo, revisa tu bandeja (y spam). Luego inicia sesión aquí.'
+              );
+              toggleMode();
             }
-
-            if (mode === 'verifyEmail' && oobCode) {
-                try {
-                    await applyActionCode(auth, oobCode);
-                    if (auth.currentUser) {
-                        await auth.currentUser.reload();
-                    }
-                    showSuccess('Correo verificado correctamente. Ya puedes iniciar sesión con tu correo y contraseña.');
-                } catch (err) {
-                    console.error(err);
-                    showError('El enlace de verificación expiró o ya fue usado. Inicia sesión e intenta "Reenviar correo de verificación".');
-                }
-                window.history.replaceState({}, '', window.location.pathname);
-                return;
+          }
+        } else {
+          const result = await signInWithEmail(emailInput.value, passwordInput.value);
+          if (resolveAuthProvider() === 'firebase') {
+            const sessionUser = result.user;
+            if (!sessionUser.emailVerified) {
+              await logout();
+              if (resendWrap) resendWrap.classList.remove('hidden');
+              throw new Error(
+                'Por favor, verifica tu correo electrónico antes de continuar. Revisa tu bandeja de entrada o spam.'
+              );
             }
-            if (params.get('verified') === '1') {
-                showSuccess('Correo verificado. Inicia sesión cuando quieras.');
-                window.history.replaceState({}, '', window.location.pathname);
+            await afterLoginProfileSync(sessionUser, sessionUser.displayName);
+          } else {
+            const su = result?.user;
+            if (!su) {
+              throw new Error('No se pudo iniciar sesión. Intenta de nuevo.');
             }
-        })();
-
-        const syncUserToDataConnect = async (user, displayName) => {
-            let profileUser = null;
-            const targetRole = isBootstrapProgramadorEmail(user.email) ? 'programador' : 'cliente';
-            const targetName = displayName || user.displayName || 'Usuario';
-            try {
-                // Verificar si el usuario ya existe para no sobrescribir su rol
-                const profileRes = await getUserProfile({ id: user.uid });
-                profileUser = profileRes.data?.user || null;
-                if (!profileUser || (targetRole === 'programador' && profileUser.rol !== 'programador')) {
-                    await upsertUser({
-                        id: user.uid,
-                        email: user.email,
-                        nombre: profileUser?.nombre || targetName,
-                        rol: targetRole
-                    });
-                    profileUser = {
-                        ...profileUser,
-                        email: user.email,
-                        nombre: profileUser?.nombre || targetName,
-                        rol: targetRole
-                    };
-                }
-            } catch (err) {
-                console.error("Error sincronizando Data Connect:", err);
+            const payload = profilePayloadFromSupabaseUser(su);
+            const norm = normalizeAuthUser(payload);
+            if (norm && !norm.emailVerified) {
+              await logout();
+              if (resendWrap) resendWrap.classList.remove('hidden');
+              throw new Error(
+                'Por favor, confirma tu correo electrónico antes de continuar (revisa spam).'
+              );
             }
-            try {
-                await syncFirestoreUserProfile(user, profileUser || {
-                    email: user.email,
-                    nombre: targetName,
-                    rol: targetRole
-                });
-            } catch (err) {
-                console.error("Error sincronizando Firestore:", err);
-            }
-        };
+            await afterLoginProfileSync(payload, norm?.displayName);
+          }
+          navigateTo('/home');
+        }
+      } catch (error) {
+        showError(friendlyAuthMessage(error));
+      } finally {
+        btnSubmit.disabled = false;
+        btnSubmit.textContent = isRegistering ? 'Crear Cuenta' : 'Entrar';
+      }
+    });
 
-        form.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            btnSubmit.disabled = true;
-            btnSubmit.textContent = "Procesando...";
-            errorMsg.classList.add('hidden');
-            successMsg.classList.add('hidden');
+    const handleSSO = async (which) => {
+      try {
+        if (resolveAuthProvider() === 'supabase') {
+          if (which === 'google') await signInWithGoogle();
+          else await signInWithFacebook();
+          return;
+        }
+        const result = await signInWithPopup(auth, which === 'google' ? googleProvider : facebookProvider);
+        await afterLoginProfileSync(result.user, result.user.displayName);
+        navigateTo('/home');
+      } catch (error) {
+        showError(friendlyAuthMessage(error));
+      }
+    };
 
-            try {
-                if (isRegistering) {
-                    const userCredential = await createUserWithEmailAndPassword(auth, emailInput.value, passwordInput.value);
-                    await sendEmailVerification(userCredential.user, getActionCodeSettings());
-                    try {
-                        await syncUserToDataConnect(userCredential.user, nameInput.value);
-                    } catch (syncErr) {
-                        console.error('syncUserToDataConnect tras registro:', syncErr);
-                    }
-                    await signOut(auth);
-                    
-                    showSuccess('¡Cuenta creada! Te enviamos un correo con un enlace para verificar tu dirección (revisa spam). Después podrás iniciar sesión.');
-                    toggleMode(); // Cambiar a login
-                } else {
-                    const userCredential = await signInWithEmailAndPassword(auth, emailInput.value, passwordInput.value);
+    document.getElementById('btn-google').addEventListener('click', () => handleSSO('google'));
+    document.getElementById('btn-facebook').addEventListener('click', () => handleSSO('facebook'));
 
-                    if (!userCredential.user.emailVerified) {
-                        await signOut(auth);
-                        if (resendWrap) resendWrap.classList.remove('hidden');
-                        throw new Error('Por favor, verifica tu correo electrónico antes de continuar. Revisa tu bandeja de entrada o spam.');
-                    }
+    btnForgotPassword?.addEventListener('click', async () => {
+      const email = emailInput.value.trim();
+      if (!email) {
+        showError('Escribe tu correo electrónico arriba y vuelve a pulsar «¿Olvidaste tu contraseña?».');
+        emailInput.focus();
+        return;
+      }
+      btnForgotPassword.disabled = true;
+      errorMsg.classList.add('hidden');
+      successMsg.classList.add('hidden');
+      try {
+        if (resolveAuthProvider() === 'firebase') {
+          await sendPasswordReset(email, getActionCodeSettings());
+        } else {
+          await sendPasswordReset(email);
+        }
+        showSuccess('Si existe una cuenta con ese correo, recibirás un enlace para restablecer tu contraseña (revisa spam).');
+      } catch (err) {
+        showError(friendlyAuthMessage(err));
+      } finally {
+        btnForgotPassword.disabled = false;
+      }
+    });
 
-                    await syncUserToDataConnect(userCredential.user, userCredential.user.displayName);
-                    navigateTo('/home');
-                }
-            } catch (error) {
-                showError(error.message.replace('Firebase: ', ''));
-            } finally {
-                btnSubmit.disabled = false;
-                btnSubmit.textContent = isRegistering ? 'Crear Cuenta' : 'Entrar';
-            }
-        });
-
-        const handleSSO = async (provider) => {
-            try {
-                const result = await signInWithPopup(auth, provider);
-                await syncUserToDataConnect(result.user, result.user.displayName);
-                navigateTo('/home');
-            } catch (error) {
-                showError(error.message.replace('Firebase: ', ''));
-            }
-        };
-
-        document.getElementById('btn-google').addEventListener('click', () => handleSSO(googleProvider));
-        document.getElementById('btn-facebook').addEventListener('click', () => handleSSO(facebookProvider));
-
-        btnForgotPassword?.addEventListener('click', async () => {
-            const email = emailInput.value.trim();
-            if (!email) {
-                showError('Escribe tu correo electrónico arriba y vuelve a pulsar «¿Olvidaste tu contraseña?».');
-                emailInput.focus();
-                return;
-            }
-            btnForgotPassword.disabled = true;
-            errorMsg.classList.add('hidden');
-            successMsg.classList.add('hidden');
-            try {
-                await sendPasswordResetEmail(auth, email, getActionCodeSettings());
-                showSuccess('Si existe una cuenta con ese correo, recibirás un enlace para restablecer tu contraseña (revisa spam).');
-            } catch (err) {
-                showError(err.message.replace('Firebase: ', ''));
-            } finally {
-                btnForgotPassword.disabled = false;
-            }
-        });
-
-        document.getElementById('btn-resend-verification')?.addEventListener('click', async () => {
-            const btn = document.getElementById('btn-resend-verification');
-            const email = emailInput.value.trim();
-            const password = passwordInput.value;
-            if (!email || !password) {
-                showError('Ingresa correo y contraseña para poder reenviar el correo de verificación.');
-                return;
-            }
-            btn.disabled = true;
-            btn.textContent = 'Enviando...';
-            errorMsg.classList.add('hidden');
-            successMsg.classList.add('hidden');
-            try {
-                const cred = await signInWithEmailAndPassword(auth, email, password);
-                await sendEmailVerification(cred.user, getActionCodeSettings());
-                await signOut(auth);
-                showSuccess('Te enviamos otro correo de verificación. Revisa también la carpeta de spam.');
-                if (resendWrap) resendWrap.classList.add('hidden');
-            } catch (err) {
-                showError(err.message.replace('Firebase: ', ''));
-            } finally {
-                btn.disabled = false;
-                btn.textContent = 'Reenviar correo de verificación';
-            }
-        });
-    }
+    document.getElementById('btn-resend-verification')?.addEventListener('click', async () => {
+      const btn = document.getElementById('btn-resend-verification');
+      const email = emailInput.value.trim();
+      const password = passwordInput.value;
+      btn.disabled = true;
+      btn.textContent = 'Enviando...';
+      errorMsg.classList.add('hidden');
+      successMsg.classList.add('hidden');
+      try {
+        if (resolveAuthProvider() === 'firebase') {
+          if (!email || !password) {
+            throw new Error('Ingresa correo y contraseña para poder reenviar el correo de verificación.');
+          }
+          const cred = await signInWithEmailAndPassword(auth, email, password);
+          await sendEmailVerificationForUser(cred.user, getActionCodeSettings());
+          await logout();
+          showSuccess('Te enviamos otro correo de verificación. Revisa también la carpeta de spam.');
+          if (resendWrap) resendWrap.classList.add('hidden');
+        } else {
+          await resendEmailVerification({ email });
+          showSuccess('Si el correo es válido, se ha enviado un nuevo enlace de verificación.');
+          if (resendWrap) resendWrap.classList.add('hidden');
+        }
+      } catch (err) {
+        showError(friendlyAuthMessage(err));
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Reenviar correo de verificación';
+      }
+    });
+  }
 };
 
 export default Login;

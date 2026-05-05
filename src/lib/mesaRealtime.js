@@ -10,7 +10,8 @@ import {
   setDoc,
   where
 } from 'firebase/firestore';
-import { auth, db } from '../firebase-config.js';
+import { db } from '../firebase-config.js';
+import { getCurrentUser } from './authProvider.js';
 import { getDataConnectErrorMessage, isPermissionError } from './dataConnectErrors.js';
 
 const COLL = 'mesaReservasLive';
@@ -37,7 +38,7 @@ export function subscribeMesaReservasByFecha(fechaDia, onData, onError) {
 }
 
 export async function upsertMesaReservaLive({ fechaDia, mapItemId, userId, estado = 'apartada' }) {
-  if (!auth.currentUser || !userId) {
+  if (!getCurrentUser() || !userId) {
     return { ok: false, skipped: true, reason: 'auth-required' };
   }
   const id = makeId(fechaDia, mapItemId);
@@ -65,7 +66,7 @@ export async function upsertMesaReservaLive({ fechaDia, mapItemId, userId, estad
 }
 
 export async function clearMesaReservaLive(fechaDia, mapItemId) {
-  if (!auth.currentUser) {
+  if (!getCurrentUser()) {
     return { ok: false, skipped: true, reason: 'auth-required' };
   }
   const id = makeId(fechaDia, mapItemId);
@@ -86,7 +87,7 @@ export async function clearMesaReservaLive(fechaDia, mapItemId) {
  * Retorna { acquired, mine, ownerId }.
  */
 export async function claimMesaReservaLive({ fechaDia, mapItemId, userId }) {
-  if (!auth.currentUser || !userId) {
+  if (!getCurrentUser() || !userId) {
     return { acquired: false, mine: false, ownerId: '', skipped: true, reason: 'auth-required' };
   }
   const id = makeId(fechaDia, mapItemId);

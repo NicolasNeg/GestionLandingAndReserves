@@ -1,7 +1,6 @@
-import { auth } from '../firebase-config.js';
-import { signOut, updateProfile } from 'firebase/auth';
 import { navigateTo } from '../router.js';
-import { listUserTickets, getUserProfile, upsertUser } from '../dataconnect-generated';
+import { getCurrentUser, onAuthChange, logout, updateCurrentUserProfile } from '../lib/authProvider.js';
+import { listUserTickets, getUserProfile, upsertUser } from '../lib/dataLayer.js';
 import QRCode from 'qrcode';
 import { downloadTicketPdf } from '../lib/ticketPdf.js';
 import { showAlert } from '../lib/appDialog.js';
@@ -200,7 +199,7 @@ const ClienteDashboard = {
     const pRole = document.getElementById('profile-role');
     const ticketsRoleBreakdown = document.getElementById('tickets-role-breakdown');
 
-    let user = auth.currentUser;
+    let user = getCurrentUser();
     const ticketById = new Map();
     let profileSnapshot = { nombre: '', email: '', rol: 'cliente', photoURL: '' };
     let accessSnapshot = null;
@@ -262,7 +261,7 @@ const ClienteDashboard = {
 
     const runLogout = async () => {
       try {
-        await signOut(auth);
+        await logout();
         navigateTo('/login');
       } catch (error) {
         console.error('Error al cerrar sesión', error);
@@ -272,7 +271,7 @@ const ClienteDashboard = {
     const loadProfile = async () => {
       if (!user) return;
       try {
-        const profileRes = await getUserProfile({ id: user.uid });
+        const profileRes = await getUserProfile({ id: user.uid ?? user.id });
         const userData = profileRes.data?.user;
         const name = userData?.nombre || user.displayName || 'Sin Nombre';
         profileSnapshot = {
@@ -374,7 +373,7 @@ const ClienteDashboard = {
     const loadTickets = async () => {
       if (!ticketsContainer || !user) return;
       try {
-        const res = await listUserTickets({ userId: user.uid });
+        const res = await listUserTickets({ userId: user.uid ?? user.id });
         renderTickets(res.data?.tickets || []);
         document.querySelectorAll('.btn-show-qr').forEach((btn) => {
           btn.addEventListener('click', (e) => {
@@ -419,7 +418,7 @@ const ClienteDashboard = {
     profilePhotoPick?.addEventListener('click', () => profilePhotoFile?.click());
     profilePhotoFile?.addEventListener('change', async () => {
       const f = profilePhotoFile?.files?.[0];
-      const u = auth.currentUser;
+      const u = getCurrentUser();
       if (!f || !u) return;
       const prevHtml = profilePhotoPick?.innerHTML;
       if (profilePhotoPick) {
@@ -433,7 +432,7 @@ const ClienteDashboard = {
           title: 'Recortar foto de perfil'
         });
         const file = new File([blob], 'avatar.jpg', { type: 'image/jpeg' });
-        const url = await uploadAvatarImage(file, u.uid);
+        const url = await uploadAvatarImage(file, u.uid ?? u.id);
         if (profilePhotoUrl) profilePhotoUrl.value = url;
         profileSnapshot.photoURL = url;
         const nombre = (profileNameInput?.value || profileSnapshot.nombre || '').trim() || 'Usuario';
@@ -473,13 +472,13 @@ const ClienteDashboard = {
       }
       try {
         await upsertUser({
-          id: user.uid,
+          id: user.uid ?? user.id,
           email: profileSnapshot.email || user.email || '',
           nombre,
           rol: profileSnapshot.rol || 'cliente'
         });
-        await updateProfile(user, { displayName: nombre, photoURL: photoURL || null });
-        user = auth.currentUser || user;
+        await updateCurrentUserProfile({ displayName: nombre, photoURL: photoURL || null });
+        user = getCurrentUser() || user;
         profileSnapshot.nombre = nombre;
         profileSnapshot.photoURL = photoURL;
         if (pName) pName.textContent = nombre;
@@ -512,7 +511,7 @@ const ClienteDashboard = {
     if (user) {
       Promise.all([loadProfile(), loadAccess()]).then(loadTickets);
     } else {
-      const unsubscribe = auth.onAuthStateChanged((u) => {
+      const unsubscribe = onAuthChange((u) => {
         if (u) {
           user = u;
           Promise.all([loadProfile(), loadAccess()]).then(loadTickets);

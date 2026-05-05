@@ -3,8 +3,8 @@ import {
   listProductosPublic,
   getLandingPage,
   listServiciosLanding
-} from '../dataconnect-generated';
-import { auth } from '../firebase-config.js';
+} from '../lib/dataLayer.js';
+import { getCurrentUser } from '../lib/authProvider.js';
 import {
   drawDistribucionCanvas,
   DEFAULT_MAPA_JSON,
@@ -902,9 +902,9 @@ export default {
     }
 
     const mapEditWrap = document.getElementById('landing-mapa-edit-wrap');
-    if (mapEditWrap && auth.currentUser) {
+    if (mapEditWrap && getCurrentUser()) {
       try {
-        const access = await getUserAccess(auth.currentUser);
+        const access = await getUserAccess(getCurrentUser());
         const canEditPlano =
           access.can('dashboard.manage') &&
           (access.can('landing.manage') || access.can('admin.panel') || access.isProgramador);

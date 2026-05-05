@@ -37,6 +37,11 @@ function mapUser(u) {
   };
 }
 
+function loginRedirectUrl() {
+  if (typeof window === 'undefined') return undefined;
+  return `${window.location.origin}/login`;
+}
+
 function setSessionCache(session) {
   sessionCache = session?.user ? mapUser(session.user) : null;
 }
@@ -101,7 +106,7 @@ export async function signInWithGoogle() {
   const sb = requireClient();
   const { error } = await sb.auth.signInWithOAuth({
     provider: 'google',
-    options: { redirectTo: typeof window !== 'undefined' ? window.location.origin : undefined }
+    options: { redirectTo: loginRedirectUrl() }
   });
   if (error) throw error;
 }
@@ -110,7 +115,7 @@ export async function signInWithFacebook() {
   const sb = requireClient();
   const { error } = await sb.auth.signInWithOAuth({
     provider: 'facebook',
-    options: { redirectTo: typeof window !== 'undefined' ? window.location.origin : undefined }
+    options: { redirectTo: loginRedirectUrl() }
   });
   if (error) throw error;
 }
@@ -136,6 +141,46 @@ export async function signUpWithEmail(email, password, metadata = {}) {
   });
   if (error) throw error;
   return data;
+}
+
+export async function sendPasswordReset(email) {
+  const sb = requireClient();
+  const { error } = await sb.auth.resetPasswordForEmail(email, {
+    redirectTo: loginRedirectUrl()
+  });
+  if (error) throw error;
+}
+
+export async function updateCurrentUserProfile(patch) {
+  const sb = requireClient();
+  const dataPayload = {};
+  if (patch?.displayName != null) {
+    dataPayload.full_name = patch.displayName;
+    dataPayload.name = patch.displayName;
+  }
+  if (patch?.photoURL != null) {
+    dataPayload.avatar_url = patch.photoURL;
+  }
+  const { error } = await sb.auth.updateUser({
+    data: dataPayload
+  });
+  if (error) throw error;
+  const {
+    data: { session }
+  } = await sb.auth.getSession();
+  setSessionCache(session);
+}
+
+export async function resendEmailVerification(options = {}) {
+  const sb = requireClient();
+  const email = options.email || sessionCache?.email;
+  if (!email) throw new Error('Correo requerido para reenviar verificación');
+  const { error } = await sb.auth.resend({
+    type: 'signup',
+    email,
+    options: options.captchaToken ? { captchaToken: options.captchaToken } : undefined
+  });
+  if (error) throw error;
 }
 
 export async function logout() {

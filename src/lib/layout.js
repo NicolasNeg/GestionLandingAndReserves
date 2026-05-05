@@ -1,6 +1,6 @@
-import { onAuthStateChanged, signOut } from 'firebase/auth';
-import { auth } from '../firebase-config.js';
+import { onAuthChange, logout, getCurrentUser } from './authProvider.js';
 import { getUserAccess } from './accessControl.js';
+import { syncAuthProfileAfterSession } from './syncSupabaseAuthProfile.js';
 import { icon } from './icons.js';
 import { readThemeConfig, applyTheme } from './theme.js';
 import { cartCount, cartSubtotal, listCartItems, removeFromCart, setCartQty } from './cart.js';
@@ -281,7 +281,7 @@ export async function updateAppShell(path = window.location.pathname) {
 
   const token = ++renderToken;
   const [access, theme] = await Promise.all([
-    getUserAccess(auth.currentUser),
+    getUserAccess(getCurrentUser()),
     themeCache ? Promise.resolve(themeCache) : readThemeConfig()
   ]);
   if (token !== renderToken) return;
@@ -373,7 +373,11 @@ export function initAppShell(options = {}) {
 
     if (event.target.closest('[data-app-logout]')) {
       event.preventDefault();
-      await signOut(auth);
+      try {
+        await logout();
+      } catch (e) {
+        console.error(e);
+      }
       closeUserMenu();
       navigate('/login');
       return;
@@ -384,7 +388,8 @@ export function initAppShell(options = {}) {
     }
   });
 
-  onAuthStateChanged(auth, () => {
+  onAuthChange(async (user) => {
+    if (user) await syncAuthProfileAfterSession(user);
     updateAppShell(lastPath);
   });
 

@@ -6,8 +6,8 @@ import {
     listMisMesaReservas,
     updateMesaReservaEstado,
     vincularTicketMesaReserva
-} from '../dataconnect-generated';
-import { auth } from '../firebase-config.js';
+} from '../lib/dataLayer.js';
+import { getCurrentUser } from '../lib/authProvider.js';
 import { getUserAccess } from '../lib/accessControl.js';
 import { icon } from '../lib/icons.js';
 import { showAlert } from '../lib/appDialog.js';
@@ -586,7 +586,7 @@ const Escaner = {
             btnAction.disabled = true;
 
             try {
-                const access = await getUserAccess(auth.currentUser);
+                const access = await getUserAccess(getCurrentUser());
                 if (!access.can('tickets.scan')) {
                     await showAlert('Tu usuario ya no tiene permiso para escanear tickets.', {
                         title: 'Sin permiso',

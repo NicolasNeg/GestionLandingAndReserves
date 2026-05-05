@@ -1,4 +1,4 @@
-import { auth } from '../firebase-config.js';
+import { getCurrentUser } from '../lib/authProvider.js';
 import {
   listRecentTickets,
   createPaquete,
@@ -161,7 +161,7 @@ function collectBotonesFromDom() {
 
 const AdminDashboard = {
   render: async () => {
-    const access = await getUserAccess(auth.currentUser);
+    const access = await getUserAccess(getCurrentUser());
     const canScan = access.can('tickets.scan');
     const canPackages = access.can('packages.manage');
     const canSitioPanel =
@@ -899,7 +899,7 @@ const AdminDashboard = {
     const statsWrap = document.getElementById('admin-stats-wrap');
     const sidebar = document.getElementById('admin-sidebar');
     const collapse = document.getElementById('admin-sidebar-collapse');
-    const access = await getUserAccess(auth.currentUser);
+    const access = await getUserAccess(getCurrentUser());
     const canScan = access.can('tickets.scan');
     const dangerousDeleteMutations = {
       ticket: deleteTicket,
@@ -1709,10 +1709,10 @@ const AdminDashboard = {
           return;
         }
         try {
-          const user = auth.currentUser;
-          if (!user?.uid) throw new Error('Sesion no valida.');
+          const user = getCurrentUser();
+          if (!(user?.uid ?? user?.id)) throw new Error('Sesion no valida.');
           let imagenUrl = '';
-          if (croppedServiceFile) imagenUrl = await uploadServiceImage(croppedServiceFile, user.uid);
+          if (croppedServiceFile) imagenUrl = await uploadServiceImage(croppedServiceFile, user.uid ?? user.id);
           await createServicio({ titulo, descripcion, imagenUrl, precio, orden, activo: true });
           await publishAppUpdate('landing', 'Servicio creado');
           document.getElementById('svc-new-title').value = '';
@@ -2154,8 +2154,8 @@ const AdminDashboard = {
             return;
           }
 
-          const user = auth.currentUser;
-          if (!user?.uid) {
+          const user = getCurrentUser();
+          if (!(user?.uid ?? user?.id)) {
             if (prodEditError) {
               prodEditError.textContent = 'Sesion no valida. Vuelve a iniciar sesion.';
               prodEditError.classList.remove('hidden');
@@ -2167,7 +2167,7 @@ const AdminDashboard = {
             let imagenUrl = prodEditTarget.imagenUrl || '';
             if (prodEditImageShouldClear) imagenUrl = '';
             if (croppedProductEditFile) {
-              imagenUrl = await uploadProductImage(croppedProductEditFile, user.uid);
+              imagenUrl = await uploadProductImage(croppedProductEditFile, user.uid ?? user.id);
             }
 
             await updateProducto({
@@ -2466,15 +2466,15 @@ const AdminDashboard = {
           await showAlert('Completa titulo y precio del producto.', { title: 'Producto', variant: 'warning' });
           return;
         }
-        const user = auth.currentUser;
-        if (!user?.uid) {
+        const user = getCurrentUser();
+        if (!(user?.uid ?? user?.id)) {
           await showAlert('Sesion no valida. Vuelve a iniciar sesion.', { title: 'Sesion', variant: 'danger' });
           return;
         }
         try {
           let imagenUrl = '';
           if (imageFile) {
-            imagenUrl = await uploadProductImage(imageFile, user.uid);
+            imagenUrl = await uploadProductImage(imageFile, user.uid ?? user.id);
           }
           await createProducto({
             titulo,
@@ -2735,7 +2735,7 @@ const AdminDashboard = {
 
     const loadMesaReservasOperativas = async () => {
       if (!adminMesaBody) return;
-      if (!auth.currentUser) {
+      if (!getCurrentUser()) {
         adminMesaBody.innerHTML = '<p class="text-slate-500 text-xs">Inicia sesión para listar reservas de mesa.</p>';
         return;
       }

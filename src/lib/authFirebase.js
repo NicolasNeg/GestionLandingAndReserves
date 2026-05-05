@@ -4,6 +4,8 @@
 import {
   createUserWithEmailAndPassword,
   onAuthStateChanged,
+  sendEmailVerification as firebaseSendEmailVerification,
+  sendPasswordResetEmail,
   signInWithEmailAndPassword,
   signInWithPopup,
   signOut as firebaseSignOut,
@@ -69,6 +71,27 @@ export async function signUpWithEmail(email, password, metadata = {}) {
     await updateProfile(cred.user, { displayName });
   }
   return cred;
+}
+
+/** Firebase User crudo (p. ej. tras registro) para enviar verificación por correo. */
+export async function sendEmailVerificationForUser(user, actionCodeSettings) {
+  if (!user) throw new Error('Sin usuario');
+  await firebaseSendEmailVerification(user, actionCodeSettings);
+}
+
+export async function sendPasswordReset(email, actionCodeSettings) {
+  if (!auth) throw new Error('Firebase Auth no disponible');
+  await sendPasswordResetEmail(auth, email, actionCodeSettings || undefined);
+}
+
+export async function updateCurrentUserProfile(patch) {
+  if (!auth?.currentUser) throw new Error('Sin usuario');
+  await updateProfile(auth.currentUser, patch);
+}
+
+export async function resendEmailVerification(actionCodeSettings) {
+  if (!auth?.currentUser) throw new Error('Sin usuario');
+  await firebaseSendEmailVerification(auth.currentUser, actionCodeSettings);
 }
 
 export async function logout() {

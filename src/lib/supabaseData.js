@@ -1,9 +1,74 @@
 import { supabase } from '../supabase/client.js';
-import { auth as firebaseAuth } from '../firebase-config.js';
+import { getCanonicalUserId } from './authCanonical.js';
+import { isBootstrapProgramadorEmail, PERMISSIONS } from './permissionsConstants.js';
 
 function requireClient() {
   if (!supabase) throw new Error('Supabase no inicializado');
   return supabase;
+}
+
+function normalizeStoredPermissions(val) {
+  if (Array.isArray(val)) return val;
+  if (val && typeof val === 'object') {
+    try {
+      return Array.from(val);
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
+
+/**
+ * Inserta o actualiza fila `users` desde la sesión Supabase Auth sin pisar rol/permisos elevados.
+ */
+export async function mergeUserProfileFromAuth(userLike) {
+  const sb = requireClient();
+  const id = userLike?.uid ?? userLike?.id;
+  if (!id) return;
+
+  const email = String(userLike.email || '').trim();
+  const nombre = String(userLike.displayName ?? userLike.name ?? '').trim() || 'Usuario';
+  const avatar_url = userLike.photoURL || null;
+
+  const { data: row, error: readErr } = await sb.from('users').select('*').eq('id', id).maybeSingle();
+  if (readErr) throw readErr;
+
+  const now = new Date().toISOString();
+
+  if (!row) {
+    const rol = isBootstrapProgramadorEmail(email) ? 'programador' : 'cliente';
+    const permissions = rol === 'programador' ? PERMISSIONS.map((p) => p.key) : [];
+    const { error } = await sb.from('users').upsert(
+      {
+        id,
+        email,
+        nombre,
+        rol,
+        permissions,
+        avatar_url,
+        updated_at: now
+      },
+      { onConflict: 'id' }
+    );
+    if (error) throw error;
+    return;
+  }
+
+  const permissions = normalizeStoredPermissions(row.permissions);
+  const { error } = await sb.from('users').upsert(
+    {
+      id,
+      email: email || row.email || '',
+      nombre: nombre || row.nombre || 'Usuario',
+      rol: row.rol,
+      permissions,
+      avatar_url: avatar_url ?? row.avatar_url ?? null,
+      updated_at: now
+    },
+    { onConflict: 'id' }
+  );
+  if (error) throw error;
 }
 
 function mapUserRow(r) {
@@ -390,7 +455,7 @@ export async function createAnonymousTicket(variables) {
 
 export async function createUserTicket(variables) {
   const sb = requireClient();
-  const uid = firebaseAuth?.currentUser?.uid;
+  const uid = getCanonicalUserId();
   if (!uid) throw new Error('Sesion requerida para ticket de usuario');
   const { data, error } = await sb
     .from('tickets')
@@ -570,7 +635,7 @@ export async function deleteProducto({ id }) {
 
 export async function createMovimientoInventario({ productoId, tipo, cantidad, nota }) {
   const sb = requireClient();
-  const uid = firebaseAuth?.currentUser?.uid || null;
+  const uid = getCanonicalUserId();
   const { error } = await sb.from('movimiento_inventarios').insert({
     producto_id: productoId,
     tipo,
@@ -632,7 +697,7 @@ export async function listMisMesaReservas({ userId }) {
 
 export async function createMesaReserva({ fechaDia, mapItemId }) {
   const sb = requireClient();
-  const uid = firebaseAuth?.currentUser?.uid;
+  const uid = getCanonicalUserId();
   if (!uid) throw new Error('Debes iniciar sesion para reservar mesa');
   const { error } = await sb.from('mesa_reservas').insert({
     fecha_dia: fechaDia,
@@ -646,7 +711,7 @@ export async function createMesaReserva({ fechaDia, mapItemId }) {
 
 export async function createMesaReservaMonetizable(vars) {
   const sb = requireClient();
-  const uid = firebaseAuth?.currentUser?.uid;
+  const uid = getCanonicalUserId();
   if (!uid) throw new Error('Debes iniciar sesion para reservar mesa');
   const row = {
     fecha_dia: vars.fechaDia,

@@ -1,4 +1,4 @@
-import { auth } from '../firebase-config.js';
+import { getCurrentUser, onAuthChange } from '../lib/authProvider.js';
 import { navigateTo } from '../router.js';
 import {
   getLandingPage,
@@ -272,7 +272,9 @@ export default {
       const liveState = stateByMapItemId.get(item.id);
       if (liveState === 'ocupada') return 'ocupada';
       if (apartadas.has(item.id) || liveState === 'apartada') {
-        return ownerByMapItemId.get(item.id) === auth.currentUser?.uid ? 'apartada_mia' : 'apartada';
+        const ses = getCurrentUser();
+        const myId = ses?.uid ?? ses?.id ?? null;
+        return ownerByMapItemId.get(item.id) === myId ? 'apartada_mia' : 'apartada';
       }
       return 'libre';
     };
@@ -440,14 +442,14 @@ export default {
 
     const renderMis = async () => {
       if (!misEl) return;
-      const user = auth.currentUser;
+      const user = getCurrentUser();
       if (!user) {
         misEl.innerHTML =
           '<p class="text-slate-500">Inicia sesión para ver y gestionar tus mesas apartadas.</p>';
         return;
       }
       try {
-        const res = await listMisMesaReservas({ userId: user.uid });
+        const res = await listMisMesaReservas({ userId: user.uid ?? user.id });
         const all = res.data?.mesaReservas || [];
         const mineToday = all.filter((r) => r.fechaDia === currentFecha && r.estado === 'apartada');
         if (!mineToday.length) {
@@ -556,7 +558,7 @@ export default {
       const meta = getMesaMetadata(item);
       const status = getMesaStatus(item);
       const statusMeta = TABLE_STATUS_META[status] || TABLE_STATUS_META.libre;
-      const user = auth.currentUser;
+      const user = getCurrentUser();
       const canReserve = status === 'libre' && meta.reservable && Boolean(user);
       const needsLogin = status === 'libre' && meta.reservable && !user;
       const tagsHtml = meta.tags.length
@@ -648,7 +650,7 @@ export default {
     }
 
     async function reserveMesa(item) {
-      const user = auth.currentUser;
+      const user = getCurrentUser();
       if (!user) {
         await showAlert('Inicia sesión para apartar una mesa.', { title: 'Cuenta', variant: 'warning' });
         navigateTo('/login');
@@ -676,7 +678,8 @@ export default {
           await showAlert('Esta mesa ya está ocupada para esta fecha.', { title: 'Mesa', variant: 'warning' });
           return;
         }
-        const mine = ownerByMapItemId.get(item.id) === user.uid || (await checkMine(item.id));
+        const mine =
+          ownerByMapItemId.get(item.id) === (user.uid ?? user.id) || (await checkMine(item.id));
         if (mine) {
           await showAlert('Ya tienes esta mesa apartada para este día.', { title: 'Mesa', variant: 'success' });
         } else {
@@ -703,7 +706,7 @@ export default {
         const claim = await claimMesaReservaLive({
           fechaDia: currentFecha,
           mapItemId: item.id,
-          userId: user.uid
+          userId: user.uid ?? user.id
         });
         if (!claim.acquired) {
           await loadApartadasBase();
@@ -722,7 +725,7 @@ export default {
         });
         if ((chkAfter.data?.mesaReservas || []).length > 0) {
           const live = await getMesaReservaLive(currentFecha, item.id);
-          if (!live || live.userId !== user.uid) {
+          if (!live || live.userId !== (user.uid ?? user.id)) {
             await clearMesaReservaLive(currentFecha, item.id);
           }
           await loadApartadasBase();
@@ -781,7 +784,7 @@ export default {
         const liveSync = await upsertMesaReservaLive({
           fechaDia: currentFecha,
           mapItemId: item.id,
-          userId: user.uid,
+          userId: user.uid ?? user.id,
           estado: 'apartada'
         });
         if (liveSync?.skipped) {
@@ -806,7 +809,7 @@ export default {
         console.error(e);
         try {
           const live = await getMesaReservaLive(currentFecha, item.id);
-          if (live?.userId === user.uid) await clearMesaReservaLive(currentFecha, item.id);
+          if (live?.userId === (user.uid ?? user.id)) await clearMesaReservaLive(currentFecha, item.id);
         } catch {
           // noop
         }
@@ -824,10 +827,10 @@ export default {
     });
 
     async function checkMine(mapItemId) {
-      const user = auth.currentUser;
+      const user = getCurrentUser();
       if (!user) return false;
       try {
-        const res = await listMisMesaReservas({ userId: user.uid });
+        const res = await listMisMesaReservas({ userId: user.uid ?? user.id });
         const all = res.data?.mesaReservas || [];
         return all.some(
           (r) =>
@@ -849,7 +852,7 @@ export default {
     connectLive();
     await renderMis();
 
-    auth.onAuthStateChanged(() => {
+    onAuthChange(() => {
       renderMis();
       redraw();
       if (selectedMesaId) openMesaDetail(getMesaItemById(selectedMesaId));

@@ -1,12 +1,14 @@
 import { doc, onSnapshot, serverTimestamp, setDoc } from 'firebase/firestore';
-import { auth, db } from '../firebase-config.js';
+import { db } from '../firebase-config.js';
+import { getCurrentUser } from './authProvider.js';
 import { getDataConnectErrorMessage, isPermissionError } from './dataConnectErrors.js';
 
 const CHANNEL_REF = doc(db, 'appRealtime', 'global');
 const CLIENT_ID = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
 export async function publishAppUpdate(scope = 'general', detail = '') {
-  if (!auth.currentUser) {
+  const u = getCurrentUser();
+  if (!u) {
     return { ok: false, skipped: true, reason: 'auth-required' };
   }
   try {
@@ -17,7 +19,7 @@ export async function publishAppUpdate(scope = 'general', detail = '') {
         detail,
         source: CLIENT_ID,
         updatedAt: serverTimestamp(),
-        updatedBy: auth.currentUser?.uid || null
+        updatedBy: u.uid ?? u.id ?? null
       },
       { merge: true }
     );
