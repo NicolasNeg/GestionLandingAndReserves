@@ -2,6 +2,7 @@ import { onAuthStateChanged } from 'firebase/auth';
 import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { auth, db } from '../firebase-config.js';
 import { getUserProfile } from '../dataconnect-generated';
+import { isDataConnectNotDeployed, isPermissionError } from './dataConnectErrors.js';
 
 export const BOOTSTRAP_PROGRAMADOR_EMAIL = 'angelarmentta@icloud.com';
 
@@ -59,7 +60,7 @@ export const ROLE_LABELS = {
 const AUTH_WAIT_TIMEOUT_MS = 6000;
 
 function isPermissionDenied(error) {
-  return error?.code === 'permission-denied' || /insufficient permissions/i.test(String(error?.message || ''));
+  return isPermissionError(error);
 }
 
 export function isBootstrapProgramadorEmail(email) {
@@ -143,7 +144,7 @@ export async function getUserAccess(user = auth.currentUser) {
     const profile = await getUserProfile({ id: user.uid });
     dataConnectUser = profile.data?.user || null;
   } catch (error) {
-    if (!isPermissionDenied(error)) {
+    if (!isPermissionDenied(error) && !isDataConnectNotDeployed(error)) {
       console.warn('Perfil Data Connect no disponible para permisos:', error);
     }
   }

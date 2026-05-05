@@ -5,9 +5,10 @@ import {
   listMesaReservasActivasPorFecha,
   listMisMesaReservas,
   checkMesaReservaLibre,
-  createMesaReserva,
+  createMesaReservaMonetizable,
   cancelarMesaReserva
-} from '../dataconnect-generated';
+} from '../lib/dataLayer.js';
+import { addToCart } from '../lib/cart.js';
 import { showAlert } from '../lib/appDialog.js';
 import { icon } from '../lib/icons.js';
 import {
@@ -25,18 +26,11 @@ import {
 } from '../lib/distribucionMapa.js';
 import { formatFechaDia, isValidFechaDia } from '../lib/fechaDiaMexico.js';
 import { sweepExpiredMesaReservas } from '../lib/mesaLifecycle.js';
+import { getDataConnectErrorMessage, isDataConnectNotDeployed, isPermissionError } from '../lib/dataConnectErrors.js';
 
 const LANDING_PAGE_ID = 'main';
 
-function isDataConnectMissing(error) {
-  const msg = String(error?.message || error || '');
-  return (
-    msg.includes('NOT_FOUND') ||
-    msg.includes('not found') ||
-    msg.includes('CreateMesaReserva') ||
-    msg.includes('ListMesaReservasActivasPorFecha')
-  );
-}
+const isDataConnectMissing = isDataConnectNotDeployed;
 
 const TABLE_STATUS_META = {
   libre: {
@@ -65,6 +59,21 @@ const moneyFormatter = new Intl.NumberFormat('es-MX', {
   style: 'currency',
   currency: 'MXN'
 });
+
+function parsePersistedExtrasJson(raw) {
+  try {
+    const x = JSON.parse(typeof raw === 'string' && raw.trim() ? raw : '[]');
+    return Array.isArray(x) ? x : [];
+  } catch {
+    return [];
+  }
+}
+
+function labelMetodoReserva(v) {
+  if (v === 'taquilla') return 'Pagar en taquilla';
+  if (v === 'checkout_later') return 'Agregar a checkout / pagar después';
+  return 'Por confirmar';
+}
 
 function isMesaItem(item) {
   return item?.kind === 'mesa' || item?.kind === 'table' || item?.type === 'table';
@@ -420,7 +429,9 @@ export default {
           setLivePill('En vivo', 'ok');
         },
         (e) => {
-          console.warn('mesa realtime', e);
+          if (!isPermissionError(e)) {
+            console.warn('mesa realtime', getDataConnectErrorMessage(e));
+          }
           setMsg('Sin realtime; mostrando último estado.', 'danger');
           setLivePill('Sin realtime', 'danger');
         }
@@ -448,14 +459,38 @@ export default {
             (r) => {
               const item = getMesaItemById(r.mapItemId);
               const meta = item ? getMesaMetadata(item) : null;
+              const name = (r.mesaLabel && String(r.mesaLabel).trim()) || meta?.name || r.mapItemId;
+              const zone = (r.mesaZona && String(r.mesaZona).trim()) || meta?.zone || '';
+              const hasSnapPrice = r.mesaPrecio != null && Number(r.mesaPrecio) > 0;
+              const mesaPrecioLabel = hasSnapPrice
+                ? moneyFormatter.format(Number(r.mesaPrecio))
+                : meta?.hasPrice
+                  ? escapeHtml(meta.priceLabel)
+                  : 'Precio por confirmar';
+              const extrasList = parsePersistedExtrasJson(r.extrasJson);
+              const extrasLine =
+                extrasList.length > 0
+                  ? extrasList.map((ex) => `${escapeHtml(ex.label || ex.id || '')} (${moneyFormatter.format(Number(ex.price) || 0)})`).join(' · ')
+                  : 'Sin extras';
+              const totalLine =
+                r.totalReserva != null && Number.isFinite(Number(r.totalReserva))
+                  ? moneyFormatter.format(Number(r.totalReserva))
+                  : meta?.hasPrice
+                    ? moneyFormatter.format((meta.price || 0) + (Number(r.totalExtras) || 0))
+                    : 'Por confirmar';
+              const metodo = labelMetodoReserva(r.metodoPago || 'por_confirmar');
+              const pagoEstado = r.estadoPago ? escapeHtml(r.estadoPago) : 'pendiente';
               return `
           <div class="rounded-xl border border-slate-100 bg-slate-50 px-3 py-3">
             <div class="flex items-start justify-between gap-3">
               <div class="min-w-0">
-                <p class="truncate font-black text-slate-900">${escapeHtml(meta?.name || r.mapItemId)}</p>
+                <p class="truncate font-black text-slate-900">${escapeHtml(name)}</p>
                 <p class="mt-0.5 text-xs font-semibold text-slate-500">${escapeHtml(r.fechaDia || currentFecha)} · ${escapeHtml(r.estado || 'apartada')}</p>
-                ${meta?.zone ? `<p class="mt-1 text-xs font-bold text-teal-700">${escapeHtml(meta.zone)}</p>` : ''}
-                <p class="mt-1 text-xs font-semibold text-slate-600">${meta?.hasPrice ? escapeHtml(meta.priceLabel) : 'Precio por confirmar'}</p>
+                ${zone ? `<p class="mt-1 text-xs font-bold text-teal-700">${escapeHtml(zone)}</p>` : ''}
+                <p class="mt-1 text-xs font-semibold text-slate-600">Precio mesa: ${mesaPrecioLabel}</p>
+                <p class="mt-1 text-[11px] font-semibold leading-4 text-slate-600">Extras: ${extrasLine}</p>
+                <p class="mt-1 text-xs font-black text-slate-900">Total reserva: ${totalLine}</p>
+                <p class="mt-1 text-[11px] font-semibold text-slate-500">${escapeHtml(metodo)} · Pago: ${pagoEstado}</p>
               </div>
               <button type="button" data-cancel-r="${r.id}" data-cancel-map="${escapeHtml(r.mapItemId)}" class="shrink-0 rounded-lg border border-rose-200 px-2 py-1 text-xs font-black text-rose-700 hover:bg-rose-50">
                 Cancelar
@@ -532,7 +567,7 @@ export default {
         ? extras.map((extra) => `
             <label class="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-700">
               <span class="flex items-center gap-2">
-                <input type="checkbox" data-reserva-extra="${escapeHtml(extra.id)}" data-extra-price="${extra.price}" class="h-4 w-4 rounded border-slate-300" />
+                <input type="checkbox" data-reserva-extra="${escapeHtml(extra.id)}" data-extra-label="${escapeHtml(extra.label)}" data-extra-price="${extra.price}" class="h-4 w-4 rounded border-slate-300" />
                 ${escapeHtml(extra.label)}
               </span>
               <span class="text-xs font-black text-slate-500">${moneyFormatter.format(extra.price)}</span>
@@ -566,6 +601,23 @@ export default {
             <p class="mb-2 text-xs font-black uppercase tracking-wide text-slate-500">Extras visuales</p>
             <div class="space-y-2">${extrasHtml}</div>
             <p class="mt-2 text-[11px] font-semibold leading-4 text-slate-500">Extras sujetos a confirmacion/pago en taquilla o checkout segun configuracion.</p>
+          </div>
+          <div>
+            <p class="mb-2 text-xs font-black uppercase tracking-wide text-slate-500">Forma de pago (sin cargo online en esta fase)</p>
+            <div class="space-y-2 rounded-xl border border-slate-200 bg-white p-3">
+              <label class="flex cursor-pointer items-start gap-2 text-sm font-semibold text-slate-800">
+                <input type="radio" name="reserva-metodo-pago" value="taquilla" class="mt-1" checked />
+                <span>Pagar en taquilla</span>
+              </label>
+              <label class="flex cursor-pointer items-start gap-2 text-sm font-semibold text-slate-800">
+                <input type="radio" name="reserva-metodo-pago" value="checkout_later" class="mt-1" />
+                <span>Agregar al carrito y pagar después en checkout</span>
+              </label>
+              <label class="flex cursor-pointer items-start gap-2 text-sm font-semibold text-slate-800">
+                <input type="radio" name="reserva-metodo-pago" value="por_confirmar" class="mt-1" />
+                <span>Por confirmar con el personal</span>
+              </label>
+            </div>
           </div>
           <div id="reservar-total" class="space-y-1 rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700"></div>
           <div class="grid gap-2">
@@ -682,14 +734,67 @@ export default {
           return;
         }
 
-        await createMesaReserva({ fechaDia: currentFecha, mapItemId: item.id });
-        await upsertMesaReservaLive({
+        const metodoEl = detailEl?.querySelector('input[name="reserva-metodo-pago"]:checked');
+        const metodoPago = metodoEl ? String(metodoEl.value || 'por_confirmar') : 'por_confirmar';
+        const extrasSelected = [];
+        detailEl?.querySelectorAll('[data-reserva-extra]:checked').forEach((input) => {
+          const id = input.getAttribute('data-reserva-extra') || '';
+          const label = input.getAttribute('data-extra-label') || id;
+          const price = Number(input.getAttribute('data-extra-price') || 0) || 0;
+          if (id) extrasSelected.push({ id, label, price });
+        });
+        const totalExtras = extrasSelected.reduce((s, x) => s + (Number(x.price) || 0), 0);
+        const subtotalMesa = meta.hasPrice ? Number(meta.price || 0) : 0;
+        const totalReserva = subtotalMesa + totalExtras;
+        const extrasJson = JSON.stringify(extrasSelected);
+        const insertRes = await createMesaReservaMonetizable({
+          fechaDia: currentFecha,
+          mapItemId: item.id,
+          mesaLabel: meta.name || item.id,
+          mesaZona: meta.zone || '',
+          mesaCapacidad: meta.capacity || 0,
+          mesaPrecio: meta.hasPrice ? Number(meta.price || 0) : 0,
+          extrasJson,
+          subtotalMesa,
+          totalExtras,
+          totalReserva,
+          estadoPago: 'pendiente',
+          metodoPago,
+          notasCliente: ''
+        });
+        const newId = insertRes?.data?.mesaReserva_insert?.id;
+        if (metodoPago === 'checkout_later' && newId) {
+          try {
+            addToCart({
+              key: `mesa_reserva:${newId}`,
+              type: 'mesa_reserva',
+              id: String(newId),
+              name: `Mesa · ${meta.name} · ${currentFecha}`,
+              price: totalReserva,
+              qty: 1,
+              meta: { mesaReservaId: newId, fechaDia: currentFecha, mapItemId: item.id }
+            });
+          } catch (cartErr) {
+            console.warn('Carrito mesa_reserva:', cartErr);
+          }
+        }
+        const liveSync = await upsertMesaReservaLive({
           fechaDia: currentFecha,
           mapItemId: item.id,
           userId: user.uid,
           estado: 'apartada'
         });
-        await showAlert(`${meta.name} apartada para el ${currentFecha}.`, {
+        if (liveSync?.skipped) {
+          console.warn('Reserva creada; realtime omitido:', liveSync.reason || 'no disponible');
+          setMsg('Apartado guardado en servidor; aviso en vivo no disponible.', 'danger');
+        } else {
+          setMsg('');
+        }
+        let okMsg = `${meta.name} apartada para el ${currentFecha}.`;
+        if (metodoPago === 'checkout_later' && newId) {
+          okMsg += ' Revisa el carrito en Checkout para pagar después.';
+        }
+        await showAlert(okMsg, {
           title: 'Listo',
           variant: 'success'
         });

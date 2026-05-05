@@ -233,6 +233,40 @@ mutation CreateMesaReserva($fechaDia: String!, $mapItemId: String!) @auth(level:
   })
 }
 
+mutation CreateMesaReservaMonetizable(
+  $fechaDia: String!,
+  $mapItemId: String!,
+  $mesaLabel: String!,
+  $mesaZona: String!,
+  $mesaCapacidad: Int!,
+  $mesaPrecio: Float!,
+  $extrasJson: String!,
+  $subtotalMesa: Float!,
+  $totalExtras: Float!,
+  $totalReserva: Float!,
+  $estadoPago: String!,
+  $metodoPago: String!,
+  $notasCliente: String!
+) @auth(level: USER) {
+  mesaReserva_insert(data: {
+    fechaDia: $fechaDia,
+    mapItemId: $mapItemId,
+    estado: "apartada",
+    userId_expr: "auth.uid",
+    mesaLabel: $mesaLabel,
+    mesaZona: $mesaZona,
+    mesaCapacidad: $mesaCapacidad,
+    mesaPrecio: $mesaPrecio,
+    extrasJson: $extrasJson,
+    subtotalMesa: $subtotalMesa,
+    totalExtras: $totalExtras,
+    totalReserva: $totalReserva,
+    estadoPago: $estadoPago,
+    metodoPago: $metodoPago,
+    notasCliente: $notasCliente
+  })
+}
+
 mutation CancelarMesaReserva($id: UUID!) @auth(level: USER) {
   mesaReserva_update(id: $id, data: { estado: "cancelada" })
 }

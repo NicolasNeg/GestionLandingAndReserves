@@ -28,8 +28,9 @@ import {
   deleteLandingPage,
   deleteDescuento,
   deleteTicket,
-  deleteMesaReserva
-} from '../dataconnect-generated';
+  deleteMesaReserva,
+  listMesaReservasByFecha
+} from '../lib/dataLayer.js';
 import {
   createDistribucionEditor,
   DEFAULT_MAPA_JSON,
@@ -47,6 +48,7 @@ import { publishAppUpdate } from '../lib/realtimeSync.js';
 import { openImageCropModal } from '../lib/imageCropModal.js';
 import { uploadProductImage, uploadServiceImage } from '../lib/uploadProductImage.js';
 import { isDataConnectConnectorStale as isDataConnectNotDeployed } from '../lib/dataConnectErrors.js';
+import { formatFechaDia } from '../lib/fechaDiaMexico.js';
 
 const LANDING_PAGE_ID = 'main';
 const TICKET_CONFIG_ID = 'precios_base';
@@ -222,6 +224,19 @@ const AdminDashboard = {
                         <p class="text-gray-500 text-sm font-bold uppercase">Ingresos de hoy (aprox.)</p>
                         <p class="text-3xl font-black text-green-600" id="stat-income">--</p>
                     </div>
+                </div>
+
+                <div id="admin-mesa-reservas-operativas" class="mb-8 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+                  <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+                    <h2 class="text-lg font-black text-slate-900">Reservas de mesa del día</h2>
+                    <div class="flex flex-wrap items-center gap-2">
+                      <label class="text-xs font-semibold text-slate-600">Fecha
+                        <input type="date" id="admin-mesa-fecha" class="mt-1 rounded border border-slate-300 p-1 text-sm" />
+                      </label>
+                      <button type="button" id="admin-mesa-refresh" class="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-black text-slate-800 hover:bg-slate-50">Actualizar</button>
+                    </div>
+                  </div>
+                  <div id="admin-mesa-reservas-body" class="text-sm text-slate-600">Cargando...</div>
                 </div>
 
                 ${canAdminPanel ? `<div class="grid grid-cols-1 gap-6 mb-8 xl:grid-cols-2">
@@ -2696,6 +2711,110 @@ const AdminDashboard = {
     const btnCreatePkg = document.getElementById('btn-create-pkg');
     const btnRefresh = document.getElementById('btn-refresh');
     const tableBody = document.getElementById('tickets-table-body');
+    const adminMesaBody = document.getElementById('admin-mesa-reservas-body');
+    const adminMesaFecha = document.getElementById('admin-mesa-fecha');
+    const adminMesaRefresh = document.getElementById('admin-mesa-refresh');
+
+    const fmtMesaMoney = (n) =>
+      new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(Number(n || 0));
+
+    const parseMesaExtrasJson = (raw) => {
+      try {
+        const x = JSON.parse(typeof raw === 'string' && raw.trim() ? raw : '[]');
+        return Array.isArray(x) ? x : [];
+      } catch {
+        return [];
+      }
+    };
+
+    const labelMesaMetodo = (v) => {
+      if (v === 'taquilla') return 'Taquilla';
+      if (v === 'checkout_later') return 'Checkout después';
+      return 'Por confirmar';
+    };
+
+    const loadMesaReservasOperativas = async () => {
+      if (!adminMesaBody) return;
+      if (!auth.currentUser) {
+        adminMesaBody.innerHTML = '<p class="text-slate-500 text-xs">Inicia sesión para listar reservas de mesa.</p>';
+        return;
+      }
+      const fecha = (adminMesaFecha?.value || formatFechaDia()).trim();
+      adminMesaBody.innerHTML = '<p class="text-slate-500">Cargando...</p>';
+      try {
+        const res = await listMesaReservasByFecha({ fechaDia: fecha });
+        const rows = (res.data?.mesaReservas || []).filter((r) =>
+          ['apartada', 'ocupada'].includes(String(r.estado || ''))
+        );
+        if (!rows.length) {
+          adminMesaBody.innerHTML = `<p class="text-slate-500">No hay reservas de mesa activas para <span class="font-mono">${escapeHtml(fecha)}</span>.</p>`;
+          return;
+        }
+        const table = `
+          <div class="overflow-x-auto">
+            <table class="w-full min-w-[720px] border-collapse text-left text-xs">
+              <thead>
+                <tr class="border-b border-slate-200 bg-slate-50 text-slate-600">
+                  <th class="p-2">Mesa</th>
+                  <th class="p-2">Cliente</th>
+                  <th class="p-2">Estado</th>
+                  <th class="p-2">Total</th>
+                  <th class="p-2">Método</th>
+                  <th class="p-2">Pago</th>
+                  <th class="p-2">Extras</th>
+                  <th class="p-2">Ticket</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${rows
+                  .map((r) => {
+                    const mesa = escapeHtml(r.mesaLabel || r.mapItemId || '—');
+                    const u = r.user || {};
+                    const cliente = escapeHtml(
+                      u.nombre || u.email || (u.id ? `Usuario ${String(u.id).slice(0, 8)}…` : '—')
+                    );
+                    const extras = parseMesaExtrasJson(r.extrasJson);
+                    const extrasPlain = extras.length
+                      ? extras.map((e) => `${e.label || e.id} (${fmtMesaMoney(e.price)})`).join('; ')
+                      : '—';
+                    const extrasTxt = escapeHtml(extrasPlain);
+                    const totalStr =
+                      r.totalReserva != null && Number.isFinite(Number(r.totalReserva))
+                        ? fmtMesaMoney(r.totalReserva)
+                        : 'Por confirmar';
+                    const ticketId = r.ticket?.id ? escapeHtml(String(r.ticket.id).slice(0, 8)) : '—';
+                    return `<tr class="border-b border-slate-100 hover:bg-slate-50/80">
+                      <td class="p-2 font-semibold text-slate-900">${mesa}</td>
+                      <td class="p-2">${cliente}</td>
+                      <td class="p-2 font-bold uppercase">${escapeHtml(r.estado || '')}</td>
+                      <td class="p-2">${escapeHtml(totalStr)}</td>
+                      <td class="p-2">${escapeHtml(labelMesaMetodo(r.metodoPago))}</td>
+                      <td class="p-2">${escapeHtml(r.estadoPago || 'pendiente')}</td>
+                      <td class="p-2 max-w-[220px] truncate" title="${escapeHtml(extrasPlain)}">${extrasTxt}</td>
+                      <td class="p-2 font-mono text-[11px]">${ticketId}</td>
+                    </tr>`;
+                  })
+                  .join('')}
+              </tbody>
+            </table>
+          </div>`;
+        adminMesaBody.innerHTML = table;
+      } catch (e) {
+        const msg = isDataConnectNotDeployed(e)
+          ? 'Conector Data Connect desactualizado o operación no desplegada.'
+          : e?.message || 'Error al cargar reservas de mesa.';
+        adminMesaBody.innerHTML = `<p class="text-rose-600 text-xs">${escapeHtml(msg)}</p>`;
+      }
+    };
+
+    if (adminMesaFecha) adminMesaFecha.value = formatFechaDia();
+    adminMesaRefresh?.addEventListener('click', () => {
+      loadMesaReservasOperativas();
+    });
+    adminMesaFecha?.addEventListener('change', () => {
+      loadMesaReservasOperativas();
+    });
+    loadMesaReservasOperativas();
 
     const loadTickets = async () => {
       if (!tableBody) return;

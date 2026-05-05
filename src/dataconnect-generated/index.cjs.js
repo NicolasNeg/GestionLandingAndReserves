@@ -189,6 +189,20 @@ exports.createMesaReserva = function createMesaReserva(dcOrVars, vars) {
 }
 ;
 
+const createMesaReservaMonetizableRef = (dcOrVars, vars) => {
+  const { dc: dcInstance, vars: inputVars} = validateArgs(connectorConfig, dcOrVars, vars, true);
+  dcInstance._useGeneratedSdk();
+  return mutationRef(dcInstance, 'CreateMesaReservaMonetizable', inputVars);
+}
+createMesaReservaMonetizableRef.operationName = 'CreateMesaReservaMonetizable';
+exports.createMesaReservaMonetizableRef = createMesaReservaMonetizableRef;
+
+exports.createMesaReservaMonetizable = function createMesaReservaMonetizable(dcOrVars, vars) {
+  const { dc: dcInstance, vars: inputVars } = validateArgs(connectorConfig, dcOrVars, vars, true);
+  return executeMutation(createMesaReservaMonetizableRef(dcInstance, inputVars));
+}
+;
+
 const cancelarMesaReservaRef = (dcOrVars, vars) => {
   const { dc: dcInstance, vars: inputVars} = validateArgs(connectorConfig, dcOrVars, vars, true);
   dcInstance._useGeneratedSdk();

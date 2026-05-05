@@ -72,6 +72,26 @@ export interface CreateMesaReservaData {
   mesaReserva_insert: MesaReserva_Key;
 }
 
+export interface CreateMesaReservaMonetizableData {
+  mesaReserva_insert: MesaReserva_Key;
+}
+
+export interface CreateMesaReservaMonetizableVariables {
+  fechaDia: string;
+  mapItemId: string;
+  mesaLabel: string;
+  mesaZona: string;
+  mesaCapacidad: number;
+  mesaPrecio: number;
+  extrasJson: string;
+  subtotalMesa: number;
+  totalExtras: number;
+  totalReserva: number;
+  estadoPago: string;
+  metodoPago: string;
+  notasCliente: string;
+}
+
 export interface CreateMesaReservaVariables {
   fechaDia: string;
   mapItemId: string;
@@ -344,11 +364,24 @@ export interface ListMesaReservasByFechaData {
     estado: string;
     user?: {
       id: string;
+      nombre?: string | null;
+      email?: string | null;
     } & User_Key;
       ticket?: {
         id: UUIDString;
       } & Ticket_Key;
         creadoEn: TimestampString;
+        mesaLabel?: string | null;
+        mesaZona?: string | null;
+        mesaCapacidad?: number | null;
+        mesaPrecio?: number | null;
+        extrasJson?: string | null;
+        subtotalMesa?: number | null;
+        totalExtras?: number | null;
+        totalReserva?: number | null;
+        estadoPago?: string | null;
+        metodoPago?: string | null;
+        notasCliente?: string | null;
   } & MesaReserva_Key)[];
 }
 
@@ -376,6 +409,17 @@ export interface ListMisMesaReservasData {
     mapItemId: string;
     estado: string;
     creadoEn: TimestampString;
+    mesaLabel?: string | null;
+    mesaZona?: string | null;
+    mesaCapacidad?: number | null;
+    mesaPrecio?: number | null;
+    extrasJson?: string | null;
+    subtotalMesa?: number | null;
+    totalExtras?: number | null;
+    totalReserva?: number | null;
+    estadoPago?: string | null;
+    metodoPago?: string | null;
+    notasCliente?: string | null;
     ticket?: {
       id: UUIDString;
     } & Ticket_Key;
@@ -808,6 +852,18 @@ export const createMesaReservaRef: CreateMesaReservaRef;
 
 export function createMesaReserva(vars: CreateMesaReservaVariables): MutationPromise<CreateMesaReservaData, CreateMesaReservaVariables>;
 export function createMesaReserva(dc: DataConnect, vars: CreateMesaReservaVariables): MutationPromise<CreateMesaReservaData, CreateMesaReservaVariables>;
+
+interface CreateMesaReservaMonetizableRef {
+  /* Allow users to create refs without passing in DataConnect */
+  (vars: CreateMesaReservaMonetizableVariables): MutationRef<CreateMesaReservaMonetizableData, CreateMesaReservaMonetizableVariables>;
+  /* Allow users to pass in custom DataConnect instances */
+  (dc: DataConnect, vars: CreateMesaReservaMonetizableVariables): MutationRef<CreateMesaReservaMonetizableData, CreateMesaReservaMonetizableVariables>;
+  operationName: string;
+}
+export const createMesaReservaMonetizableRef: CreateMesaReservaMonetizableRef;
+
+export function createMesaReservaMonetizable(vars: CreateMesaReservaMonetizableVariables): MutationPromise<CreateMesaReservaMonetizableData, CreateMesaReservaMonetizableVariables>;
+export function createMesaReservaMonetizable(dc: DataConnect, vars: CreateMesaReservaMonetizableVariables): MutationPromise<CreateMesaReservaMonetizableData, CreateMesaReservaMonetizableVariables>;
 
 interface CancelarMesaReservaRef {
   /* Allow users to create refs without passing in DataConnect */

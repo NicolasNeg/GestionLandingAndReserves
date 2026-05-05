@@ -41,6 +41,7 @@ This README will guide you through the process of using the generated JavaScript
   - [*UpdateProductoStock*](#updateproductostock)
   - [*CreateMovimientoInventario*](#createmovimientoinventario)
   - [*CreateMesaReserva*](#createmesareserva)
+  - [*CreateMesaReservaMonetizable*](#createmesareservamonetizable)
   - [*CancelarMesaReserva*](#cancelarmesareserva)
   - [*DeleteServicio*](#deleteservicio)
   - [*DeleteProducto*](#deleteproducto)
@@ -1904,6 +1905,17 @@ export interface ListMisMesaReservasData {
     mapItemId: string;
     estado: string;
     creadoEn: TimestampString;
+    mesaLabel?: string | null;
+    mesaZona?: string | null;
+    mesaCapacidad?: number | null;
+    mesaPrecio?: number | null;
+    extrasJson?: string | null;
+    subtotalMesa?: number | null;
+    totalExtras?: number | null;
+    totalReserva?: number | null;
+    estadoPago?: string | null;
+    metodoPago?: string | null;
+    notasCliente?: string | null;
     ticket?: {
       id: UUIDString;
     } & Ticket_Key;
@@ -2023,11 +2035,24 @@ export interface ListMesaReservasByFechaData {
     estado: string;
     user?: {
       id: string;
+      nombre?: string | null;
+      email?: string | null;
     } & User_Key;
       ticket?: {
         id: UUIDString;
       } & Ticket_Key;
         creadoEn: TimestampString;
+        mesaLabel?: string | null;
+        mesaZona?: string | null;
+        mesaCapacidad?: number | null;
+        mesaPrecio?: number | null;
+        extrasJson?: string | null;
+        subtotalMesa?: number | null;
+        totalExtras?: number | null;
+        totalReserva?: number | null;
+        estadoPago?: string | null;
+        metodoPago?: string | null;
+        notasCliente?: string | null;
   } & MesaReserva_Key)[];
 }
 ```
@@ -3791,6 +3816,151 @@ const ref = createMesaReservaRef({ fechaDia: ..., mapItemId: ..., });
 // You can also pass in a `DataConnect` instance to the `MutationRef` function.
 const dataConnect = getDataConnect(connectorConfig);
 const ref = createMesaReservaRef(dataConnect, createMesaReservaVars);
+
+// Call `executeMutation()` on the reference to execute the mutation.
+// You can use the `await` keyword to wait for the promise to resolve.
+const { data } = await executeMutation(ref);
+
+console.log(data.mesaReserva_insert);
+
+// Or, you can use the `Promise` API.
+executeMutation(ref).then((response) => {
+  const data = response.data;
+  console.log(data.mesaReserva_insert);
+});
+```
+
+## CreateMesaReservaMonetizable
+You can execute the `CreateMesaReservaMonetizable` mutation using the following action shortcut function, or by calling `executeMutation()` after calling the following `MutationRef` function, both of which are defined in [dataconnect-generated/index.d.ts](./index.d.ts):
+```typescript
+createMesaReservaMonetizable(vars: CreateMesaReservaMonetizableVariables): MutationPromise<CreateMesaReservaMonetizableData, CreateMesaReservaMonetizableVariables>;
+
+interface CreateMesaReservaMonetizableRef {
+  ...
+  /* Allow users to create refs without passing in DataConnect */
+  (vars: CreateMesaReservaMonetizableVariables): MutationRef<CreateMesaReservaMonetizableData, CreateMesaReservaMonetizableVariables>;
+}
+export const createMesaReservaMonetizableRef: CreateMesaReservaMonetizableRef;
+```
+You can also pass in a `DataConnect` instance to the action shortcut function or `MutationRef` function.
+```typescript
+createMesaReservaMonetizable(dc: DataConnect, vars: CreateMesaReservaMonetizableVariables): MutationPromise<CreateMesaReservaMonetizableData, CreateMesaReservaMonetizableVariables>;
+
+interface CreateMesaReservaMonetizableRef {
+  ...
+  (dc: DataConnect, vars: CreateMesaReservaMonetizableVariables): MutationRef<CreateMesaReservaMonetizableData, CreateMesaReservaMonetizableVariables>;
+}
+export const createMesaReservaMonetizableRef: CreateMesaReservaMonetizableRef;
+```
+
+If you need the name of the operation without creating a ref, you can retrieve the operation name by calling the `operationName` property on the createMesaReservaMonetizableRef:
+```typescript
+const name = createMesaReservaMonetizableRef.operationName;
+console.log(name);
+```
+
+### Variables
+The `CreateMesaReservaMonetizable` mutation requires an argument of type `CreateMesaReservaMonetizableVariables`, which is defined in [dataconnect-generated/index.d.ts](./index.d.ts). It has the following fields:
+
+```typescript
+export interface CreateMesaReservaMonetizableVariables {
+  fechaDia: string;
+  mapItemId: string;
+  mesaLabel: string;
+  mesaZona: string;
+  mesaCapacidad: number;
+  mesaPrecio: number;
+  extrasJson: string;
+  subtotalMesa: number;
+  totalExtras: number;
+  totalReserva: number;
+  estadoPago: string;
+  metodoPago: string;
+  notasCliente: string;
+}
+```
+### Return Type
+Recall that executing the `CreateMesaReservaMonetizable` mutation returns a `MutationPromise` that resolves to an object with a `data` property.
+
+The `data` property is an object of type `CreateMesaReservaMonetizableData`, which is defined in [dataconnect-generated/index.d.ts](./index.d.ts). It has the following fields:
+```typescript
+export interface CreateMesaReservaMonetizableData {
+  mesaReserva_insert: MesaReserva_Key;
+}
+```
+### Using `CreateMesaReservaMonetizable`'s action shortcut function
+
+```typescript
+import { getDataConnect } from 'firebase/data-connect';
+import { connectorConfig, createMesaReservaMonetizable, CreateMesaReservaMonetizableVariables } from '@dataconnect/generated';
+
+// The `CreateMesaReservaMonetizable` mutation requires an argument of type `CreateMesaReservaMonetizableVariables`:
+const createMesaReservaMonetizableVars: CreateMesaReservaMonetizableVariables = {
+  fechaDia: ..., 
+  mapItemId: ..., 
+  mesaLabel: ..., 
+  mesaZona: ..., 
+  mesaCapacidad: ..., 
+  mesaPrecio: ..., 
+  extrasJson: ..., 
+  subtotalMesa: ..., 
+  totalExtras: ..., 
+  totalReserva: ..., 
+  estadoPago: ..., 
+  metodoPago: ..., 
+  notasCliente: ..., 
+};
+
+// Call the `createMesaReservaMonetizable()` function to execute the mutation.
+// You can use the `await` keyword to wait for the promise to resolve.
+const { data } = await createMesaReservaMonetizable(createMesaReservaMonetizableVars);
+// Variables can be defined inline as well.
+const { data } = await createMesaReservaMonetizable({ fechaDia: ..., mapItemId: ..., mesaLabel: ..., mesaZona: ..., mesaCapacidad: ..., mesaPrecio: ..., extrasJson: ..., subtotalMesa: ..., totalExtras: ..., totalReserva: ..., estadoPago: ..., metodoPago: ..., notasCliente: ..., });
+
+// You can also pass in a `DataConnect` instance to the action shortcut function.
+const dataConnect = getDataConnect(connectorConfig);
+const { data } = await createMesaReservaMonetizable(dataConnect, createMesaReservaMonetizableVars);
+
+console.log(data.mesaReserva_insert);
+
+// Or, you can use the `Promise` API.
+createMesaReservaMonetizable(createMesaReservaMonetizableVars).then((response) => {
+  const data = response.data;
+  console.log(data.mesaReserva_insert);
+});
+```
+
+### Using `CreateMesaReservaMonetizable`'s `MutationRef` function
+
+```typescript
+import { getDataConnect, executeMutation } from 'firebase/data-connect';
+import { connectorConfig, createMesaReservaMonetizableRef, CreateMesaReservaMonetizableVariables } from '@dataconnect/generated';
+
+// The `CreateMesaReservaMonetizable` mutation requires an argument of type `CreateMesaReservaMonetizableVariables`:
+const createMesaReservaMonetizableVars: CreateMesaReservaMonetizableVariables = {
+  fechaDia: ..., 
+  mapItemId: ..., 
+  mesaLabel: ..., 
+  mesaZona: ..., 
+  mesaCapacidad: ..., 
+  mesaPrecio: ..., 
+  extrasJson: ..., 
+  subtotalMesa: ..., 
+  totalExtras: ..., 
+  totalReserva: ..., 
+  estadoPago: ..., 
+  metodoPago: ..., 
+  notasCliente: ..., 
+};
+
+// Call the `createMesaReservaMonetizableRef()` function to get a reference to the mutation.
+const ref = createMesaReservaMonetizableRef(createMesaReservaMonetizableVars);
+// Variables can be defined inline as well.
+const ref = createMesaReservaMonetizableRef({ fechaDia: ..., mapItemId: ..., mesaLabel: ..., mesaZona: ..., mesaCapacidad: ..., mesaPrecio: ..., extrasJson: ..., subtotalMesa: ..., totalExtras: ..., totalReserva: ..., estadoPago: ..., metodoPago: ..., notasCliente: ..., });
+
+// You can also pass in a `DataConnect` instance to the `MutationRef` function.
+const dataConnect = getDataConnect(connectorConfig);
+const ref = createMesaReservaMonetizableRef(dataConnect, createMesaReservaMonetizableVars);
 
 // Call `executeMutation()` on the reference to execute the mutation.
 // You can use the `await` keyword to wait for the promise to resolve.

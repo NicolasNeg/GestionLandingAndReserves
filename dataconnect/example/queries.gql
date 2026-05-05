@@ -240,6 +240,17 @@ query ListMisMesaReservas($userId: String!) @auth(level: USER) {
     mapItemId
     estado
     creadoEn
+    mesaLabel
+    mesaZona
+    mesaCapacidad
+    mesaPrecio
+    extrasJson
+    subtotalMesa
+    totalExtras
+    totalReserva
+    estadoPago
+    metodoPago
+    notasCliente
     ticket {
       id
     }
@@ -259,11 +270,24 @@ query ListMesaReservasByFecha($fechaDia: String!) @auth(level: USER) {
     estado
     user {
       id
+      nombre
+      email
     }
     ticket {
       id
     }
     creadoEn
+    mesaLabel
+    mesaZona
+    mesaCapacidad
+    mesaPrecio
+    extrasJson
+    subtotalMesa
+    totalExtras
+    totalReserva
+    estadoPago
+    metodoPago
+    notasCliente
   }
 }
 

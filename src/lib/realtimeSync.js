@@ -1,21 +1,34 @@
 import { doc, onSnapshot, serverTimestamp, setDoc } from 'firebase/firestore';
 import { auth, db } from '../firebase-config.js';
+import { getDataConnectErrorMessage, isPermissionError } from './dataConnectErrors.js';
 
 const CHANNEL_REF = doc(db, 'appRealtime', 'global');
 const CLIENT_ID = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
 export async function publishAppUpdate(scope = 'general', detail = '') {
-  await setDoc(
-    CHANNEL_REF,
-    {
-      scope,
-      detail,
-      source: CLIENT_ID,
-      updatedAt: serverTimestamp(),
-      updatedBy: auth.currentUser?.uid || null
-    },
-    { merge: true }
-  );
+  if (!auth.currentUser) {
+    return { ok: false, skipped: true, reason: 'auth-required' };
+  }
+  try {
+    await setDoc(
+      CHANNEL_REF,
+      {
+        scope,
+        detail,
+        source: CLIENT_ID,
+        updatedAt: serverTimestamp(),
+        updatedBy: auth.currentUser?.uid || null
+      },
+      { merge: true }
+    );
+    return { ok: true, skipped: false };
+  } catch (error) {
+    if (isPermissionError(error)) {
+      console.warn('Sincronizacion en vivo sin permisos:', getDataConnectErrorMessage(error));
+      return { ok: false, skipped: true, reason: 'permission-denied', error };
+    }
+    throw error;
+  }
 }
 
 export function initRealtimeSync(onRemoteUpdate) {
@@ -33,8 +46,8 @@ export function initRealtimeSync(onRemoteUpdate) {
       onRemoteUpdate?.(data.scope || 'general', data);
     },
     (err) => {
-      if (err?.code === 'permission-denied') return;
-      console.warn('Sincronizacion en vivo (Firestore) no disponible:', err?.message || err);
+      if (isPermissionError(err)) return;
+      console.warn('Sincronizacion en vivo (Firestore) no disponible:', getDataConnectErrorMessage(err));
     }
   );
 }
