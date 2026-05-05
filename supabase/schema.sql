@@ -13,6 +13,15 @@ create table if not exists public.users (
   updated_at timestamptz not null default now()
 );
 
+alter table public.users add column if not exists avatar_url text;
+
+-- Permisos por rol (opcional; si está vacío se usan DEFAULT_ROLE_PERMISSIONS en código)
+create table if not exists public.role_permissions (
+  role text not null,
+  permission text not null,
+  primary key (role, permission)
+);
+
 create table if not exists public.configuracion (
   id text primary key,
   precio_adulto numeric(10,2) not null default 0,

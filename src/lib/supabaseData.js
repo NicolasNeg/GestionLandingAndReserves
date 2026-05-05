@@ -8,11 +8,23 @@ function requireClient() {
 
 function mapUserRow(r) {
   if (!r) return null;
+  let permissions = [];
+  const raw = r.permissions;
+  if (Array.isArray(raw)) permissions = raw;
+  else if (raw && typeof raw === 'object') {
+    try {
+      permissions = Array.from(raw);
+    } catch {
+      permissions = [];
+    }
+  }
   return {
     id: r.id,
     nombre: r.nombre,
     email: r.email,
-    rol: r.rol
+    rol: r.rol,
+    permissions,
+    photoURL: r.avatar_url || ''
   };
 }
 
