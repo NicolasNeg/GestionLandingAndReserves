@@ -4,6 +4,8 @@
 import { listParkingSpotsRows } from './supabaseData.js';
 import { supabase } from '../supabase/client.js';
 
+let activeParkingChannel = null;
+
 function requireClient() {
   if (!supabase) throw new Error('Supabase no inicializado');
   return supabase;
@@ -47,17 +49,27 @@ export function subscribeParkingSpots(onData, onError) {
   push();
 
   const sb = requireClient();
+  if (activeParkingChannel) {
+    // Evita reutilizar un canal ya suscrito (Supabase no permite agregar callbacks después).
+    sb.removeChannel(activeParkingChannel);
+    activeParkingChannel = null;
+  }
+  const channelName = `parking_spots_rt_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   const channel = sb
-    .channel('parking_spots_global')
+    .channel(channelName)
     .on(
       'postgres_changes',
       { event: '*', schema: 'public', table: 'parking_spots' },
       () => push()
     )
     .subscribe();
+  activeParkingChannel = channel;
 
   return () => {
     cancelled = true;
+    if (activeParkingChannel === channel) {
+      activeParkingChannel = null;
+    }
     sb.removeChannel(channel);
   };
 }

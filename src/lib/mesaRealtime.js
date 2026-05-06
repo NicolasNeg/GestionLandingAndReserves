@@ -5,6 +5,8 @@ import { supabase } from '../supabase/client.js';
 import { getCurrentUser } from './authProvider.js';
 import { getBackendErrorMessage, isPermissionError } from './backendErrors.js';
 
+const activeMesaChannelsByFecha = new Map();
+
 function requireClient() {
   if (!supabase) throw new Error('Supabase no inicializado');
   return supabase;
@@ -49,8 +51,19 @@ export function subscribeMesaReservasByFecha(fechaDia, onData, onError) {
   push();
 
   const sb = requireClient();
+  const previous = activeMesaChannelsByFecha.get(fechaDia);
+  if (previous) {
+    // No reutilizar canal suscrito: remover y recrear con callbacks nuevos.
+    try {
+      sb.removeChannel(previous);
+    } catch {
+      // best-effort
+    }
+    activeMesaChannelsByFecha.delete(fechaDia);
+  }
+  const channelName = `mesa_reservas:${fechaDia}:${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   const channel = sb
-    .channel(`mesa_reservas:${fechaDia}`)
+    .channel(channelName)
     .on(
       'postgres_changes',
       {
@@ -63,13 +76,22 @@ export function subscribeMesaReservasByFecha(fechaDia, onData, onError) {
     )
     .subscribe((status) => {
       if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+        console.warn(`Realtime mesas (${fechaDia}) inestable: ${status}`);
         onError?.(new Error(`Realtime mesas: ${status}`));
       }
     });
+  activeMesaChannelsByFecha.set(fechaDia, channel);
 
   return () => {
     cancelled = true;
-    sb.removeChannel(channel);
+    if (activeMesaChannelsByFecha.get(fechaDia) === channel) {
+      activeMesaChannelsByFecha.delete(fechaDia);
+    }
+    try {
+      sb.removeChannel(channel);
+    } catch {
+      // canal ya removido; ignora
+    }
   };
 }
 

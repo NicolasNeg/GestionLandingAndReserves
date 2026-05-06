@@ -5,6 +5,7 @@ const BROADCAST_CH = 'app-broadcast';
 const EVENT = 'app_update';
 const CLIENT_ID = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 let lastKey = '';
+let activeSyncChannel = null;
 
 export async function publishAppUpdate(scope = 'general', detail = '') {
   if (!supabase) {
@@ -14,7 +15,7 @@ export async function publishAppUpdate(scope = 'general', detail = '') {
   if (!u) {
     return { ok: false, skipped: true, reason: 'auth-required' };
   }
-  const ch = supabase.channel(BROADCAST_CH);
+  const ch = supabase.channel(`app-broadcast-pub:${Date.now()}_${Math.random().toString(36).slice(2, 8)}`);
   await new Promise((resolve) => {
     ch.subscribe((status) => {
       if (status === 'SUBSCRIBED') resolve();
@@ -30,14 +31,26 @@ export async function publishAppUpdate(scope = 'general', detail = '') {
       updatedBy: u.uid ?? u.id ?? null
     }
   });
-  await supabase.removeChannel(ch);
+  try {
+    await supabase.removeChannel(ch);
+  } catch {
+    // fire-and-forget channel cleanup
+  }
   return { ok: true, skipped: false };
 }
 
 export function initRealtimeSync(onRemoteUpdate) {
   if (!supabase) return () => {};
+  if (activeSyncChannel) {
+    try {
+      supabase.removeChannel(activeSyncChannel);
+    } catch {
+      // best-effort
+    }
+    activeSyncChannel = null;
+  }
   const ch = supabase
-    .channel(BROADCAST_CH)
+    .channel(`${BROADCAST_CH}:${Date.now()}_${Math.random().toString(36).slice(2, 8)}`)
     .on('broadcast', { event: EVENT }, (msg) => {
       const p = msg?.payload || {};
       if (p.source === CLIENT_ID) return;
@@ -47,7 +60,15 @@ export function initRealtimeSync(onRemoteUpdate) {
       onRemoteUpdate?.(p.scope || 'general', p);
     })
     .subscribe();
+  activeSyncChannel = ch;
   return () => {
-    supabase.removeChannel(ch);
+    if (activeSyncChannel === ch) {
+      activeSyncChannel = null;
+    }
+    try {
+      supabase.removeChannel(ch);
+    } catch {
+      // canal ya no existe
+    }
   };
 }
