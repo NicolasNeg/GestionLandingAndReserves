@@ -1,9 +1,0 @@
-# OBSOLETO para esta app (frontend Supabase-only). Mantener solo como referencia de esquema histórico.
-connectorId: example
-generate:
-  javascriptSdk:
-    - outputDir: ../../src/dataconnect-generated
-      package: "@dataconnect/generated"
-      packageJsonDir: ../../
-      react: false
-      angular: false
