@@ -21,6 +21,7 @@ import { addToCart } from '../lib/cart.js';
 import { showAlert } from '../lib/appDialog.js';
 import { subscribeParkingSpots } from '../lib/parkingRealtime.js';
 import { parseScheduleConfig, scheduleDays } from '../lib/schedule.js';
+import { splitBotonesJson, filterPublicBotones } from '../lib/landingBotonesHero.js';
 
 const LANDING_PAGE_ID = 'main';
 
@@ -478,9 +479,9 @@ export default {
           <main class="flex-1 pb-28 pt-14 lg:pb-16 lg:pt-6">
             <section id="inicio" class="landing-hero scroll-mt-24 px-4 py-20 text-white sm:px-8 sm:py-24" style="background-image: linear-gradient(115deg, rgba(12, 74, 110, 0.92), rgba(13, 148, 136, 0.76)), url('${heroImageUrl}'); background-size: cover; background-position: center;">
               <div class="landing-hero-content mx-auto max-w-5xl">
-                <p class="mb-3 text-xs font-bold uppercase tracking-widest text-amber-200/90">Balneario San Antonio Texas</p>
-                <h1 class="text-balance text-4xl font-black leading-[1.12] sm:text-5xl lg:text-6xl">Tu dia perfecto empieza aqui</h1>
-                <p class="mt-5 max-w-2xl text-base leading-relaxed text-blue-100/95 sm:text-lg">
+                <p id="landing-hero-kicker" class="mb-3 text-xs font-bold uppercase tracking-widest text-amber-200/90">Balneario San Antonio Texas</p>
+                <h1 id="landing-hero-title" class="text-balance text-4xl font-black leading-[1.12] sm:text-5xl lg:text-6xl">Tu dia perfecto empieza aqui</h1>
+                <p id="landing-hero-subtitle" class="mt-5 max-w-2xl text-base leading-relaxed text-blue-100/95 sm:text-lg">
                   Reserva en linea, revisa paquetes y conoce el parque. Actualizado por el equipo desde un solo panel: horarios, mapa y catalogo.
                 </p>
                 <div class="landing-resource-pills mt-6">
@@ -927,8 +928,16 @@ export default {
       ph?.classList.add('hidden');
     }
 
+    const { hero: heroFromLanding } = splitBotonesJson(landing.botonesJson);
+    const hk = document.getElementById('landing-hero-kicker');
+    const ht = document.getElementById('landing-hero-title');
+    const hs = document.getElementById('landing-hero-subtitle');
+    if (hk) hk.textContent = heroFromLanding.kicker;
+    if (ht) ht.textContent = heroFromLanding.title;
+    if (hs) hs.textContent = heroFromLanding.subtitle;
+
     const botWrap = document.getElementById('landing-botones');
-    if (botWrap) botWrap.innerHTML = renderBotones(parseBotones(landing.botonesJson));
+    if (botWrap) botWrap.innerHTML = renderBotones(filterPublicBotones(parseBotones(landing.botonesJson)));
 
     const serviciosEl = document.getElementById('landing-servicios');
     if (serviciosEl) {

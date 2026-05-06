@@ -34,7 +34,13 @@ import {
   deleteTicketType,
   deleteTicket,
   deleteMesaReserva,
-  listMesaReservasByFecha
+  listMesaReservasByFecha,
+  getTodaySalesSummary,
+  getTodayTicketsSummary,
+  getTodayMesaReservasSummary,
+  getInventoryAlerts,
+  getActiveDiscountsSummary,
+  getParkingSummary
 } from '../lib/dataLayer.js';
 import {
   createDistribucionEditor,
@@ -67,6 +73,8 @@ import {
   showDiscountRulesValidationError,
   refreshDiscountRulesEditorUi
 } from '../lib/discountRulesAdmin.js';
+import heroImageUrl from '../assets/hero.png';
+import { splitBotonesJson, mergeBotonesJson } from '../lib/landingBotonesHero.js';
 
 const LANDING_PAGE_ID = 'main';
 const TICKET_CONFIG_ID = 'precios_base';
@@ -189,6 +197,7 @@ const AdminDashboard = {
     const canAdminPanel = access.can('admin.panel');
     const canInventoryView = access.can('inventory.manage') || access.can('inventory.adjust') || access.can('sales.physical');
     const canParking = access.can('parking.manage');
+    const canTicketTypesPanel = canPackages || canAdminPanel;
     const showDiscountTechnical =
       access.isProgramador === true || access.can('programador.access');
     const avatar = access.photoURL
@@ -207,15 +216,16 @@ const AdminDashboard = {
                     </button>
                 </div>
                 <nav class="admin-sidebar-nav" aria-label="Panel de gestion">
-                    <button type="button" data-admin-section="tickets" class="admin-sidebar-item is-active" title="Gestion">
+                    <button type="button" data-admin-section="tickets" class="admin-sidebar-item is-active" title="Resumen operativo">
                         ${icon('ticket', 'h-5 w-5')}
-                        <span class="admin-sidebar-label">Gestion</span>
+                        <span class="admin-sidebar-label">Resumen</span>
                     </button>
+                    ${canTicketTypesPanel ? `<button type="button" data-admin-section="ticket-types" class="admin-sidebar-item" title="Tickets del catalogo">${icon('ticket', 'h-5 w-5')}<span class="admin-sidebar-label">Tickets</span></button>` : ''}
                     ${canParking ? `<button type="button" data-admin-section="parking" class="admin-sidebar-item" title="Estacionamiento">${icon('parking', 'h-5 w-5')}<span class="admin-sidebar-label">Estacionamiento</span></button>` : ''}
                     ${canInventoryView ? `<button type="button" data-admin-section="inventario" class="admin-sidebar-item" title="Inventario y ventas">${icon('package', 'h-5 w-5')}<span class="admin-sidebar-label">Inventario / Ventas</span></button>` : ''}
                     ${canScan ? `<a href="/escaner" data-link class="admin-sidebar-item" title="Escaner">${icon('scan', 'h-5 w-5')}<span class="admin-sidebar-label">Escaner</span></a>` : ''}
                     ${canAdminPanel ? `<button type="button" data-admin-section="admin" class="admin-sidebar-item" title="Panel administracion">${icon('dashboard', 'h-5 w-5')}<span class="admin-sidebar-label">Panel administracion</span></button>` : ''}
-                    ${canSitioPanel ? `<button type="button" data-admin-section="sitio" class="admin-sidebar-item" title="Sitio / Landing">${icon('palette', 'h-5 w-5')}<span class="admin-sidebar-label">Sitio / Landing</span></button>` : ''}
+                    ${canSitioPanel ? `<button type="button" data-admin-section="sitio" class="admin-sidebar-item" title="Landing, mapa y servicios">${icon('palette', 'h-5 w-5')}<span class="admin-sidebar-label">Sitio</span></button>` : ''}
                     ${access.isProgramador ? `<a href="/programador/theme" data-link class="admin-sidebar-item" title="Programador">${icon('code', 'h-5 w-5')}<span class="admin-sidebar-label">Programador</span></a>` : ''}
                 </nav>
                 <div class="admin-sidebar-footer">
@@ -235,16 +245,49 @@ const AdminDashboard = {
                   <strong>Desglose trabajador:</strong> monitorea tickets y usa <em>Registrar entrada</em> para marcar estado final <code>escaneado</code> en tiempo real.
                 </div>
 
-                <div id="admin-stats-wrap" class="grid grid-cols-1 gap-6 mb-8 sm:grid-cols-2">
-                    <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-                        <p class="text-gray-500 text-sm font-bold uppercase">Tickets recientes (muestra)</p>
-                        <p class="text-3xl font-black text-slate-800" id="stat-scanned">--</p>
-                    </div>
-                    <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-                        <p class="text-gray-500 text-sm font-bold uppercase">Ingresos de hoy (aprox.)</p>
-                        <p class="text-3xl font-black text-green-600" id="stat-income">--</p>
-                    </div>
+                <div id="admin-exec-kpis" class="grid grid-cols-2 gap-3 mb-4 lg:grid-cols-4" aria-live="polite">
+                  <div class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+                    <p class="text-[10px] font-black uppercase text-slate-500">Ventas día (pagado)</p>
+                    <p class="mt-1 text-2xl font-black text-slate-900" id="kpi-sales-paid">—</p>
+                    <p class="text-xs font-semibold text-slate-500" id="kpi-sales-sub">—</p>
+                  </div>
+                  <div class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+                    <p class="text-[10px] font-black uppercase text-slate-500">Tickets vendidos hoy</p>
+                    <p class="mt-1 text-2xl font-black text-teal-700" id="kpi-sold-today">—</p>
+                    <p class="text-xs font-semibold text-slate-500" id="kpi-sold-sub">—</p>
+                  </div>
+                  <div class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+                    <p class="text-[10px] font-black uppercase text-slate-500">Escaneados hoy</p>
+                    <p class="mt-1 text-2xl font-black text-violet-700" id="kpi-scan-today">—</p>
+                    <p class="text-xs font-semibold text-slate-500" id="kpi-scan-sub">—</p>
+                  </div>
+                  <div class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+                    <p class="text-[10px] font-black uppercase text-slate-500">Mesas hoy</p>
+                    <p class="mt-1 text-2xl font-black text-amber-700" id="kpi-mesa-today">—</p>
+                    <p class="text-xs font-semibold text-slate-500" id="kpi-mesa-sub">—</p>
+                  </div>
+                  <div class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+                    <p class="text-[10px] font-black uppercase text-slate-500">Ingreso estimado</p>
+                    <p class="mt-1 text-2xl font-black text-emerald-700" id="kpi-est-revenue">—</p>
+                    <p class="text-xs font-semibold text-slate-500" id="kpi-est-sub">—</p>
+                  </div>
+                  <div class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+                    <p class="text-[10px] font-black uppercase text-slate-500">Stock bajo</p>
+                    <p class="mt-1 text-2xl font-black text-rose-700" id="kpi-low-stock">—</p>
+                    <p class="text-xs font-semibold text-slate-500" id="kpi-stock-sub">—</p>
+                  </div>
+                  <div class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+                    <p class="text-[10px] font-black uppercase text-slate-500">Descuentos activos</p>
+                    <p class="mt-1 text-2xl font-black text-cyan-700" id="kpi-discounts">—</p>
+                    <p class="text-xs font-semibold text-slate-500 truncate" id="kpi-discounts-sub">—</p>
+                  </div>
+                  <div class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+                    <p class="text-[10px] font-black uppercase text-slate-500">Parking libre / total</p>
+                    <p class="mt-1 text-2xl font-black text-slate-900" id="kpi-parking">—</p>
+                    <p class="text-xs font-semibold text-slate-500" id="kpi-parking-sub">—</p>
+                  </div>
                 </div>
+                <div id="admin-quick-links" class="mb-8 flex flex-wrap gap-2"></div>
 
                 <div id="admin-mesa-reservas-operativas" class="mb-8 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
                   <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
@@ -315,45 +358,6 @@ const AdminDashboard = {
                     </div>
                     <div id="disc-list" class="space-y-3 text-sm text-slate-600">Cargando descuentos...</div>
                   </section>
-                  <section class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm xl:col-span-2">
-                    <div class="mb-4 flex items-center justify-between gap-3">
-                      <h2 class="text-lg font-black text-slate-900">Tickets configurables</h2>
-                      <button type="button" id="ticket-type-refresh-btn" class="text-sm font-semibold text-blue-600 hover:underline">Actualizar</button>
-                    </div>
-                    <div class="grid grid-cols-1 gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4 sm:grid-cols-2">
-                      <label class="text-xs font-semibold text-slate-600">Nombre
-                        <input id="ticket-type-name" type="text" class="mt-1 w-full rounded border p-2 text-sm" placeholder="Ticket General" />
-                      </label>
-                      <label class="text-xs font-semibold text-slate-600">Precio
-                        <input id="ticket-type-price" type="number" min="0" step="0.01" class="mt-1 w-full rounded border p-2 text-sm" placeholder="350" />
-                      </label>
-                      <label class="text-xs font-semibold text-slate-600 sm:col-span-2">Descripcion
-                        <textarea id="ticket-type-desc" rows="2" class="mt-1 w-full rounded border p-2 text-sm" placeholder="Acceso de 1 dia al parque."></textarea>
-                      </label>
-                      <label class="text-xs font-semibold text-slate-600 sm:col-span-2">Que incluye
-                        <textarea id="ticket-type-includes" rows="2" class="mt-1 w-full rounded border p-2 text-sm" placeholder="Albercas, zona de descanso, vestidores"></textarea>
-                      </label>
-                      <label class="text-xs font-semibold text-slate-600">Categoria
-                        <input id="ticket-type-category" type="text" class="mt-1 w-full rounded border p-2 text-sm" placeholder="General / Familiar / VIP" />
-                      </label>
-                      <label class="text-xs font-semibold text-slate-600">Orden
-                        <input id="ticket-type-order" type="number" min="0" step="1" class="mt-1 w-full rounded border p-2 text-sm" value="0" />
-                      </label>
-                      <label class="inline-flex items-center gap-2 text-xs font-semibold text-slate-700">
-                        <input id="ticket-type-active" type="checkbox" class="h-4 w-4" checked />
-                        Activo
-                      </label>
-                      <label class="inline-flex items-center gap-2 text-xs font-semibold text-slate-700">
-                        <input id="ticket-type-special" type="checkbox" class="h-4 w-4" />
-                        Ticket especial
-                      </label>
-                    </div>
-                    <div class="mt-3 flex items-center gap-3">
-                      <button type="button" id="ticket-type-create-btn" class="rounded bg-emerald-600 px-4 py-2 text-sm font-bold text-white hover:bg-emerald-700">Crear ticket</button>
-                      <span id="ticket-type-create-status" class="text-xs font-semibold text-slate-600"></span>
-                    </div>
-                    <div id="ticket-type-list" class="mt-4 space-y-3 text-sm text-slate-600">Cargando tickets...</div>
-                  </section>
                 </div>` : ''}
 
                 ${canPackages ? `<div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden mb-8 p-6">
@@ -391,6 +395,76 @@ const AdminDashboard = {
                     </div>
                 </div>
                 </div>
+
+                ${canTicketTypesPanel ? `<div id="admin-panel-ticket-types" class="hidden flex flex-col gap-6">
+                  <header class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:flex sm:flex-wrap sm:items-start sm:justify-between sm:gap-4">
+                    <div class="min-w-0">
+                      <p class="text-[10px] font-black uppercase tracking-widest text-cyan-700">Catalogo</p>
+                      <h1 class="mt-1 text-2xl font-black text-slate-900">Tickets de entrada</h1>
+                      <p class="mt-1 max-w-2xl text-sm text-slate-600">Crea y edita tipos de ticket publicados en la landing y en checkout. Los cambios se reflejan al guardar.</p>
+                    </div>
+                    <div class="mt-4 flex flex-wrap gap-2 sm:mt-0">
+                      <button type="button" id="ticket-admin-refresh" class="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-bold text-slate-800 hover:bg-slate-50">Actualizar lista</button>
+                      <a href="/home#tickets-individuales" data-link class="rounded-xl bg-cyan-600 px-4 py-2 text-sm font-black text-white shadow hover:bg-cyan-500">Ver en sitio</a>
+                    </div>
+                  </header>
+                  <div class="grid gap-6 lg:grid-cols-[minmax(260px,34%)_minmax(0,1fr)]">
+                    <aside class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm lg:max-h-[calc(100vh-180px)] lg:overflow-y-auto">
+                      <div class="flex items-center justify-between gap-2">
+                        <p class="text-xs font-black uppercase tracking-wide text-slate-500">Lista</p>
+                        <button type="button" id="ticket-admin-new" class="rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-black text-white hover:bg-slate-800">+ Nuevo</button>
+                      </div>
+                      <div id="ticket-admin-list" class="mt-3 space-y-2 text-sm">Cargando...</div>
+                    </aside>
+                    <section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                      <input type="hidden" id="ticket-edit-id" value="" />
+                      <div class="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <p class="text-[10px] font-black uppercase tracking-wide text-slate-500">Editor</p>
+                          <h2 id="ticket-edit-heading" class="text-lg font-black text-slate-900">Selecciona un ticket</h2>
+                          <p id="ticket-edit-sub" class="mt-1 text-xs text-slate-500">O pulsa Nuevo para crear uno desde cero.</p>
+                        </div>
+                        <span id="ticket-edit-status" class="text-xs font-semibold text-slate-500"></span>
+                      </div>
+                      <div id="ticket-edit-fields" class="mt-5 hidden space-y-4">
+                        <div class="grid gap-3 sm:grid-cols-2">
+                          <label class="text-xs font-semibold text-slate-600 sm:col-span-2">Nombre
+                            <input id="ticket-edit-nombre" type="text" class="mt-1 w-full rounded-lg border border-slate-300 p-2 text-sm" placeholder="Ticket general" />
+                          </label>
+                          <label class="text-xs font-semibold text-slate-600">Precio (MXN)
+                            <input id="ticket-edit-precio" type="number" min="0" step="0.01" class="mt-1 w-full rounded-lg border border-slate-300 p-2 text-sm" />
+                          </label>
+                          <label class="text-xs font-semibold text-slate-600">Orden
+                            <input id="ticket-edit-orden" type="number" min="0" step="1" class="mt-1 w-full rounded-lg border border-slate-300 p-2 text-sm" />
+                          </label>
+                          <label class="text-xs font-semibold text-slate-600 sm:col-span-2">Categoria
+                            <input id="ticket-edit-categoria" type="text" class="mt-1 w-full rounded-lg border border-slate-300 p-2 text-sm" placeholder="General / VIP" />
+                          </label>
+                          <label class="text-xs font-semibold text-slate-600 sm:col-span-2">Descripcion
+                            <textarea id="ticket-edit-desc" rows="3" class="mt-1 w-full rounded-lg border border-slate-300 p-2 text-sm"></textarea>
+                          </label>
+                          <label class="text-xs font-semibold text-slate-600 sm:col-span-2">Que incluye
+                            <textarea id="ticket-edit-incluye" rows="3" class="mt-1 w-full rounded-lg border border-slate-300 p-2 text-sm"></textarea>
+                          </label>
+                          <label class="inline-flex items-center gap-2 text-xs font-semibold text-slate-700">
+                            <input id="ticket-edit-activo" type="checkbox" class="h-4 w-4 rounded border-slate-300" checked />
+                            Activo en web y checkout
+                          </label>
+                          <label class="inline-flex items-center gap-2 text-xs font-semibold text-slate-700">
+                            <input id="ticket-edit-especial" type="checkbox" class="h-4 w-4 rounded border-slate-300" />
+                            Marcar como especial
+                          </label>
+                        </div>
+                        <div class="flex flex-wrap gap-2 border-t border-slate-100 pt-4">
+                          <button type="button" id="ticket-edit-save" class="rounded-xl bg-slate-900 px-5 py-2.5 text-sm font-black text-white shadow hover:bg-slate-800">Guardar cambios</button>
+                          <button type="button" id="ticket-edit-dup" class="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-bold text-slate-800 hover:bg-slate-50">Duplicar</button>
+                          <button type="button" id="ticket-edit-toggle" class="rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm font-bold text-amber-900 hover:bg-amber-100">Activar / desactivar</button>
+                          <button type="button" id="ticket-edit-del" class="rounded-xl border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm font-bold text-rose-800 hover:bg-rose-100">Eliminar</button>
+                        </div>
+                      </div>
+                    </section>
+                  </div>
+                </div>` : ''}
 
                 ${canParking ? `<div id="admin-panel-parking" class="hidden space-y-5">
                   <div class="parking-hero">
@@ -643,84 +717,143 @@ const AdminDashboard = {
                     </section>` : ''}
                 </div>` : ''}
 
-                ${canSitioPanel ? `<div id="admin-panel-sitio" class="hidden space-y-8">
-                    <h1 class="text-3xl font-bold text-gray-800">Contenido del sitio (/home)</h1>
-                    <p class="text-sm text-slate-600">Textos, horarios, estado, mapa tipo lienzo, vista aerea, Google Maps y botones de contacto. Guarda al final.</p>
-                    <section class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-                      <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
-                        <div>
-                          <h2 class="text-lg font-black text-slate-900">Vista previa</h2>
-                          <p class="text-xs text-slate-500">Cambios sin guardar se reflejan aqui en vivo.</p>
-                        </div>
-                        <div class="inline-flex rounded-lg border border-slate-200 bg-slate-50 p-1">
-                          <button type="button" class="lp-preview-size rounded px-3 py-1 text-xs font-bold bg-white shadow" data-preview-size="desktop">Desktop</button>
-                          <button type="button" class="lp-preview-size rounded px-3 py-1 text-xs font-bold text-slate-600" data-preview-size="tablet">Tablet</button>
-                          <button type="button" class="lp-preview-size rounded px-3 py-1 text-xs font-bold text-slate-600" data-preview-size="mobile">Mobile</button>
-                        </div>
+                ${canSitioPanel ? `<div id="admin-panel-sitio" class="hidden flex flex-col gap-5">
+                    <header class="sticky top-0 z-20 flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white/95 p-4 shadow-sm backdrop-blur sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+                      <div class="min-w-0">
+                        <p class="text-[10px] font-black uppercase tracking-widest text-cyan-700">Sitio publico</p>
+                        <h1 class="text-xl font-black text-slate-900 sm:text-2xl">Editor visual de la landing</h1>
+                        <p id="admin-sitio-workspace-sub" class="mt-0.5 text-xs text-slate-500">Landing, mapa del parque y servicios en pestañas. Los cambios son locales hasta guardar.</p>
                       </div>
-                      <div class="flex flex-wrap items-center gap-2 text-xs">
-                        <span id="lp-preview-dirty" class="rounded-full bg-amber-100 px-2 py-1 font-bold text-amber-800">Cambios sin guardar</span>
-                        <a href="/home" data-link class="rounded border border-slate-300 px-2 py-1 font-bold text-slate-700 hover:bg-slate-50">Abrir sitio</a>
+                      <div class="flex flex-wrap items-center gap-2">
+                        <span id="lp-preview-dirty" class="rounded-full bg-amber-100 px-3 py-1 text-xs font-black text-amber-900">Sin cambios</span>
+                        <button type="button" id="lp-discard" class="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-bold text-slate-800 hover:bg-slate-50">Descartar</button>
+                        <button type="button" id="lp-save" class="rounded-xl bg-slate-900 px-5 py-2 text-sm font-black text-white shadow hover:bg-slate-800">Guardar cambios del sitio</button>
+                        <a href="/home" data-link class="rounded-xl border border-cyan-200 bg-cyan-50 px-4 py-2 text-sm font-black text-cyan-900 hover:bg-cyan-100">Abrir sitio</a>
                       </div>
-                      <div id="lp-preview-frame" class="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 transition-all duration-200">
-                        <div class="mx-auto rounded-xl border border-slate-300 bg-white p-4 shadow-sm">
-                          <h3 id="lp-preview-title" class="text-lg font-black text-slate-900">Balneario San Antonio Texas</h3>
-                          <p id="lp-preview-desc" class="mt-2 whitespace-pre-wrap text-sm text-slate-600">Vista previa de descripcion...</p>
-                          <div class="mt-3 grid gap-2 sm:grid-cols-2">
-                            <p id="lp-preview-open" class="rounded bg-emerald-50 px-2 py-1 text-xs font-bold text-emerald-700">Abierto</p>
-                            <p id="lp-preview-occupancy" class="rounded bg-cyan-50 px-2 py-1 text-xs font-bold text-cyan-700">Ocupacion</p>
-                          </div>
-                          <p id="lp-preview-parking" class="mt-2 rounded bg-violet-50 px-2 py-1 text-xs font-bold text-violet-700">Estacionamiento</p>
-                          <div class="mt-3 rounded border border-dashed border-slate-300 bg-slate-50 p-3 text-xs text-slate-600">
-                            <p class="font-bold">Mapa y servicios</p>
-                            <p>Se visualizan en /home; aqui tienes un preview editorial rapido.</p>
-                          </div>
-                        </div>
-                      </div>
-                    </section>
+                      <p id="lp-save-msg" class="w-full text-xs font-semibold text-slate-600 sm:text-right"></p>
+                    </header>
 
-                    <div class="rounded-xl border border-gray-200 bg-white p-6 shadow-sm space-y-4">
-                        <h2 class="font-bold text-lg">Descripcion del parque</h2>
-                        <textarea id="lp-descripcion" rows="6" class="w-full rounded border p-3 text-sm"></textarea>
+                    <div class="flex flex-wrap gap-2 border-b border-slate-200 pb-2">
+                      <button type="button" class="sitio-subtab rounded-full px-4 py-2 text-xs font-black is-active" data-sitio-tab="landing">Landing</button>
+                      <button type="button" class="sitio-subtab rounded-full px-4 py-2 text-xs font-black text-slate-600" data-sitio-tab="mapa">Mapa</button>
+                      <button type="button" class="sitio-subtab rounded-full px-4 py-2 text-xs font-black text-slate-600" data-sitio-tab="extras">Servicios y enlaces</button>
                     </div>
 
-                    <div class="rounded-xl border border-gray-200 bg-white p-6 shadow-sm space-y-4">
-                        <h2 class="font-bold text-lg">Horarios y estado (manual)</h2>
-                        <p class="text-xs text-slate-500">Configura 7 dias de la semana y excepciones por fecha especial (festivos, eventos, etc.).</p>
-                        <div id="lp-weekly-grid" class="grid gap-2 sm:grid-cols-2"></div>
-                        <div class="rounded-lg border border-slate-200 p-3">
-                          <div class="mb-2 flex items-center justify-between">
-                            <h3 class="text-sm font-bold text-slate-700">Fechas especiales</h3>
-                            <button type="button" id="lp-special-add" class="rounded border border-slate-300 px-2 py-1 text-xs font-semibold hover:bg-slate-50">+ Agregar fecha</button>
-                          </div>
-                          <div id="lp-specials" class="space-y-2"></div>
+                    <div id="sitio-tab-landing" class="sitio-tab-panel space-y-4">
+                      <div class="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+                        <p class="text-xs font-semibold text-slate-600"><span class="font-black text-slate-900">Vista previa</span> · clic en un bloque para inspeccionarlo</p>
+                        <div class="inline-flex rounded-lg border border-slate-200 bg-white p-1 shadow-inner">
+                          <button type="button" class="lp-preview-size rounded-md px-3 py-1.5 text-xs font-black shadow-sm" data-preview-size="desktop">Desktop</button>
+                          <button type="button" class="lp-preview-size rounded-md px-3 py-1.5 text-xs font-black text-slate-500" data-preview-size="tablet">Tablet</button>
+                          <button type="button" class="lp-preview-size rounded-md px-3 py-1.5 text-xs font-black text-slate-500" data-preview-size="mobile">Mobile</button>
                         </div>
-                        <label class="flex items-center gap-2 text-sm font-medium">
-                          <input type="checkbox" id="lp-abierto" class="h-4 w-4 rounded border-gray-300" />
-                          Abierto ahora
-                        </label>
-                        <label class="block text-xs font-semibold text-slate-600">Ocupacion
-                          <textarea id="lp-ocupacion" rows="2" class="mt-1 w-full rounded border p-2 text-sm"></textarea>
-                        </label>
-                        <label class="block text-xs font-semibold text-slate-600">Estacionamiento
-                          <textarea id="lp-estacionamiento" rows="2" class="mt-1 w-full rounded border p-2 text-sm"></textarea>
-                        </label>
+                      </div>
+
+                      <div class="admin-lb-grid grid gap-4 xl:grid-cols-[220px_minmax(0,1fr)_300px]">
+                        <aside class="lb-structure rounded-2xl border border-slate-200 bg-white p-3 shadow-sm xl:max-h-[calc(100vh-220px)] xl:overflow-y-auto">
+                          <p class="text-[10px] font-black uppercase tracking-wide text-slate-500">Estructura</p>
+                          <div class="mt-2 space-y-1" id="lb-structure-list">
+                            ${['hero:Hero / encabezado', 'estado:Estado y horarios', 'descripcion:Descripcion', 'tickets:Tickets', 'servicios:Servicios', 'mapa:Mapa', 'botones:Botones / CTA', 'contacto:Contacto / ubicacion']
+                              .map((pair) => {
+                                const [k, label] = pair.split(':');
+                                return `<button type="button" class="lb-structure-item w-full rounded-lg border border-transparent px-3 py-2 text-left text-xs font-bold text-slate-700 hover:border-slate-200 hover:bg-slate-50" data-lb-block="${k}">${label}</button>`;
+                              })
+                              .join('')}
+                          </div>
+                        </aside>
+
+                        <div class="lb-canvas-column flex min-h-[480px] flex-col gap-2">
+                          <div id="lb-selection-chip" class="hidden rounded-full border border-cyan-200 bg-cyan-50 px-3 py-1 text-[11px] font-black text-cyan-900"></div>
+                          <div id="lp-preview-frame" class="lb-preview-frame flex-1 rounded-2xl border border-slate-200 bg-slate-100 p-3 transition-[max-width] duration-200">
+                            <div id="lb-canvas-root" class="lb-canvas-root mx-auto min-h-[420px] rounded-xl bg-white shadow-lg ring-1 ring-slate-200/80"></div>
+                          </div>
+                        </div>
+
+                        <aside id="lb-inspector" class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm xl:max-h-[calc(100vh-220px)] xl:overflow-y-auto">
+                          <p class="text-[10px] font-black uppercase tracking-wide text-slate-500">Propiedades</p>
+                          <p id="lb-inspector-hint" class="mt-2 text-sm font-bold text-slate-900">Selecciona un bloque</p>
+
+                          <div id="lb-inspector-hero" class="lb-inspector-panel mt-4 hidden space-y-3">
+                            <label class="block text-xs font-semibold text-slate-600">Kicker
+                              <input id="lp-hero-kicker" type="text" class="mt-1 w-full rounded-lg border border-slate-300 p-2 text-sm" />
+                            </label>
+                            <label class="block text-xs font-semibold text-slate-600">Titulo
+                              <input id="lp-hero-title" type="text" class="mt-1 w-full rounded-lg border border-slate-300 p-2 text-sm" />
+                            </label>
+                            <label class="block text-xs font-semibold text-slate-600">Subtitulo
+                              <textarea id="lp-hero-subtitle" rows="4" class="mt-1 w-full rounded-lg border border-slate-300 p-2 text-sm"></textarea>
+                            </label>
+                            <p class="text-[11px] text-slate-500">Doble clic en el hero del lienzo para editar texto inline.</p>
+                          </div>
+
+                          <div id="lb-inspector-estado" class="lb-inspector-panel mt-4 hidden space-y-3">
+                            <label class="flex items-center gap-2 text-sm font-semibold text-slate-800">
+                              <input type="checkbox" id="lp-abierto" class="h-4 w-4 rounded border-gray-300" />
+                              Abierto ahora
+                            </label>
+                            <label class="block text-xs font-semibold text-slate-600">Ocupacion
+                              <textarea id="lp-ocupacion" rows="3" class="mt-1 w-full rounded-lg border border-slate-300 p-2 text-sm"></textarea>
+                            </label>
+                            <label class="block text-xs font-semibold text-slate-600">Estacionamiento (texto landing)
+                              <textarea id="lp-estacionamiento" rows="3" class="mt-1 w-full rounded-lg border border-slate-300 p-2 text-sm"></textarea>
+                            </label>
+                            <div>
+                              <p class="text-xs font-bold text-slate-700">Horario semanal</p>
+                              <p class="mb-2 text-[11px] text-slate-500">Configura 7 dias y fechas especiales.</p>
+                              <div id="lp-weekly-grid" class="grid max-h-52 gap-2 overflow-y-auto sm:grid-cols-2"></div>
+                            </div>
+                            <div class="rounded-lg border border-slate-200 p-3">
+                              <div class="mb-2 flex items-center justify-between">
+                                <h3 class="text-xs font-bold text-slate-700">Fechas especiales</h3>
+                                <button type="button" id="lp-special-add" class="rounded border border-slate-300 px-2 py-1 text-[11px] font-semibold hover:bg-slate-50">+ Agregar</button>
+                              </div>
+                              <div id="lp-specials" class="space-y-2"></div>
+                            </div>
+                          </div>
+
+                          <div id="lb-inspector-descripcion" class="lb-inspector-panel mt-4 hidden space-y-2">
+                            <label class="block text-xs font-semibold text-slate-600">Descripcion del parque
+                              <textarea id="lp-descripcion" rows="10" class="mt-1 w-full rounded-lg border border-slate-300 p-2 text-sm"></textarea>
+                            </label>
+                            <p class="text-[11px] text-slate-500">Recomendado: varios parrafos cortos (la landing usa texto plano).</p>
+                          </div>
+
+                          <div id="lb-inspector-tickets" class="lb-inspector-panel mt-4 hidden space-y-3">
+                            <p class="text-sm text-slate-600">Los tickets mostrados abajo salen del catalogo activo.</p>
+                            <div id="lb-tickets-mini-list" class="max-h-40 overflow-y-auto rounded-lg border border-slate-100 bg-slate-50 p-2 text-xs text-slate-700"></div>
+                            <button type="button" id="lb-jump-tickets-admin" class="w-full rounded-xl bg-slate-900 py-2 text-xs font-black text-white hover:bg-slate-800">Editar tickets</button>
+                          </div>
+
+                          <div id="lb-inspector-servicios" class="lb-inspector-panel mt-4 hidden space-y-2">
+                            <p class="text-sm text-slate-600">La tabla de servicios esta en la pestaña Servicios y enlaces.</p>
+                            <button type="button" class="lb-tab-jump w-full rounded-xl border border-slate-300 py-2 text-xs font-black text-slate-800 hover:bg-slate-50" data-sitio-tab-jump="extras">Ir a servicios</button>
+                          </div>
+
+                          <div id="lb-inspector-mapa" class="lb-inspector-panel mt-4 hidden space-y-2">
+                            <p class="text-sm text-slate-600">Editor de plano interactivo del parque.</p>
+                            <button type="button" class="lb-tab-jump w-full rounded-xl border border-slate-300 py-2 text-xs font-black text-slate-800 hover:bg-slate-50" data-sitio-tab-jump="mapa">Abrir editor de mapa</button>
+                          </div>
+
+                          <div id="lb-inspector-botones" class="lb-inspector-panel mt-4 hidden space-y-2">
+                            <p class="text-sm text-slate-600">WhatsApp, correo y enlaces personalizados.</p>
+                            <button type="button" class="lb-tab-jump w-full rounded-xl border border-slate-300 py-2 text-xs font-black text-slate-800 hover:bg-slate-50" data-sitio-tab-jump="extras">Ir a enlaces</button>
+                          </div>
+
+                          <div id="lb-inspector-contacto" class="lb-inspector-panel mt-4 hidden space-y-3">
+                            <label class="block text-xs font-semibold text-slate-600">URL imagen (satelital / drone)
+                              <input type="url" id="lp-satelite" class="mt-1 w-full rounded-lg border border-slate-300 p-2 text-sm" placeholder="https://..." />
+                            </label>
+                            <label class="block text-xs font-semibold text-slate-600">Google Maps (enlace)
+                              <input type="url" id="lp-maps" class="mt-1 w-full rounded-lg border border-slate-300 p-2 text-sm" placeholder="https://maps.google.com/..." />
+                            </label>
+                          </div>
+                        </aside>
+                      </div>
                     </div>
 
-                    <div class="rounded-xl border border-gray-200 bg-white p-6 shadow-sm space-y-4">
-                        <h2 class="font-bold text-lg">Vista aerea y Google Maps</h2>
-                        <label class="block text-xs font-semibold text-slate-600">URL de imagen (satelital o drone)
-                          <input type="url" id="lp-satelite" class="mt-1 w-full rounded border p-2 text-sm" placeholder="https://..." />
-                        </label>
-                        <label class="block text-xs font-semibold text-slate-600">Enlace Google Maps
-                          <input type="url" id="lp-maps" class="mt-1 w-full rounded border p-2 text-sm" placeholder="https://maps.google.com/..." />
-                        </label>
-                    </div>
-
-                    <div class="rounded-xl border border-gray-200 bg-white p-4 shadow-sm space-y-4">
-                        <p class="text-sm text-slate-600">El mapa se guarda con el boton <strong>Guardar contenido del sitio</strong> al final de esta pagina. Vista previa en vivo en el lienzo.</p>
-
-                        <div class="mapa-editor-shell overflow-hidden rounded-2xl border border-slate-700 bg-gradient-to-b from-slate-900 via-slate-900 to-slate-950 text-slate-100 shadow-xl ring-1 ring-white/10">
+                    <div id="sitio-tab-mapa" class="sitio-tab-panel hidden space-y-3">
+                      <p class="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">Usa <strong>Guardar cambios del sitio</strong> en la cabecera para persistir mapas y textos. El atajo Guardar del lienzo dispara el mismo guardado.</p>
+                      <div class="mapa-editor-shell overflow-hidden rounded-2xl border border-slate-700 bg-gradient-to-b from-slate-900 via-slate-900 to-slate-950 text-slate-100 shadow-xl ring-1 ring-white/10">
                           <header class="mapa-editor-topbar flex flex-wrap items-center gap-3 border-b border-white/10 px-4 py-3">
                             <div class="flex min-w-0 flex-1 items-start gap-3">
                               <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-cyan-500/15 text-cyan-400">${icon('map', 'h-6 w-6')}</span>
@@ -977,6 +1110,7 @@ const AdminDashboard = {
                         </div>
                     </div>
 
+                    <div id="sitio-tab-extras" class="sitio-tab-panel hidden space-y-6">
                     <div class="rounded-xl border border-gray-200 bg-white p-6 shadow-sm space-y-4">
                         <h2 class="font-bold text-lg">Botones de contacto</h2>
                         <div class="flex flex-wrap gap-2">
@@ -1012,9 +1146,7 @@ const AdminDashboard = {
                           <button type="button" id="svc-new-btn" class="rounded bg-emerald-600 px-4 py-2 font-semibold text-white hover:bg-emerald-700 sm:col-span-2">Crear servicio</button>
                         </div>
                     </div>
-
-                    <button type="button" id="lp-save" class="rounded-xl bg-slate-900 px-6 py-3 font-bold text-white shadow hover:bg-slate-800">Guardar contenido del sitio</button>
-                    <p id="lp-save-msg" class="text-sm text-slate-500"></p>
+                    </div>
                 </div>` : ''}
             </div>
         </div>
@@ -1027,8 +1159,8 @@ const AdminDashboard = {
     const panelInventario = document.getElementById('admin-panel-inventario');
     const panelAdmin = document.getElementById('admin-panel-admin');
     const panelSitio = document.getElementById('admin-panel-sitio');
+    const panelTicketTypes = document.getElementById('admin-panel-ticket-types');
     const hint = document.getElementById('admin-rol-hint');
-    const statsWrap = document.getElementById('admin-stats-wrap');
     const sidebar = document.getElementById('admin-sidebar');
     const collapse = document.getElementById('admin-sidebar-collapse');
     const access = await getUserAccess(getCurrentUser());
@@ -1118,15 +1250,113 @@ const AdminDashboard = {
     setCollapsed(localStorage.getItem('admin-sidebar-collapsed') === '1');
     collapse?.addEventListener('click', () => setCollapsed(!sidebar?.classList.contains('is-collapsed')));
 
-    const canFinanzas = access.can('finance.view');
     if (hint) hint.textContent = `Sesion: ${access.roleLabel}.`;
-    if (!canFinanzas && statsWrap) {
-      statsWrap.innerHTML =
-        '<div class="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">Resumen financiero visible solo para jefe o programador.</div>';
-    }
+
+    const showMoneyKpis = access.can('finance.view') || access.can('admin.panel') || access.isProgramador === true;
+
+    const loadExecutiveKpis = async () => {
+      const setTxt = (id, val) => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = val;
+      };
+      try {
+        const [sales, tix, mesas, inv, disc, park] = await Promise.all([
+          getTodaySalesSummary(),
+          getTodayTicketsSummary(),
+          getTodayMesaReservasSummary(),
+          getInventoryAlerts({ lowStockThreshold: 8 }),
+          getActiveDiscountsSummary(),
+          getParkingSummary()
+        ]);
+        if (showMoneyKpis) {
+          setTxt('kpi-sales-paid', `$${Number(sales.totalPaid || 0).toFixed(2)}`);
+          setTxt('kpi-sales-sub', `${sales.paidCount || 0} pagos · ${sales.ticketsCount || 0} tickets hoy`);
+          setTxt('kpi-est-revenue', `$${Number(sales.estimatedRevenue || 0).toFixed(2)}`);
+          setTxt('kpi-est-sub', `Pendiente taquilla ~ $${Number(sales.pendingAmount || 0).toFixed(2)}`);
+        } else {
+          setTxt('kpi-sales-paid', '•••');
+          setTxt('kpi-sales-sub', 'Requiere finance.view o panel admin');
+          setTxt('kpi-est-revenue', '•••');
+          setTxt('kpi-est-sub', '—');
+        }
+        setTxt('kpi-sold-today', String(tix.soldToday ?? '—'));
+        setTxt('kpi-sold-sub', `${tix.validOutstanding ?? 0} vigentes vendidos hoy`);
+        setTxt('kpi-scan-today', String(tix.scannedToday ?? '—'));
+        setTxt('kpi-scan-sub', 'Por fecha de escaneo');
+        setTxt('kpi-mesa-today', String(mesas.total ?? '—'));
+        setTxt('kpi-mesa-sub', `${mesas.apartadas ?? 0} apartadas`);
+        setTxt('kpi-low-stock', String(inv.lowStockCount ?? 0));
+        setTxt(
+          'kpi-stock-sub',
+          inv.samples?.length ? inv.samples.map((s) => s.titulo).slice(0, 2).join(', ') : 'Sin alertas'
+        );
+        setTxt('kpi-discounts', String(disc.activeCount ?? 0));
+        setTxt('kpi-discounts-sub', disc.codes?.length ? disc.codes.slice(0, 3).join(', ') : '—');
+        if (park.ok && park.total > 0) {
+          setTxt('kpi-parking', `${park.libres}/${park.total}`);
+          setTxt('kpi-parking-sub', `${park.ocupados} ocup. · ${park.reservados} res.`);
+        } else {
+          setTxt('kpi-parking', park.total === 0 ? '0' : '—');
+          setTxt('kpi-parking-sub', park.ok ? 'Sin datos de cajones' : 'Sin acceso o vacío');
+        }
+      } catch (e) {
+        console.warn('[admin KPIs]', e);
+        [
+          'kpi-sales-paid',
+          'kpi-sold-today',
+          'kpi-scan-today',
+          'kpi-mesa-today',
+          'kpi-est-revenue',
+          'kpi-low-stock',
+          'kpi-discounts',
+          'kpi-parking'
+        ].forEach((id) => setTxt(id, '—'));
+      }
+    };
+
+    const renderQuickLinks = () => {
+      const ql = document.getElementById('admin-quick-links');
+      if (!ql) return;
+      const links = [];
+      if (access.can('landing.manage') || access.can('admin.panel') || access.isProgramador) {
+        links.push({
+          href: '/admin/dashboard?section=sitio',
+          label: 'Editar landing',
+          icon: 'palette'
+        });
+      }
+      if (access.can('packages.manage')) {
+        links.push({ href: '/admin/dashboard?section=tickets', label: 'Crear ticket', icon: 'ticket' });
+      }
+      if (access.can('admin.panel')) {
+        links.push({ href: '/admin/dashboard?section=tickets', label: 'Crear descuento', icon: 'sparkles' });
+      }
+      if (access.can('inventory.manage')) {
+        links.push({ href: '/admin/dashboard?section=inventario', label: 'Crear producto', icon: 'package' });
+      }
+      if (access.can('tickets.scan')) {
+        links.push({ href: '/escaner', label: 'Scanner', icon: 'scan' });
+      }
+      if (access.can('landing.manage') || access.can('admin.panel') || access.isProgramador) {
+        links.push({ href: '/admin/dashboard?section=sitio&mapfocus=1', label: 'Editar mapa', icon: 'map' });
+      }
+      if (access.can('parking.manage')) {
+        links.push({ href: '/admin/dashboard?section=parking', label: 'Parking', icon: 'parking' });
+      }
+      ql.innerHTML = links
+        .map(
+          (l) =>
+            `<a href="${escapeHtml(l.href)}" data-link class="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-black text-slate-800 shadow-sm hover:bg-slate-50">${icon(l.icon, 'h-4 w-4')} ${escapeHtml(l.label)}</a>`
+        )
+        .join('');
+    };
+
+    renderQuickLinks();
+    void loadExecutiveKpis();
 
     const showSection = (name) => {
       if (name === 'sitio' && !panelSitio) return;
+      if (name === 'ticket-types' && !panelTicketTypes) return;
       if (name === 'admin' && !panelAdmin) return;
       if (name === 'inventario' && !panelInventario) return;
       if (name === 'parking' && !panelParking) return;
@@ -1135,6 +1365,7 @@ const AdminDashboard = {
       if (panelInventario) panelInventario.classList.toggle('hidden', name !== 'inventario');
       if (panelAdmin) panelAdmin.classList.toggle('hidden', name !== 'admin');
       if (panelSitio) panelSitio.classList.toggle('hidden', name !== 'sitio');
+      if (panelTicketTypes) panelTicketTypes.classList.toggle('hidden', name !== 'ticket-types');
       document.querySelectorAll('[data-admin-section]').forEach((btn) => {
         const on = btn.getAttribute('data-admin-section') === name;
         btn.classList.toggle('is-active', on);
@@ -1147,6 +1378,7 @@ const AdminDashboard = {
         const sec = btn.getAttribute('data-admin-section') || 'tickets';
         showSection(sec);
         if (sec === 'sitio') initSitioPanel();
+        if (sec === 'ticket-types') initTicketTypesPanel();
         if (sec === 'parking') initParkingPanel();
         if (sec === 'inventario') initInventarioPanel();
       });
@@ -1157,11 +1389,13 @@ const AdminDashboard = {
 
     let mapEditor = null;
     let sitioReady = false;
+    let bumpLandingUiRef = null;
 
     const wireBotonRemove = () => {
       document.querySelectorAll('[data-boton-remove]').forEach((b) => {
         b.onclick = () => {
           b.closest('[data-botom-fila]')?.remove();
+          bumpLandingUiRef?.();
         };
       });
     };
@@ -1169,8 +1403,236 @@ const AdminDashboard = {
     const setBotonesUi = (jsonStr) => {
       const wrap = document.getElementById('lp-botones-rows');
       if (!wrap) return;
-      wrap.innerHTML = renderBotonRows(parseBotones(jsonStr));
+      const { buttons } = splitBotonesJson(jsonStr);
+      wrap.innerHTML = renderBotonRows(buttons);
       wireBotonRemove();
+    };
+
+    let ticketTypesPanelReady = false;
+    let ticketTypesCache = [];
+
+    const mountTicketTypesWorkspace = async () => {
+      const listEl = document.getElementById('ticket-admin-list');
+      const idEl = document.getElementById('ticket-edit-id');
+      const headingEl = document.getElementById('ticket-edit-heading');
+      const subEl = document.getElementById('ticket-edit-sub');
+      const fieldsWrap = document.getElementById('ticket-edit-fields');
+      const statusEl = document.getElementById('ticket-edit-status');
+      const nombre = document.getElementById('ticket-edit-nombre');
+      const precio = document.getElementById('ticket-edit-precio');
+      const orden = document.getElementById('ticket-edit-orden');
+      const categoria = document.getElementById('ticket-edit-categoria');
+      const desc = document.getElementById('ticket-edit-desc');
+      const incluye = document.getElementById('ticket-edit-incluye');
+      const activo = document.getElementById('ticket-edit-activo');
+      const especial = document.getElementById('ticket-edit-especial');
+      const fmtMoney = new Intl.NumberFormat('es-MX', {
+        style: 'currency',
+        currency: 'MXN',
+        maximumFractionDigits: 2
+      });
+
+      const setStatus = (msg, tone = 'muted') => {
+        if (!statusEl) return;
+        statusEl.textContent = msg || '';
+        statusEl.className =
+          tone === 'ok'
+            ? 'text-xs font-semibold text-emerald-700'
+            : tone === 'err'
+              ? 'text-xs font-semibold text-rose-700'
+              : 'text-xs font-semibold text-slate-500';
+      };
+
+      const fillForm = (row, mode) => {
+        const isNew = mode === 'new';
+        if (idEl) idEl.value = isNew ? '' : row?.id || '';
+        if (headingEl) headingEl.textContent = isNew ? 'Nuevo ticket' : `Editando · ${row?.nombre || ''}`;
+        if (subEl)
+          subEl.textContent = isNew
+            ? 'Completa los campos y guarda.'
+            : `${row?.activo ? 'Activo' : 'Inactivo'} · ${row?.especial ? 'Especial' : 'General'}`;
+        if (fieldsWrap) fieldsWrap.classList.remove('hidden');
+        if (nombre) nombre.value = isNew ? '' : row?.nombre || '';
+        if (precio) precio.value = isNew ? '' : String(Number(row?.precio || 0));
+        if (orden) orden.value = isNew ? '0' : String(Number(row?.orden ?? 0));
+        if (categoria) categoria.value = isNew ? '' : row?.categoria || '';
+        if (desc) desc.value = isNew ? '' : row?.descripcion || '';
+        if (incluye) incluye.value = isNew ? '' : row?.incluye || '';
+        if (activo) activo.checked = isNew ? true : Boolean(row?.activo);
+        if (especial) especial.checked = isNew ? false : Boolean(row?.especial);
+        setStatus('');
+      };
+
+      const renderList = () => {
+        if (!listEl) return;
+        if (!ticketTypesCache.length) {
+          listEl.innerHTML = '<p class="text-xs text-slate-500">No hay tickets. Pulsa Nuevo.</p>';
+          return;
+        }
+        listEl.innerHTML = ticketTypesCache
+          .slice()
+          .sort((a, b) => Number(a.orden ?? 0) - Number(b.orden ?? 0))
+          .map((t) => {
+            const sum = (t.descripcion || '').slice(0, 72);
+            return `
+            <button type="button" class="ticket-admin-card w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-left transition hover:border-cyan-300 hover:bg-white"
+              data-ticket-select="${escapeHtml(t.id)}">
+              <div class="flex items-start justify-between gap-2">
+                <span class="font-black text-slate-900">${escapeHtml(t.nombre)}</span>
+                <span class="shrink-0 text-xs font-black text-slate-700">${escapeHtml(fmtMoney.format(Number(t.precio || 0)))}</span>
+              </div>
+              <div class="mt-1 flex flex-wrap gap-1">
+                ${t.activo ? '<span class="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-black text-emerald-800">Activo</span>' : '<span class="rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-black text-slate-600">Off</span>'}
+                ${t.especial ? '<span class="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-black text-amber-900">Especial</span>' : '<span class="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-black text-slate-600">General</span>'}
+              </div>
+              ${sum ? `<p class="mt-1 line-clamp-2 text-[11px] text-slate-600">${escapeHtml(sum)}${(t.descripcion || '').length > 72 ? '…' : ''}</p>` : ''}
+            </button>`;
+          })
+          .join('');
+        listEl.querySelectorAll('[data-ticket-select]').forEach((btn) => {
+          btn.addEventListener('click', () => {
+            const tid = btn.getAttribute('data-ticket-select');
+            const row = ticketTypesCache.find((x) => x.id === tid);
+            if (row) fillForm(row, 'edit');
+          });
+        });
+      };
+
+      const reload = async () => {
+        if (!listEl) return;
+        listEl.innerHTML = '<p class="text-xs text-slate-500">Cargando...</p>';
+        try {
+          const res = await listTicketTypesAdmin();
+          ticketTypesCache = res.data?.ticketTypes || [];
+          renderList();
+        } catch (e) {
+          listEl.innerHTML = `<p class="text-xs text-rose-600">${escapeHtml(e?.message || 'Error al cargar.')}</p>`;
+        }
+      };
+
+      document.getElementById('ticket-admin-new')?.addEventListener('click', () => fillForm(null, 'new'));
+      document.getElementById('ticket-admin-refresh')?.addEventListener('click', reload);
+
+      document.getElementById('ticket-edit-save')?.addEventListener('click', async () => {
+        const rawNombre = String(nombre?.value || '').trim();
+        const p = Number(precio?.value || 0);
+        if (!rawNombre) {
+          setStatus('El nombre es obligatorio.', 'err');
+          return;
+        }
+        if (p < 0) {
+          setStatus('Precio invalido.', 'err');
+          return;
+        }
+        const payload = {
+          nombre: rawNombre,
+          descripcion: String(desc?.value || ''),
+          incluye: String(incluye?.value || ''),
+          precio: p,
+          categoria: String(categoria?.value || ''),
+          orden: Number(orden?.value || 0),
+          activo: Boolean(activo?.checked),
+          especial: Boolean(especial?.checked),
+          metadata: {}
+        };
+        setStatus('Guardando...');
+        try {
+          const existingId = String(idEl?.value || '').trim();
+          if (existingId) {
+            await updateTicketType({ id: existingId, ...payload });
+            setStatus('Guardado.', 'ok');
+          } else {
+            await createTicketType(payload);
+            setStatus('Ticket creado.', 'ok');
+            if (idEl) idEl.value = '';
+          }
+          await publishAppUpdate('sales', 'ticket-types-updated');
+          await reload();
+        } catch (e) {
+          const m = String(e?.message || '').toLowerCase();
+          const isRls =
+            e?.code === '42501' ||
+            e?.status === 403 ||
+            m.includes('permission denied') ||
+            m.includes('row-level security');
+          setStatus(isRls ? 'Sin permiso (RLS). Revisa rol en Supabase.' : e?.message || 'Error al guardar.', 'err');
+        }
+      });
+
+      document.getElementById('ticket-edit-dup')?.addEventListener('click', async () => {
+        const existingId = String(idEl?.value || '').trim();
+        const row = ticketTypesCache.find((x) => x.id === existingId);
+        if (!row) {
+          setStatus('Selecciona un ticket para duplicar.', 'err');
+          return;
+        }
+        setStatus('Duplicando...');
+        try {
+          await createTicketType({
+            nombre: `${row.nombre} (copia)`.slice(0, 120),
+            descripcion: row.descripcion || '',
+            incluye: row.incluye || '',
+            precio: Number(row.precio || 0),
+            categoria: row.categoria || '',
+            orden: Number(row.orden ?? 0) + 1,
+            activo: Boolean(row.activo),
+            especial: Boolean(row.especial),
+            metadata: row.metadata || {}
+          });
+          await publishAppUpdate('sales', 'ticket-types-duplicated');
+          await reload();
+          setStatus('Duplicado.', 'ok');
+        } catch (e) {
+          setStatus(e?.message || 'No se pudo duplicar.', 'err');
+        }
+      });
+
+      document.getElementById('ticket-edit-toggle')?.addEventListener('click', async () => {
+        const existingId = String(idEl?.value || '').trim();
+        if (!existingId) {
+          setStatus('Selecciona un ticket.', 'err');
+          return;
+        }
+        const row = ticketTypesCache.find((x) => x.id === existingId);
+        if (!row) return;
+        setStatus('Actualizando estado...');
+        try {
+          await deactivateTicketType({ id: existingId, activo: !row.activo });
+          await reload();
+          const fresh = ticketTypesCache.find((x) => x.id === existingId);
+          if (fresh) fillForm(fresh, 'edit');
+          setStatus('Estado actualizado.', 'ok');
+        } catch (e) {
+          setStatus(e?.message || 'No se pudo cambiar estado.', 'err');
+        }
+      });
+
+      document.getElementById('ticket-edit-del')?.addEventListener('click', async () => {
+        const existingId = String(idEl?.value || '').trim();
+        if (!existingId) {
+          setStatus('Selecciona un ticket.', 'err');
+          return;
+        }
+        if (!window.confirm('Eliminar este tipo de ticket de forma permanente?')) return;
+        setStatus('Eliminando...');
+        try {
+          await deleteTicketType({ id: existingId });
+          await publishAppUpdate('sales', 'ticket-types-deleted');
+          await reload();
+          fillForm(null, 'new');
+          setStatus('Eliminado.', 'ok');
+        } catch (e) {
+          setStatus(e?.message || 'No se pudo eliminar. Prueba desactivar.', 'err');
+        }
+      });
+
+      await reload();
+    };
+
+    const initTicketTypesPanel = async () => {
+      if (ticketTypesPanelReady) return;
+      ticketTypesPanelReady = true;
+      await mountTicketTypesWorkspace();
     };
 
     const initSitioPanel = async () => {
@@ -1185,8 +1647,211 @@ const AdminDashboard = {
       }
 
       let scheduleConfig = parseScheduleConfig(landing.horariosTexto || serializeScheduleConfig(defaultScheduleConfig()));
+      let baselineLanding = JSON.parse(JSON.stringify(landing));
       const weeklyWrap = document.getElementById('lp-weekly-grid');
       const specialsWrap = document.getElementById('lp-specials');
+
+      const previewFrame = document.getElementById('lp-preview-frame');
+      const previewDirty = document.getElementById('lp-preview-dirty');
+      let selectedLbBlock = 'hero';
+      let ticketTypesPreview = [];
+
+      const LB_LABELS = {
+        hero: 'Hero',
+        estado: 'Estado del parque',
+        descripcion: 'Descripcion',
+        tickets: 'Tickets',
+        servicios: 'Servicios',
+        mapa: 'Mapa',
+        botones: 'Botones / CTA',
+        contacto: 'Contacto'
+      };
+
+      const fmtLbMoney = new Intl.NumberFormat('es-MX', {
+        style: 'currency',
+        currency: 'MXN',
+        maximumFractionDigits: 2
+      });
+
+      const markDirty = () => {
+        if (!previewDirty) return;
+        previewDirty.textContent = 'Cambios sin guardar';
+        previewDirty.className =
+          'rounded-full bg-amber-100 px-3 py-1 text-xs font-black text-amber-900';
+      };
+
+      const setDirtySaved = () => {
+        if (!previewDirty) return;
+        previewDirty.textContent = 'Guardado';
+        previewDirty.className =
+          'rounded-full bg-emerald-100 px-3 py-1 text-xs font-black text-emerald-800';
+      };
+
+      const syncHeroInputsFromCe = (kind, text) => {
+        const id =
+          kind === 'kicker' ? 'lp-hero-kicker' : kind === 'title' ? 'lp-hero-title' : 'lp-hero-subtitle';
+        const el = document.getElementById(id);
+        if (el) el.value = text;
+      };
+
+      const paintLandingCanvas = () => {
+        const root = document.getElementById('lb-canvas-root');
+        if (!root) return;
+        const hk = document.getElementById('lp-hero-kicker')?.value ?? '';
+        const ht = document.getElementById('lp-hero-title')?.value ?? '';
+        const hs = document.getElementById('lp-hero-subtitle')?.value ?? '';
+        const desc = document.getElementById('lp-descripcion')?.value ?? '';
+        const openNow = document.getElementById('lp-abierto')?.checked ?? false;
+        const ocup = document.getElementById('lp-ocupacion')?.value ?? '';
+        const park = document.getElementById('lp-estacionamiento')?.value ?? '';
+        const sat = document.getElementById('lp-satelite')?.value?.trim() ?? '';
+        const maps = document.getElementById('lp-maps')?.value?.trim() ?? '';
+
+        const botRows = collectBotonesFromDom();
+        const botPills = botRows
+          .slice(0, 4)
+          .map((b) => `<span class="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-700">${escapeHtml(b.label || 'Boton')}</span>`)
+          .join(' ');
+
+        const ticketsActive = ticketTypesPreview.filter((t) => t.activo).sort((a, b) => Number(a.orden ?? 0) - Number(b.orden ?? 0));
+        const ticketLines = ticketsActive.slice(0, 5).map((t) => {
+          const tag = t.especial ? '★ ' : '';
+          return `<li class="flex justify-between gap-2 border-b border-slate-100 py-1 text-[11px] text-slate-700"><span>${escapeHtml(tag + (t.nombre || ''))}</span><span class="font-mono text-slate-500">${escapeHtml(fmtLbMoney.format(Number(t.precio || 0)))}</span></li>`;
+        });
+
+        root.innerHTML = `
+          <section data-lb-canvas-block="hero" tabindex="0" class="lb-canvas-block lb-canvas-hero rounded-t-xl border-b border-white/10 px-4 py-8 text-white sm:px-6 sm:py-10" style="background-image: linear-gradient(115deg, rgba(12, 74, 110, 0.92), rgba(13, 148, 136, 0.76)), url('${heroImageUrl}'); background-size: cover; background-position: center;">
+            <div class="mx-auto max-w-3xl">
+              <p data-lb-ce="kicker" contenteditable="true" spellcheck="false" class="lb-ce mb-2 text-[10px] font-black uppercase tracking-widest text-amber-200/90 outline-none">${escapeHtml(hk)}</p>
+              <h2 data-lb-ce="title" contenteditable="true" spellcheck="false" class="lb-ce text-2xl font-black leading-tight outline-none sm:text-3xl">${escapeHtml(ht)}</h2>
+              <p data-lb-ce="subtitle" contenteditable="true" spellcheck="false" class="lb-ce mt-3 max-w-xl text-sm leading-relaxed text-blue-100/95 outline-none">${escapeHtml(hs)}</p>
+              <p class="mt-4 text-[10px] font-semibold text-white/70">Doble clic para editar · cambios en vivo</p>
+            </div>
+          </section>
+          <section data-lb-canvas-block="estado" class="lb-canvas-block border-b border-slate-100 bg-white px-4 py-4 sm:px-6">
+            <p class="text-[10px] font-black uppercase text-cyan-700">Estado del dia</p>
+            <div class="mt-2 flex flex-wrap gap-2">
+              <span class="rounded-lg px-2 py-1 text-xs font-black ${openNow ? 'bg-emerald-50 text-emerald-800' : 'bg-rose-50 text-rose-800'}">${openNow ? 'Abierto ahora' : 'Cerrado'}</span>
+              <span class="rounded-lg bg-cyan-50 px-2 py-1 text-xs font-bold text-cyan-900">Horario en inspector</span>
+            </div>
+            <p class="mt-2 whitespace-pre-wrap text-xs text-slate-600">${escapeHtml(ocup || 'Ocupacion (sin texto)')}</p>
+            <p class="mt-1 whitespace-pre-wrap text-xs text-slate-600">${escapeHtml(park || 'Estacionamiento (sin texto)')}</p>
+          </section>
+          <section data-lb-canvas-block="descripcion" class="lb-canvas-block border-b border-slate-100 bg-slate-50 px-4 py-4 sm:px-6">
+            <p class="text-[10px] font-black uppercase text-slate-500">Sobre el parque</p>
+            <p class="mt-2 whitespace-pre-wrap text-sm text-slate-700">${escapeHtml(desc.slice(0, 420))}${desc.length > 420 ? '…' : ''}</p>
+          </section>
+          <section data-lb-canvas-block="tickets" class="lb-canvas-block border-b border-slate-100 bg-white px-4 py-4 sm:px-6">
+            <p class="text-[10px] font-black uppercase text-teal-800">Tickets</p>
+            <ul class="mt-2">${ticketLines.length ? ticketLines.join('') : '<li class="text-xs text-slate-500">Sin tickets activos (catalogo).</li>'}</ul>
+          </section>
+          <section data-lb-canvas-block="servicios" class="lb-canvas-block border-b border-slate-100 bg-slate-50 px-4 py-4 sm:px-6">
+            <p class="text-[10px] font-black uppercase text-slate-500">Servicios</p>
+            <p class="mt-2 text-xs text-slate-600">Tarjetas gestionadas en la pestaña Servicios y enlaces.</p>
+          </section>
+          <section data-lb-canvas-block="mapa" class="lb-canvas-block border-b border-slate-100 bg-white px-4 py-6 sm:px-6">
+            <p class="text-[10px] font-black uppercase text-cyan-800">Mapa del parque</p>
+            <div class="mt-3 grid h-28 place-items-center rounded-xl border border-dashed border-cyan-200 bg-cyan-50/50 text-xs font-semibold text-cyan-900">Plano interactivo · editor en pestaña Mapa</div>
+          </section>
+          <section data-lb-canvas-block="botones" class="lb-canvas-block border-b border-slate-100 bg-slate-50 px-4 py-4 sm:px-6">
+            <p class="text-[10px] font-black uppercase text-slate-500">Enlaces rapidos</p>
+            <div class="mt-2 flex flex-wrap gap-1">${botPills || '<span class="text-xs text-slate-400">Sin botones</span>'}</div>
+          </section>
+          <section data-lb-canvas-block="contacto" class="lb-canvas-block rounded-b-xl bg-white px-4 py-4 sm:px-6">
+            <p class="text-[10px] font-black uppercase text-slate-500">Ubicacion</p>
+            <p class="mt-2 break-all text-xs text-slate-600">${sat ? `Imagen: ${escapeHtml(sat.slice(0, 48))}…` : 'Sin imagen satelital'}</p>
+            <p class="mt-1 break-all text-xs text-slate-600">${maps ? `Maps: ${escapeHtml(maps.slice(0, 48))}…` : 'Sin enlace Maps'}</p>
+          </section>
+        `;
+
+        root.querySelectorAll('[data-lb-ce]').forEach((el) => {
+          el.addEventListener('input', () => {
+            syncHeroInputsFromCe(el.getAttribute('data-lb-ce') || '', el.textContent || '');
+            markDirty();
+          });
+          el.addEventListener('keydown', (ev) => {
+            if (ev.key === 'Enter' && el.getAttribute('data-lb-ce') !== 'subtitle') {
+              ev.preventDefault();
+            }
+          });
+        });
+
+        root.querySelectorAll('[data-lb-canvas-block]').forEach((el) => {
+          el.addEventListener('click', (ev) => {
+            const t = ev.target;
+            if (t && t.closest && t.closest('[contenteditable="true"]')) return;
+            selectLbBlock(el.getAttribute('data-lb-canvas-block') || 'hero');
+          });
+        });
+
+        root.querySelectorAll('[data-lb-canvas-block]').forEach((el) => {
+          el.classList.toggle(
+            'lb-canvas-block--selected',
+            el.getAttribute('data-lb-canvas-block') === selectedLbBlock
+          );
+        });
+      };
+
+      const selectLbBlock = (key) => {
+        selectedLbBlock = key;
+        document.querySelectorAll('.lb-structure-item').forEach((b) => {
+          const on = b.getAttribute('data-lb-block') === key;
+          b.classList.toggle('lb-structure-item--active', on);
+        });
+        document.querySelectorAll('[data-lb-canvas-block]').forEach((el) => {
+          el.classList.toggle(
+            'lb-canvas-block--selected',
+            el.getAttribute('data-lb-canvas-block') === key
+          );
+        });
+        document.querySelectorAll('.lb-inspector-panel').forEach((p) => p.classList.add('hidden'));
+        document.getElementById(`lb-inspector-${key}`)?.classList.remove('hidden');
+        const hint = document.getElementById('lb-inspector-hint');
+        if (hint) hint.classList.add('hidden');
+        const chip = document.getElementById('lb-selection-chip');
+        if (chip) {
+          chip.textContent = `${LB_LABELS[key] || key}`;
+          chip.classList.remove('hidden');
+        }
+        const canvasEl = document.querySelector(`[data-lb-canvas-block="${key}"]`);
+        canvasEl?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' });
+      };
+
+      const switchSitioTab = (tab) => {
+        document.querySelectorAll('.sitio-subtab').forEach((b) => {
+          const on = b.getAttribute('data-sitio-tab') === tab;
+          b.classList.toggle('is-active', on);
+          b.classList.toggle('text-slate-600', !on);
+        });
+        document.querySelectorAll('.sitio-tab-panel').forEach((p) => p.classList.add('hidden'));
+        document.getElementById(`sitio-tab-${tab}`)?.classList.remove('hidden');
+      };
+
+      document.querySelectorAll('[data-sitio-tab]').forEach((btn) => {
+        btn.addEventListener('click', () => switchSitioTab(btn.getAttribute('data-sitio-tab') || 'landing'));
+      });
+      document.querySelectorAll('[data-sitio-tab-jump]').forEach((btn) => {
+        btn.addEventListener('click', () =>
+          switchSitioTab(btn.getAttribute('data-sitio-tab-jump') || 'extras')
+        );
+      });
+
+      document.querySelectorAll('.lb-structure-item').forEach((btn) => {
+        btn.addEventListener('click', () =>
+          selectLbBlock(btn.getAttribute('data-lb-block') || 'hero')
+        );
+      });
+
+      document.getElementById('lb-jump-tickets-admin')?.addEventListener('click', () => {
+        showSection('ticket-types');
+        void initTicketTypesPanel();
+      });
+
+      const setVal = (id, v) => {
+        const el = document.getElementById(id);
+        if (el) el.value = v;
+      };
+
       const renderSpecials = () => {
         if (!specialsWrap) return;
         if (!scheduleConfig.specials.length) {
@@ -1215,6 +1880,7 @@ const AdminDashboard = {
               close: specialsWrap.querySelector(`[data-sp-close="${idx}"]`)?.value || '18:00',
               closed: specialsWrap.querySelector(`[data-sp-closed="${idx}"]`)?.checked || false
             }));
+            bumpLandingUi();
           });
         });
         specialsWrap.querySelectorAll('[data-sp-del]').forEach((btn) => {
@@ -1222,9 +1888,11 @@ const AdminDashboard = {
             const idx = parseInt(btn.getAttribute('data-sp-del') || '-1', 10);
             scheduleConfig.specials.splice(idx, 1);
             renderSpecials();
+            bumpLandingUi();
           });
         });
       };
+
       const renderWeekly = () => {
         if (!weeklyWrap) return;
         weeklyWrap.innerHTML = scheduleDays()
@@ -1251,57 +1919,71 @@ const AdminDashboard = {
                 closed: weeklyWrap.querySelector(`[data-day-closed="${d.key}"]`)?.checked || false
               };
             });
+            bumpLandingUi();
           });
         });
       };
+
       renderWeekly();
       renderSpecials();
       document.getElementById('lp-special-add')?.addEventListener('click', () => {
         scheduleConfig.specials.push({ date: '', label: '', open: '09:00', close: '18:00', closed: false });
         renderSpecials();
+        bumpLandingUi();
       });
 
-      const setVal = (id, v) => {
-        const el = document.getElementById(id);
-        if (el) el.value = v;
-      };
+      const splitHeroLoad = splitBotonesJson(landing.botonesJson);
       setVal('lp-descripcion', landing.descripcionParque);
       setVal('lp-ocupacion', landing.ocupacionTexto);
       setVal('lp-estacionamiento', landing.estacionamientoTexto);
       setVal('lp-satelite', landing.imagenSatelitalUrl);
       setVal('lp-maps', landing.googleMapsUrl);
-      const previewFrame = document.getElementById('lp-preview-frame');
-      const previewDirty = document.getElementById('lp-preview-dirty');
-      const refreshLandingPreview = () => {
-        const desc = document.getElementById('lp-descripcion')?.value || '';
-        const ocup = document.getElementById('lp-ocupacion')?.value || '';
-        const park = document.getElementById('lp-estacionamiento')?.value || '';
-        const openNow = document.getElementById('lp-abierto')?.checked ?? false;
-        const previewDesc = document.getElementById('lp-preview-desc');
-        const previewOpen = document.getElementById('lp-preview-open');
-        const previewOcc = document.getElementById('lp-preview-occupancy');
-        const previewParking = document.getElementById('lp-preview-parking');
-        if (previewDesc) previewDesc.textContent = desc || 'Sin descripcion.';
-        if (previewOpen) {
-          previewOpen.textContent = openNow ? 'Estado: Abierto ahora' : 'Estado: Cerrado';
-          previewOpen.className = `rounded px-2 py-1 text-xs font-bold ${openNow ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}`;
-        }
-        if (previewOcc) previewOcc.textContent = ocup || 'Sin texto de ocupacion';
-        if (previewParking) previewParking.textContent = park || 'Sin texto de estacionamiento';
-        if (previewDirty) previewDirty.textContent = 'Cambios sin guardar';
+      setVal('lp-hero-kicker', splitHeroLoad.hero.kicker);
+      setVal('lp-hero-title', splitHeroLoad.hero.title);
+      setVal('lp-hero-subtitle', splitHeroLoad.hero.subtitle);
+
+      try {
+        const tres = await listTicketTypesAdmin();
+        ticketTypesPreview = tres.data?.ticketTypes || [];
+      } catch {
+        ticketTypesPreview = [];
+      }
+      const mini = document.getElementById('lb-tickets-mini-list');
+      if (mini) {
+        const active = ticketTypesPreview.filter((t) => t.activo).sort((a, b) => Number(a.orden ?? 0) - Number(b.orden ?? 0));
+        mini.innerHTML = active.length
+          ? active
+              .slice(0, 12)
+              .map(
+                (t) =>
+                  `<div class="flex justify-between gap-2 border-b border-slate-100 py-1"><span>${escapeHtml(t.nombre)}</span><span class="font-mono text-[10px]">${escapeHtml(fmtLbMoney.format(Number(t.precio || 0)))}</span></div>`
+              )
+              .join('')
+          : '<p class="text-xs text-slate-400">Sin tickets activos.</p>';
+      }
+
+      const bumpLandingUi = () => {
+        markDirty();
+        paintLandingCanvas();
       };
-      ['lp-descripcion', 'lp-ocupacion', 'lp-estacionamiento', 'lp-abierto'].forEach((id) => {
-        document.getElementById(id)?.addEventListener('input', refreshLandingPreview);
-        document.getElementById(id)?.addEventListener('change', refreshLandingPreview);
+      bumpLandingUiRef = bumpLandingUi;
+
+      ['lp-descripcion', 'lp-ocupacion', 'lp-estacionamiento', 'lp-abierto', 'lp-satelite', 'lp-maps'].forEach((id) => {
+        document.getElementById(id)?.addEventListener('input', bumpLandingUi);
+        document.getElementById(id)?.addEventListener('change', bumpLandingUi);
       });
+      ['lp-hero-kicker', 'lp-hero-title', 'lp-hero-subtitle'].forEach((id) => {
+        document.getElementById(id)?.addEventListener('input', bumpLandingUi);
+      });
+
       document.querySelectorAll('.lp-preview-size').forEach((btn) => {
         btn.addEventListener('click', () => {
           document.querySelectorAll('.lp-preview-size').forEach((x) => {
-            x.classList.remove('bg-white', 'shadow');
-            x.classList.add('text-slate-600');
+            x.classList.remove('bg-white', 'shadow-sm', 'text-slate-900');
+            x.classList.add('text-slate-500');
           });
-          btn.classList.add('bg-white', 'shadow');
-          btn.classList.remove('text-slate-600');
+          btn.classList.add('bg-white', 'shadow-sm', 'text-slate-900');
+          btn.classList.remove('text-slate-500');
           const size = btn.getAttribute('data-preview-size');
           if (!previewFrame) return;
           if (size === 'mobile') previewFrame.style.maxWidth = '420px';
@@ -1309,6 +1991,7 @@ const AdminDashboard = {
           else previewFrame.style.maxWidth = '100%';
         });
       });
+
       let mapContext = 'parque';
       const getMapByContext = () =>
         mapContext === 'mesas'
@@ -1327,7 +2010,6 @@ const AdminDashboard = {
       setVal('mapa-doc-h', parsedMapDims.h);
       const abierto = document.getElementById('lp-abierto');
       if (abierto) abierto.checked = landing.abiertoAhora;
-      refreshLandingPreview();
 
       setBotonesUi(landing.botonesJson);
 
@@ -1785,6 +2467,7 @@ const AdminDashboard = {
           renderBotonRows([{ type: 'whatsapp', label: 'WhatsApp', value: '' }])
         );
         wireBotonRemove();
+        bumpLandingUi();
       });
       document.getElementById('btn-add-mail')?.addEventListener('click', () => {
         const wrap = document.getElementById('lp-botones-rows');
@@ -1794,6 +2477,7 @@ const AdminDashboard = {
           renderBotonRows([{ type: 'mail', label: 'Correo', value: '' }])
         );
         wireBotonRemove();
+        bumpLandingUi();
       });
       document.getElementById('btn-add-custom')?.addEventListener('click', () => {
         const wrap = document.getElementById('lp-botones-rows');
@@ -1803,6 +2487,7 @@ const AdminDashboard = {
           renderBotonRows([{ type: 'custom', label: 'Enlace', href: '/reservar', external: false }])
         );
         wireBotonRemove();
+        bumpLandingUi();
       });
 
       let activeMapKind = 'area';
@@ -2004,7 +2689,13 @@ const AdminDashboard = {
         if (mapContext === 'parque') landing.mapaDistribucionJson = editedMapJson;
         if (mapContext === 'mesas') landing.mapaMesasJson = editedMapJson;
         if (mapContext === 'estacionamiento') landing.mapaEstacionamientoJson = editedMapJson;
-        const botonesJson = JSON.stringify(collectBotonesFromDom());
+        const heroMerge = {
+          kicker: document.getElementById('lp-hero-kicker')?.value ?? '',
+          title: document.getElementById('lp-hero-title')?.value ?? '',
+          subtitle: document.getElementById('lp-hero-subtitle')?.value ?? ''
+        };
+        landing.botonesJson = mergeBotonesJson(heroMerge, collectBotonesFromDom());
+        const botonesJson = landing.botonesJson;
         const payload = {
           id: LANDING_PAGE_ID,
           descripcionParque: document.getElementById('lp-descripcion')?.value || '',
@@ -2024,8 +2715,21 @@ const AdminDashboard = {
           await upsertLandingPage(payload);
           await publishAppUpdate('landing', 'Contenido landing actualizado');
           if (msg) msg.textContent = 'Guardado correctamente.';
-          const dirty = document.getElementById('lp-preview-dirty');
-          if (dirty) dirty.textContent = 'Guardado';
+          Object.assign(landing, {
+            descripcionParque: payload.descripcionParque,
+            imagenSatelitalUrl: payload.imagenSatelitalUrl,
+            googleMapsUrl: payload.googleMapsUrl,
+            horariosTexto: payload.horariosTexto,
+            abiertoAhora: payload.abiertoAhora,
+            ocupacionTexto: payload.ocupacionTexto,
+            estacionamientoTexto: payload.estacionamientoTexto,
+            botonesJson: payload.botonesJson,
+            mapaDistribucionJson: payload.mapaDistribucionJson,
+            mapaMesasJson: payload.mapaMesasJson,
+            mapaEstacionamientoJson: payload.mapaEstacionamientoJson
+          });
+          baselineLanding = JSON.parse(JSON.stringify(landing));
+          setDirtySaved();
         } catch (err) {
           console.error(err);
           if (msg) msg.textContent = '';
@@ -2048,6 +2752,69 @@ const AdminDashboard = {
           if (msg && msg.textContent === 'Guardando...') msg.textContent = '';
         }
       });
+
+      const restoreLandingBaseline = () => {
+        landing = mergeLandingRow(JSON.parse(JSON.stringify(baselineLanding)));
+        scheduleConfig = parseScheduleConfig(landing.horariosTexto || serializeScheduleConfig(defaultScheduleConfig()));
+        renderWeekly();
+        renderSpecials();
+        const sb = splitBotonesJson(landing.botonesJson);
+        setVal('lp-descripcion', landing.descripcionParque);
+        setVal('lp-ocupacion', landing.ocupacionTexto);
+        setVal('lp-estacionamiento', landing.estacionamientoTexto);
+        setVal('lp-satelite', landing.imagenSatelitalUrl);
+        setVal('lp-maps', landing.googleMapsUrl);
+        setVal('lp-hero-kicker', sb.hero.kicker);
+        setVal('lp-hero-title', sb.hero.title);
+        setVal('lp-hero-subtitle', sb.hero.subtitle);
+        const abOpen = document.getElementById('lp-abierto');
+        if (abOpen) abOpen.checked = landing.abiertoAhora;
+        setBotonesUi(landing.botonesJson);
+        const sel = document.getElementById('map-context-select');
+        mapContext = sel?.value || mapContext;
+        const canvasEl = document.getElementById('admin-mapa-canvas');
+        const nextJson = getMapByContext();
+        mapEditor?.destroy?.();
+        if (canvasEl) {
+          mapEditor = createDistribucionEditor(canvasEl, nextJson, () => {}, { view: mapViewForContext() });
+          wireMapEditorUi();
+          const dims = parseDistribucionJson(nextJson);
+          setVal('mapa-doc-w', dims.w);
+          setVal('mapa-doc-h', dims.h);
+        }
+        void (async () => {
+          try {
+            const tres = await listTicketTypesAdmin();
+            ticketTypesPreview = tres.data?.ticketTypes || [];
+          } catch {
+            ticketTypesPreview = [];
+          }
+          const ticketsMini = document.getElementById('lb-tickets-mini-list');
+          if (ticketsMini) {
+            const active = ticketTypesPreview.filter((t) => t.activo).sort((a, b) => Number(a.orden ?? 0) - Number(b.orden ?? 0));
+            ticketsMini.innerHTML = active.length
+              ? active
+                  .slice(0, 12)
+                  .map(
+                    (t) =>
+                      `<div class="flex justify-between gap-2 border-b border-slate-100 py-1"><span>${escapeHtml(t.nombre)}</span><span class="font-mono text-[10px]">${escapeHtml(fmtLbMoney.format(Number(t.precio || 0)))}</span></div>`
+                  )
+                  .join('')
+              : '<p class="text-xs text-slate-400">Sin tickets activos.</p>';
+          }
+          paintLandingCanvas();
+          selectLbBlock(selectedLbBlock);
+          setDirtySaved();
+        })();
+      };
+
+      document.getElementById('lp-discard')?.addEventListener('click', () => restoreLandingBaseline());
+
+      paintLandingCanvas();
+      selectLbBlock('hero');
+      switchSitioTab('landing');
+      if (mapEditorFocus) switchSitioTab('mapa');
+      setDirtySaved();
 
       sitioReady = true;
     };
@@ -2831,12 +3598,15 @@ const AdminDashboard = {
           ? 'parking'
         : requestedInitialSection === 'inventario' && panelInventario
           ? 'inventario'
-        : requestedInitialSection === 'sitio' && panelSitio
-          ? 'sitio'
-          : 'tickets';
+        : requestedInitialSection === 'ticket-types' && panelTicketTypes
+          ? 'ticket-types'
+          : requestedInitialSection === 'sitio' && panelSitio
+            ? 'sitio'
+            : 'tickets';
     showSection(initialSection);
     if (requestedInitialSection === 'parking' && panelParking) initParkingPanel();
     if (requestedInitialSection === 'inventario' && panelInventario) initInventarioPanel();
+    if (requestedInitialSection === 'ticket-types' && panelTicketTypes) await initTicketTypesPanel();
     if (requestedInitialSection === 'sitio' && panelSitio) {
       await initSitioPanel();
       if (mapEditorFocus) {
@@ -2860,19 +3630,6 @@ const AdminDashboard = {
     const discValue = document.getElementById('disc-value');
     const discUses = document.getElementById('disc-uses');
     const discActive = document.getElementById('disc-active');
-    const ticketTypeName = document.getElementById('ticket-type-name');
-    const ticketTypePrice = document.getElementById('ticket-type-price');
-    const ticketTypeDesc = document.getElementById('ticket-type-desc');
-    const ticketTypeIncludes = document.getElementById('ticket-type-includes');
-    const ticketTypeCategory = document.getElementById('ticket-type-category');
-    const ticketTypeOrder = document.getElementById('ticket-type-order');
-    const ticketTypeActive = document.getElementById('ticket-type-active');
-    const ticketTypeSpecial = document.getElementById('ticket-type-special');
-    const ticketTypeCreateBtn = document.getElementById('ticket-type-create-btn');
-    const ticketTypeCreateStatus = document.getElementById('ticket-type-create-status');
-    const ticketTypeRefreshBtn = document.getElementById('ticket-type-refresh-btn');
-    const ticketTypeList = document.getElementById('ticket-type-list');
-
     const setCfgStatus = (msg, ok = false) => {
       if (!cfgStatus) return;
       cfgStatus.textContent = msg || '';
@@ -2882,11 +3639,6 @@ const AdminDashboard = {
       if (!discCreateStatus) return;
       discCreateStatus.textContent = msg || '';
       discCreateStatus.className = `text-xs font-semibold ${ok ? 'text-emerald-700' : 'text-slate-600'}`;
-    };
-    const setTicketTypeStatus = (msg, ok = false) => {
-      if (!ticketTypeCreateStatus) return;
-      ticketTypeCreateStatus.textContent = msg || '';
-      ticketTypeCreateStatus.className = `text-xs font-semibold ${ok ? 'text-emerald-700' : 'text-slate-600'}`;
     };
     const collectReglasJsonFromEditor = (root) => {
       if (!root) throw new Error('Condiciones del descuento no disponibles.');
@@ -2992,103 +3744,6 @@ const AdminDashboard = {
       }
     };
 
-    const renderTicketTypesAdmin = async () => {
-      if (!ticketTypeList) return;
-      ticketTypeList.innerHTML = 'Cargando tickets...';
-      try {
-        const res = await listTicketTypesAdmin();
-        const rows = res.data?.ticketTypes || [];
-        if (!rows.length) {
-          ticketTypeList.innerHTML = '<p class="text-slate-500">No hay tickets configurados.</p>';
-          return;
-        }
-        ticketTypeList.innerHTML = rows.map((t) => `
-          <article class="rounded-lg border border-slate-200 p-3" data-ticket-type-row="${t.id}">
-            <div class="grid grid-cols-1 gap-2 sm:grid-cols-6">
-              <input data-tt-name type="text" value="${escapeHtml(t.nombre)}" class="rounded border p-2 text-sm" />
-              <input data-tt-price type="number" min="0" step="0.01" value="${Number(t.precio || 0)}" class="rounded border p-2 text-sm" />
-              <input data-tt-category type="text" value="${escapeHtml(t.categoria || '')}" class="rounded border p-2 text-sm" placeholder="Categoria" />
-              <input data-tt-order type="number" min="0" step="1" value="${Number(t.orden || 0)}" class="rounded border p-2 text-sm" />
-              <label class="inline-flex items-center gap-2 rounded border px-3 py-2 text-sm font-semibold"><input data-tt-active type="checkbox" ${t.activo ? 'checked' : ''} /> Activo</label>
-              <label class="inline-flex items-center gap-2 rounded border px-3 py-2 text-sm font-semibold"><input data-tt-special type="checkbox" ${t.especial ? 'checked' : ''} /> Especial</label>
-            </div>
-            <textarea data-tt-desc rows="2" class="mt-2 w-full rounded border p-2 text-sm" placeholder="Descripcion">${escapeHtml(t.descripcion || '')}</textarea>
-            <textarea data-tt-inc rows="2" class="mt-2 w-full rounded border p-2 text-sm" placeholder="Que incluye">${escapeHtml(t.incluye || '')}</textarea>
-            <div class="mt-2 flex items-center gap-2">
-              <button data-tt-save type="button" class="rounded bg-blue-600 px-3 py-2 text-xs font-bold text-white hover:bg-blue-700">Guardar</button>
-              <button data-tt-toggle type="button" class="rounded border border-slate-300 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">${t.activo ? 'Desactivar' : 'Activar'}</button>
-              <button data-tt-del type="button" class="rounded bg-rose-600 px-3 py-2 text-xs font-bold text-white hover:bg-rose-700">Eliminar</button>
-              <p data-tt-status class="text-xs font-semibold text-slate-500"></p>
-            </div>
-          </article>
-        `).join('');
-
-        ticketTypeList.querySelectorAll('[data-tt-save]').forEach((btn) => {
-          btn.addEventListener('click', async () => {
-            const row = btn.closest('[data-ticket-type-row]');
-            if (!row) return;
-            const id = row.getAttribute('data-ticket-type-row');
-            const status = row.querySelector('[data-tt-status]');
-            const setStatus = (msg, ok = false) => {
-              if (!status) return;
-              status.textContent = msg || '';
-              status.className = `text-xs font-semibold ${ok ? 'text-emerald-700' : 'text-slate-500'}`;
-            };
-            try {
-              await updateTicketType({
-                id,
-                nombre: row.querySelector('[data-tt-name]')?.value || '',
-                descripcion: row.querySelector('[data-tt-desc]')?.value || '',
-                incluye: row.querySelector('[data-tt-inc]')?.value || '',
-                precio: Number(row.querySelector('[data-tt-price]')?.value || 0),
-                categoria: row.querySelector('[data-tt-category]')?.value || '',
-                orden: Number(row.querySelector('[data-tt-order]')?.value || 0),
-                activo: Boolean(row.querySelector('[data-tt-active]')?.checked),
-                especial: Boolean(row.querySelector('[data-tt-special]')?.checked),
-                metadata: {}
-              });
-              setStatus('Ticket actualizado.', true);
-            } catch (e) {
-              setStatus(e?.message || 'No se pudo guardar.');
-            }
-          });
-        });
-
-        ticketTypeList.querySelectorAll('[data-tt-toggle]').forEach((btn) => {
-          btn.addEventListener('click', async () => {
-            const row = btn.closest('[data-ticket-type-row]');
-            if (!row) return;
-            const id = row.getAttribute('data-ticket-type-row');
-            const active = Boolean(row.querySelector('[data-tt-active]')?.checked);
-            try {
-              await deactivateTicketType({ id, activo: !active });
-              await renderTicketTypesAdmin();
-            } catch (e) {
-              const status = row.querySelector('[data-tt-status]');
-              if (status) status.textContent = e?.message || 'No se pudo cambiar estado.';
-            }
-          });
-        });
-
-        ticketTypeList.querySelectorAll('[data-tt-del]').forEach((btn) => {
-          btn.addEventListener('click', async () => {
-            const row = btn.closest('[data-ticket-type-row]');
-            if (!row) return;
-            const id = row.getAttribute('data-ticket-type-row');
-            try {
-              await deleteTicketType({ id });
-              await renderTicketTypesAdmin();
-            } catch (e) {
-              const status = row.querySelector('[data-tt-status]');
-              if (status) status.textContent = e?.message || 'No se pudo eliminar.';
-            }
-          });
-        });
-      } catch (e) {
-        ticketTypeList.innerHTML = `<p class="text-rose-600">${escapeHtml(e?.message || 'No se pudieron cargar tickets.')}</p>`;
-      }
-    };
-
     if (cfgSaveBtn && cfgAdulto && cfgNino && cfgMayor) {
       try {
         const cfg = await getConfiguracion({ id: TICKET_CONFIG_ID });
@@ -3163,46 +3818,6 @@ const AdminDashboard = {
     }
     discRefreshBtn?.addEventListener('click', renderDescuentos);
     if (discList) await renderDescuentos();
-
-    if (ticketTypeCreateBtn) {
-      ticketTypeCreateBtn.addEventListener('click', async () => {
-        try {
-          ticketTypeCreateBtn.disabled = true;
-          setTicketTypeStatus('Creando ticket...');
-          const nombre = String(ticketTypeName?.value || '').trim();
-          const precio = Number(ticketTypePrice?.value || 0);
-          if (!nombre) throw new Error('Nombre del ticket es obligatorio.');
-          if (precio < 0) throw new Error('Precio invalido.');
-          await createTicketType({
-            nombre,
-            descripcion: String(ticketTypeDesc?.value || ''),
-            incluye: String(ticketTypeIncludes?.value || ''),
-            precio,
-            categoria: String(ticketTypeCategory?.value || ''),
-            orden: Number(ticketTypeOrder?.value || 0),
-            activo: Boolean(ticketTypeActive?.checked),
-            especial: Boolean(ticketTypeSpecial?.checked),
-            metadata: {}
-          });
-          setTicketTypeStatus('Ticket creado.', true);
-          if (ticketTypeName) ticketTypeName.value = '';
-          if (ticketTypePrice) ticketTypePrice.value = '';
-          if (ticketTypeDesc) ticketTypeDesc.value = '';
-          if (ticketTypeIncludes) ticketTypeIncludes.value = '';
-          if (ticketTypeCategory) ticketTypeCategory.value = '';
-          if (ticketTypeOrder) ticketTypeOrder.value = '0';
-          if (ticketTypeActive) ticketTypeActive.checked = true;
-          if (ticketTypeSpecial) ticketTypeSpecial.checked = false;
-          await renderTicketTypesAdmin();
-        } catch (e) {
-          setTicketTypeStatus(e?.message || 'No se pudo crear el ticket.');
-        } finally {
-          ticketTypeCreateBtn.disabled = false;
-        }
-      });
-    }
-    ticketTypeRefreshBtn?.addEventListener('click', renderTicketTypesAdmin);
-    if (ticketTypeList) await renderTicketTypesAdmin();
 
     const btnCreatePkg = document.getElementById('btn-create-pkg');
     const btnRefresh = document.getElementById('btn-refresh');
@@ -3320,25 +3935,12 @@ const AdminDashboard = {
         const tickets = res.data?.tickets || [];
         if (tickets.length === 0) {
           tableBody.innerHTML = '<tr><td colspan="5" class="p-4 text-center text-gray-500">No hay tickets recientes</td></tr>';
-          if (canFinanzas) {
-            const st = document.getElementById('stat-scanned');
-            const inc = document.getElementById('stat-income');
-            if (st) st.textContent = '0';
-            if (inc) inc.textContent = '$0.00';
-          }
+          void loadExecutiveKpis();
           return;
         }
 
-        let scanned = 0;
-        let income = 0;
-        const today = new Date().toDateString();
         let html = '';
         tickets.forEach((data) => {
-          if (data.estadoTicket === 'escaneado') scanned += 1;
-          const d = new Date(data.fechaCreacion);
-          if (d.toDateString() === today && data.estadoPago === 'pagado') {
-            income += data.precioTotal || 0;
-          }
           const pagoClase =
             data.estadoPago === 'pagado' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700';
           const ticketClase =
@@ -3387,12 +3989,7 @@ const AdminDashboard = {
             });
           });
         }
-        if (canFinanzas) {
-          const st = document.getElementById('stat-scanned');
-          const inc = document.getElementById('stat-income');
-          if (st) st.textContent = String(scanned);
-          if (inc) inc.textContent = `$${income.toFixed(2)}`;
-        }
+        void loadExecutiveKpis();
       } catch (error) {
         console.error('Error cargando tickets:', error);
         tableBody.innerHTML =
