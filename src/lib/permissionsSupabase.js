@@ -2,10 +2,10 @@
  * Permisos desde Postgres (public.users + public.role_permissions).
  * Sin elevación por email ni fallback admin/programador (Fase 5C).
  */
-import { getUserProfile } from './dataLayer.js';
+import { getUserProfile } from './supabaseData.js';
 import { mergeUserProfileFromAuth } from './supabaseData.js';
 import { supabase } from '../supabase/client.js';
-import { isDataConnectNotDeployed, isPermissionError } from './dataConnectErrors.js';
+import { isBackendOperationUnavailable, isPermissionError } from './backendErrors.js';
 import {
   DEFAULT_ROLE_PERMISSIONS,
   labelRole,
@@ -67,7 +67,7 @@ export async function getUserAccessSupabase(user) {
     const profile = await getUserProfile({ id: uid });
     row = profile.data?.user || null;
   } catch (error) {
-    if (!isPermissionError(error) && !isDataConnectNotDeployed(error)) {
+    if (!isPermissionError(error) && !isBackendOperationUnavailable(error)) {
       console.warn('Perfil Postgres no disponible para permisos:', error);
     }
   }

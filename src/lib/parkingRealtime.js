@@ -1,63 +1,109 @@
-import {
-  collection,
-  deleteDoc,
-  doc,
-  onSnapshot,
-  serverTimestamp,
-  setDoc,
-  updateDoc
-} from 'firebase/firestore';
-import { db } from '../firebase-config.js';
+/**
+ * Parking en vivo: tabla public.parking_spots + Supabase Realtime.
+ */
+import { listParkingSpotsRows } from './supabaseData.js';
+import { supabase } from '../supabase/client.js';
 
-const PARKING_COLLECTION = 'parkingSpots';
+function requireClient() {
+  if (!supabase) throw new Error('Supabase no inicializado');
+  return supabase;
+}
+
+function mapSpotRow(r) {
+  if (!r) return null;
+  return {
+    id: r.id,
+    x: Number(r.x ?? 20),
+    y: Number(r.y ?? 20),
+    estado: r.estado || 'libre',
+    tipoVehiculo: r.tipo_vehiculo || '',
+    placas: r.placas || '',
+    modelo: r.modelo || '',
+    reservadoPor: r.reservado_por || '',
+    ubicacion: r.ubicacion || 'patio'
+  };
+}
 
 export function subscribeParkingSpots(onData, onError) {
-  return onSnapshot(
-    collection(db, PARKING_COLLECTION),
-    (snap) => {
-      const spots = snap.docs
-        .map((d) => ({ id: d.id, ...d.data() }))
-        .sort((a, b) => String(a.id).localeCompare(String(b.id)));
-      onData(spots);
-    },
-    (err) => {
-      if (err?.code === 'permission-denied') {
-        onData([]);
-        return;
-      }
-      onError?.(err);
-    }
-  );
+  let cancelled = false;
+  const push = () => {
+    if (cancelled) return;
+    listParkingSpotsRows()
+      .then((rows) => {
+        if (cancelled) return;
+        const spots = (rows || []).map(mapSpotRow).sort((a, b) => String(a.id).localeCompare(String(b.id)));
+        onData(spots);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        if (err?.code === 'permission-denied' || /permission/i.test(String(err?.message || ''))) {
+          onData([]);
+          return;
+        }
+        onError?.(err);
+      });
+  };
+
+  push();
+
+  const sb = requireClient();
+  const channel = sb
+    .channel('parking_spots_global')
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'parking_spots' },
+      () => push()
+    )
+    .subscribe();
+
+  return () => {
+    cancelled = true;
+    sb.removeChannel(channel);
+  };
 }
 
 export async function upsertParkingSpot(spot) {
+  const sb = requireClient();
   const id = String(spot.id || '').trim();
   if (!id) throw new Error('Spot sin ID');
-  await setDoc(
-    doc(db, PARKING_COLLECTION, id),
+  const now = new Date().toISOString();
+  const { error } = await sb.from('parking_spots').upsert(
     {
       id,
       x: Number(spot.x || 20),
       y: Number(spot.y || 20),
       estado: spot.estado || 'libre',
-      tipoVehiculo: spot.tipoVehiculo || '',
+      tipo_vehiculo: spot.tipoVehiculo || '',
       placas: spot.placas || '',
       modelo: spot.modelo || '',
-      reservadoPor: spot.reservadoPor || '',
+      reservado_por: spot.reservadoPor || '',
       ubicacion: spot.ubicacion || 'patio',
-      updatedAt: serverTimestamp()
+      updated_at: now
     },
-    { merge: true }
+    { onConflict: 'id' }
   );
+  if (error) throw error;
 }
 
 export async function updateParkingSpot(id, patch) {
-  await updateDoc(doc(db, PARKING_COLLECTION, id), {
-    ...patch,
-    updatedAt: serverTimestamp()
-  });
+  const sb = requireClient();
+  const row = {
+    ...(patch.x != null ? { x: Number(patch.x) } : {}),
+    ...(patch.y != null ? { y: Number(patch.y) } : {}),
+    ...(patch.estado != null ? { estado: patch.estado } : {}),
+    ...(patch.tipoVehiculo != null ? { tipo_vehiculo: patch.tipoVehiculo } : {}),
+    ...(patch.placas != null ? { placas: patch.placas } : {}),
+    ...(patch.modelo != null ? { modelo: patch.modelo } : {}),
+    ...(patch.reservadoPor != null ? { reservado_por: patch.reservadoPor } : {}),
+    ...(patch.ubicacion != null ? { ubicacion: patch.ubicacion } : {}),
+    updated_at: new Date().toISOString()
+  };
+  const { error } = await sb.from('parking_spots').update(row).eq('id', id);
+  if (error) throw error;
 }
 
 export async function removeParkingSpot(id) {
-  await deleteDoc(doc(db, PARKING_COLLECTION, id));
+  const sb = requireClient();
+  const { error } = await sb.from('parking_spots').delete().eq('id', id);
+  if (error) throw error;
 }

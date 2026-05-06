@@ -29,7 +29,7 @@ const Politicas = {
 
                     <section>
                         <h2 class="text-xl font-bold text-gray-800 mb-3">4. Protección de Datos</h2>
-                        <p>No vendemos, alquilamos ni compartimos tu información personal con terceros. Tus datos están protegidos y almacenados de forma segura mediante los servicios de infraestructura en la nube de Google Firebase.</p>
+                        <p>No vendemos, alquilamos ni compartimos tu información personal con terceros. Tus datos están protegidos y almacenados de forma segura mediante Supabase (PostgreSQL alojado en la nube).</p>
                     </section>
 
                     <section>

@@ -121,7 +121,7 @@ const router = async () => {
         const isProtected = isProtectedPath(path);
 
         if (isProtected) {
-            // Promesa para esperar el estado de auth real (firebase init puede ser asíncrono)
+            // Esperar sesión Supabase Auth antes de evaluar el guard
             const user = await waitForAuthUser();
 
             if (!user) {

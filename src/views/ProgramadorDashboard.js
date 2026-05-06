@@ -1,8 +1,5 @@
-import { collection, doc, getDoc, getDocs, serverTimestamp, setDoc } from 'firebase/firestore';
-import { db } from '../firebase-config.js';
 import { getCurrentUser } from '../lib/authProvider.js';
 import { DEFAULT_ROLE_PERMISSIONS, PERMISSIONS, getUserAccess, labelRole, normalizeRole } from '../lib/accessControl.js';
-import { isBackendSupabase } from '../lib/migrationEnv.js';
 import { getUserProfile } from '../lib/dataLayer.js';
 import {
   listUsersProgramadorView,
@@ -10,7 +7,7 @@ import {
   updateUserRolPermissionsPg
 } from '../lib/supabaseData.js';
 import { icon } from '../lib/icons.js';
-import { DEFAULT_THEME, applyTheme, readThemeConfig } from '../lib/theme.js';
+import { DEFAULT_THEME, applyTheme, readThemeConfig, saveThemeConfig } from '../lib/theme.js';
 import { refreshAppTheme } from '../lib/layout.js';
 import { publishAppUpdate } from '../lib/realtimeSync.js';
 
@@ -203,7 +200,7 @@ const ProgramadorDashboard = {
                 </div>
                 <label class="programador-field mt-4">
                   <span>UID</span>
-                  <input id="permission-user-id" type="text" placeholder="Firebase UID" />
+                  <input id="permission-user-id" type="text" placeholder="UUID de usuario (Supabase Auth)" />
                 </label>
                 <label class="programador-field mt-4">
                   <span>Rol</span>
@@ -298,14 +295,12 @@ const ProgramadorDashboard = {
         accent: document.getElementById('theme-accent')?.value || DEFAULT_THEME.accent,
         surface: document.getElementById('theme-surface')?.value || DEFAULT_THEME.surface,
         text: document.getElementById('theme-text')?.value || DEFAULT_THEME.text,
-        promoText: document.getElementById('theme-promo')?.value || DEFAULT_THEME.promoText,
-        updatedAt: serverTimestamp(),
-        updatedBy: (getCurrentUser()?.uid ?? getCurrentUser()?.id) || null
+        promoText: document.getElementById('theme-promo')?.value || DEFAULT_THEME.promoText
       };
       if (msg) msg.textContent = 'Guardando...';
       try {
-        await setDoc(doc(db, 'appConfig', 'theme'), payload, { merge: true });
-        const applied = applyTheme(payload);
+        const applied = await saveThemeConfig(payload);
+        applyTheme(applied);
         refreshAppTheme(applied);
         await publishAppUpdate('theme', 'Paleta actualizada');
         if (msg) msg.textContent = 'Paleta guardada.';
@@ -335,24 +330,23 @@ const ProgramadorDashboard = {
       if (!list) return;
       list.innerHTML = '<p class="text-sm text-slate-500">Cargando...</p>';
       try {
-        if (isBackendSupabase()) {
-          const matrix = await fetchRolePermissionsMatrix();
-          const defaults = Object.entries(DEFAULT_ROLE_PERMISSIONS).map(([id, permissions]) => ({
-            id,
-            name: labelRole(id),
-            permissions,
-            custom: false,
-            dbPerms: matrix[id] || []
-          }));
-          const merged = defaults.map((role) => ({
-            ...role,
-            permissions: role.dbPerms.length ? role.dbPerms : role.permissions
-          }));
-          rolesCache = merged;
-          renderRoleOptions();
-          list.innerHTML = `
+        const matrix = await fetchRolePermissionsMatrix();
+        const defaults = Object.entries(DEFAULT_ROLE_PERMISSIONS).map(([id, permissions]) => ({
+          id,
+          name: labelRole(id),
+          permissions,
+          custom: false,
+          dbPerms: matrix[id] || []
+        }));
+        const merged = defaults.map((role) => ({
+          ...role,
+          permissions: role.dbPerms.length ? role.dbPerms : role.permissions
+        }));
+        rolesCache = merged;
+        renderRoleOptions();
+        list.innerHTML = `
             <p class="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-              Modo Supabase: permisos por rol vienen de <code>public.role_permissions</code> (seeds en schema.sql).
+              Permisos por rol vienen de <code>public.role_permissions</code> (seeds en schema.sql).
               Para cambios masivos usa el SQL Editor; guardar rol desde esta UI está desactivado.
             </p>
             ${merged
@@ -369,44 +363,6 @@ const ProgramadorDashboard = {
               })
               .join('')}
           `;
-          return;
-        }
-        const snaps = await getDocs(collection(db, 'roles'));
-        const custom = snaps.docs.map((snap) => ({ id: snap.id, ...snap.data(), custom: true }));
-        const defaults = Object.entries(DEFAULT_ROLE_PERMISSIONS).map(([id, permissions]) => ({
-          id,
-          name: labelRole(id),
-          permissions,
-          custom: false
-        }));
-        const merged = [...defaults, ...custom.filter((role) => !DEFAULT_ROLE_PERMISSIONS[role.id])];
-        rolesCache = merged;
-        renderRoleOptions();
-        list.innerHTML = merged.map((role) => {
-          const permissions = Array.isArray(role.permissions) ? role.permissions : [];
-          return `
-            <article class="programador-role-row">
-              <div class="min-w-0">
-                <p class="truncate font-bold text-slate-900">${escapeHtml(role.name || labelRole(role.id))}</p>
-                <p class="truncate text-xs text-slate-500">${escapeHtml(role.id)} - ${permissions.length} permisos</p>
-              </div>
-              <button type="button" class="programador-secondary-btn" data-role-edit="${escapeHtml(role.id)}" data-role-name="${escapeHtml(role.name || labelRole(role.id))}" data-role-permissions="${escapeHtml(JSON.stringify(permissions))}">
-                Editar
-              </button>
-            </article>
-          `;
-        }).join('');
-        list.querySelectorAll('[data-role-edit]').forEach((btn) => {
-          btn.addEventListener('click', () => {
-            document.getElementById('role-id').value = btn.getAttribute('data-role-edit') || '';
-            document.getElementById('role-name').value = btn.getAttribute('data-role-name') || '';
-            try {
-              setChecked('role-permission', JSON.parse(btn.getAttribute('data-role-permissions') || '[]'));
-            } catch {
-              setChecked('role-permission', []);
-            }
-          });
-        });
       } catch (error) {
         console.error(error);
         list.innerHTML = '<p class="text-sm text-rose-600">No se pudieron cargar los roles.</p>';
@@ -415,36 +371,10 @@ const ProgramadorDashboard = {
 
     document.getElementById('roles-refresh')?.addEventListener('click', renderRoles);
     document.getElementById('role-save')?.addEventListener('click', async () => {
-      if (isBackendSupabase()) {
-        const msg = document.getElementById('role-msg');
-        if (msg) {
-          msg.textContent =
-            'En Supabase edita public.role_permissions en SQL Editor (o espera la UI 5C.1).';
-        }
-        return;
-      }
       const msg = document.getElementById('role-msg');
-      const roleId = normalizeRole(document.getElementById('role-id')?.value || '');
-      const roleName = document.getElementById('role-name')?.value?.trim() || labelRole(roleId);
-      if (!roleId) {
-        if (msg) msg.textContent = 'Escribe un ID de rol.';
-        return;
-      }
-      const payload = {
-        name: roleName,
-        permissions: readChecked('role-permission'),
-        updatedAt: serverTimestamp(),
-        updatedBy: (getCurrentUser()?.uid ?? getCurrentUser()?.id) || null
-      };
-      if (msg) msg.textContent = 'Guardando...';
-      try {
-        await setDoc(doc(db, 'roles', roleId), payload, { merge: true });
-        await publishAppUpdate('roles', `Rol ${roleId} actualizado`);
-        if (msg) msg.textContent = 'Rol guardado.';
-        await renderRoles();
-      } catch (error) {
-        console.error(error);
-        if (msg) msg.textContent = 'No se pudo guardar el rol.';
+      if (msg) {
+        msg.textContent =
+          'Edita public.role_permissions en el SQL Editor de Supabase (esta UI no escribe roles).';
       }
     });
     await renderRoles();
@@ -474,31 +404,14 @@ const ProgramadorDashboard = {
       }
       if (msg) msg.textContent = 'Cargando usuario...';
       try {
-        if (isBackendSupabase()) {
-          const pr = await getUserProfile({ id: uid });
-          const userData = pr.data?.user || {};
-          const permissions = Array.isArray(userData.permissions) ? userData.permissions : [];
-          setSelectedUserUi(uid, userData, permissions);
-          document.querySelectorAll('[data-user-edit]').forEach((btn) => {
-            btn.classList.toggle('is-active', btn.getAttribute('data-user-edit') === uid);
-          });
-          if (msg) msg.textContent = userData?.email || userData?.nombre ? 'Usuario cargado.' : 'UID sin fila en Postgres.';
-          return;
-        }
-        const [userSnap, permissionSnap] = await Promise.all([
-          getDoc(doc(db, 'users', uid)),
-          getDoc(doc(db, 'userPermissions', uid))
-        ]);
-        const userData = userSnap.exists() ? userSnap.data() : {};
-        const permissions =
-          permissionSnap.exists() && Array.isArray(permissionSnap.data().permissions)
-            ? permissionSnap.data().permissions
-            : [];
+        const pr = await getUserProfile({ id: uid });
+        const userData = pr.data?.user || {};
+        const permissions = Array.isArray(userData.permissions) ? userData.permissions : [];
         setSelectedUserUi(uid, userData, permissions);
         document.querySelectorAll('[data-user-edit]').forEach((btn) => {
           btn.classList.toggle('is-active', btn.getAttribute('data-user-edit') === uid);
         });
-        if (msg) msg.textContent = userSnap.exists() ? 'Usuario cargado.' : 'UID sin perfil Firestore. Puedes asignar rol y permisos.';
+        if (msg) msg.textContent = userData?.email || userData?.nombre ? 'Usuario cargado.' : 'UID sin fila en Postgres.';
       } catch (error) {
         console.error(error);
         if (msg) msg.textContent = 'No se pudo cargar el usuario.';
@@ -553,25 +466,17 @@ const ProgramadorDashboard = {
       const list = document.getElementById('users-list');
       if (list) list.innerHTML = '<p class="text-sm text-slate-500">Cargando usuarios...</p>';
       try {
-        if (isBackendSupabase()) {
-          const rows = await listUsersProgramadorView();
-          usersCache = rows
-            .map((r) => ({
-              id: r.id,
-              nombre: r.nombre,
-              email: r.email,
-              rol: r.rol
-            }))
-            .sort((a, b) =>
-              String(a.nombre || a.email || a.id).localeCompare(String(b.nombre || b.email || b.id))
-            );
-          filterUsers();
-          return;
-        }
-        const snaps = await getDocs(collection(db, 'users'));
-        usersCache = snaps.docs
-          .map((snap) => ({ id: snap.id, ...snap.data() }))
-          .sort((a, b) => String(a.nombre || a.email || a.id).localeCompare(String(b.nombre || b.email || b.id)));
+        const rows = await listUsersProgramadorView();
+        usersCache = rows
+          .map((r) => ({
+            id: r.id,
+            nombre: r.nombre,
+            email: r.email,
+            rol: r.rol
+          }))
+          .sort((a, b) =>
+            String(a.nombre || a.email || a.id).localeCompare(String(b.nombre || b.email || b.id))
+          );
         filterUsers();
       } catch (error) {
         console.error(error);
@@ -599,30 +504,13 @@ const ProgramadorDashboard = {
       }
       if (msg) msg.textContent = 'Guardando...';
       try {
-        if (isBackendSupabase()) {
-          await updateUserRolPermissionsPg({
-            id: uid,
-            rol: role,
-            permissions: readChecked('user-permission')
-          });
-          await publishAppUpdate('users', `Permisos usuario ${uid}`);
-          if (msg) msg.textContent = 'Usuario guardado en Postgres.';
-          await loadUsers();
-          return;
-        }
-        await Promise.all([
-          setDoc(doc(db, 'users', uid), {
-            rol: role,
-            updatedAt: serverTimestamp()
-          }, { merge: true }),
-          setDoc(doc(db, 'userPermissions', uid), {
-            permissions: readChecked('user-permission'),
-            updatedAt: serverTimestamp(),
-            updatedBy: (getCurrentUser()?.uid ?? getCurrentUser()?.id) || null
-          }, { merge: true })
-        ]);
+        await updateUserRolPermissionsPg({
+          id: uid,
+          rol: role,
+          permissions: readChecked('user-permission')
+        });
         await publishAppUpdate('users', `Permisos usuario ${uid}`);
-        if (msg) msg.textContent = 'Usuario guardado.';
+        if (msg) msg.textContent = 'Usuario guardado en Postgres.';
         await loadUsers();
       } catch (error) {
         console.error(error);

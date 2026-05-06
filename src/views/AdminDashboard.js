@@ -46,8 +46,8 @@ import { subscribeParkingSpots, upsertParkingSpot, updateParkingSpot, removePark
 import { defaultScheduleConfig, parseScheduleConfig, serializeScheduleConfig, scheduleDays } from '../lib/schedule.js';
 import { publishAppUpdate } from '../lib/realtimeSync.js';
 import { openImageCropModal } from '../lib/imageCropModal.js';
-import { uploadProductImage, uploadServiceImage } from '../lib/uploadProductImage.js';
-import { isDataConnectConnectorStale as isDataConnectNotDeployed } from '../lib/dataConnectErrors.js';
+import { uploadProductImage, uploadServiceImage } from '../lib/storageProvider.js';
+import { isBackendOperationUnavailable } from '../lib/backendErrors.js';
 import { formatFechaDia } from '../lib/fechaDiaMexico.js';
 
 const LANDING_PAGE_ID = 'main';
@@ -962,7 +962,7 @@ const AdminDashboard = {
         console.error('Error eliminando registro global:', error);
         const msg = String(error?.message || '');
         if (msg.includes('operation') && msg.includes('not found')) {
-          setDangerousDeleteStatus('Operacion no desplegada en Data Connect. Ejecuta deploy de dataconnect.', 'err');
+          setDangerousDeleteStatus('Operacion no disponible en Postgres (RPC/tablas). Revisa supabase/schema.sql y despliegue.', 'err');
         } else if (msg.toLowerCase().includes('insufficient permissions')) {
           setDangerousDeleteStatus('Permisos insuficientes para esta operacion.', 'err');
         } else {
@@ -1757,7 +1757,7 @@ const AdminDashboard = {
           console.error(err);
           if (msg) msg.textContent = '';
           await showAlert(
-            'Error al guardar. Verifica que Data Connect este desplegado con el esquema nuevo.',
+            'Error al guardar. Verifica Postgres en Supabase (schema aplicado y RLS).',
             { title: 'Error', variant: 'danger' }
           );
         }
@@ -1964,7 +1964,7 @@ const AdminDashboard = {
         (error) => {
           if (error?.code === 'permission-denied') {
             listEl.innerHTML =
-              '<span class="text-amber-700">Sin permiso de lectura de estacionamiento. Revisa tu rol o las reglas Firestore.</span>';
+              '<span class="text-amber-700">Sin permiso de lectura de estacionamiento. Revisa tu rol y políticas RLS en Supabase.</span>';
             return;
           }
           console.warn('Estacionamiento:', error);
@@ -2379,8 +2379,9 @@ const AdminDashboard = {
 
           if (selectedProductoId) renderMovs(selectedProductoId);
         } catch (error) {
-          if (isDataConnectNotDeployed(error)) {
-            wrap.innerHTML = `<p class="text-sm text-amber-800">El servicio de inventario no esta desplegado o no esta actualizado. En el proyecto ejecuta: <code class="rounded bg-amber-100 px-1">npx firebase-tools@latest dataconnect:sql:migrate</code> (si aplica) y luego <code class="rounded bg-amber-100 px-1">npx firebase-tools@latest deploy --only dataconnect</code>, y vuelve a publicar la web.</p>`;
+          if (isBackendOperationUnavailable(error)) {
+            wrap.innerHTML =
+              '<p class="text-sm text-amber-800">Inventario no disponible: aplica <code class="rounded bg-amber-100 px-1">supabase/schema.sql</code>, revisa RLS y variables <code class="rounded bg-amber-100 px-1">VITE_SUPABASE_*</code>.</p>';
             return;
           }
           console.error(error);
@@ -2495,8 +2496,8 @@ const AdminDashboard = {
           await showAlert('Producto creado correctamente.', { title: 'Inventario', variant: 'success' });
         } catch (e) {
           console.error(e);
-          const msg = isDataConnectNotDeployed(e)
-            ? 'Data Connect no tiene las operaciones de inventario desplegadas. Ejecuta deploy de dataconnect desde la carpeta del proyecto.'
+          const msg = isBackendOperationUnavailable(e)
+            ? 'Postgres no expone las operaciones de inventario esperadas. Revisa supabase/schema.sql y RLS.'
             : e?.message || 'No se pudo crear el producto.';
           await showAlert(msg, { title: 'Error', variant: 'danger' });
         }
@@ -2800,8 +2801,8 @@ const AdminDashboard = {
           </div>`;
         adminMesaBody.innerHTML = table;
       } catch (e) {
-        const msg = isDataConnectNotDeployed(e)
-          ? 'Conector Data Connect desactualizado o operación no desplegada.'
+        const msg = isBackendOperationUnavailable(e)
+          ? 'Operación no encontrada o backend Postgres desactualizado (schema Supabase).'
           : e?.message || 'Error al cargar reservas de mesa.';
         adminMesaBody.innerHTML = `<p class="text-rose-600 text-xs">${escapeHtml(msg)}</p>`;
       }

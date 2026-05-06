@@ -7,7 +7,7 @@ import { showAlert } from '../lib/appDialog.js';
 import { getUserAccess } from '../lib/accessControl.js';
 import { icon } from '../lib/icons.js';
 import { openImageCropModal } from '../lib/imageCropModal.js';
-import { uploadAvatarImage } from '../lib/uploadProductImage.js';
+import { uploadAvatarImage } from '../lib/storageProvider.js';
 
 function activeSection() {
   if (window.location.pathname.startsWith('/cliente/configuracion')) return 'configuracion';

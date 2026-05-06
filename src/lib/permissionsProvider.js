@@ -1,9 +1,7 @@
 /**
- * Punto de entrada para permisos (Firestore/Data Connect vs Postgres).
+ * Permisos desde Postgres (public.users, role_permissions, RLS).
  */
-import { getUserAccessFirebase } from './accessControlFirebaseCore.js';
 import { getUserAccessSupabase } from './permissionsSupabase.js';
-import { isPermissionsSupabase } from './migrationEnv.js';
 
 function guestAccess() {
   return {
@@ -24,13 +22,10 @@ function guestAccess() {
 }
 
 export function resolvePermissionsProvider() {
-  return isPermissionsSupabase() ? 'supabase' : 'firebase';
+  return 'supabase';
 }
 
 export async function getUserAccessResolved(user) {
   if (!user) return guestAccess();
-  if (resolvePermissionsProvider() === 'supabase') {
-    return getUserAccessSupabase(user);
-  }
-  return getUserAccessFirebase(user);
+  return getUserAccessSupabase(user);
 }

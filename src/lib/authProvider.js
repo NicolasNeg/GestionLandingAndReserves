@@ -1,21 +1,12 @@
 /**
- * Fachada de autenticación: Firebase (por defecto) o Supabase según VITE_AUTH_PROVIDER.
+ * Fachada de autenticación: Supabase Auth.
  */
-import { isAuthSupabase } from './migrationEnv.js';
-import * as authFirebase from './authFirebase.js';
 import * as authSupabase from './authSupabase.js';
 
-function impl() {
-  return isAuthSupabase() ? authSupabase : authFirebase;
-}
-
 export function resolveAuthProvider() {
-  return isAuthSupabase() ? 'supabase' : 'firebase';
+  return 'supabase';
 }
 
-/**
- * Objeto estable para UI y permisos; `uid` siempre presente si hay usuario.
- */
 export function normalizeAuthUser(raw) {
   if (!raw) return null;
   const uid = raw.uid ?? raw.id ?? null;
@@ -28,67 +19,67 @@ export function normalizeAuthUser(raw) {
     name: raw.displayName ?? raw.name ?? '',
     photoURL: raw.photoURL ?? '',
     emailVerified: raw.emailVerified !== undefined ? !!raw.emailVerified : false,
-    provider: resolveAuthProvider(),
+    provider: 'supabase',
     raw
   };
 }
 
 export function getCurrentUser() {
-  return impl().getCurrentUser();
+  return authSupabase.getCurrentUser();
 }
 
 export function onAuthChange(callback) {
-  return impl().onAuthChange(callback);
+  return authSupabase.onAuthChange(callback);
 }
 
 export function waitForAuthUser(timeoutMs) {
-  return impl().waitForAuthUser(timeoutMs);
+  return authSupabase.waitForAuthUser(timeoutMs);
 }
 
 export function signInWithGoogle() {
-  return impl().signInWithGoogle();
+  return authSupabase.signInWithGoogle();
 }
 
 export function signInWithFacebook() {
-  return impl().signInWithFacebook();
+  return authSupabase.signInWithFacebook();
 }
 
 export function signInWithEmail(email, password) {
-  return impl().signInWithEmail(email, password);
+  return authSupabase.signInWithEmail(email, password);
 }
 
 export function signUpWithEmail(email, password, metadata) {
-  return impl().signUpWithEmail(email, password, metadata);
+  return authSupabase.signUpWithEmail(email, password, metadata);
 }
 
 export function sendPasswordReset(email, options) {
-  return impl().sendPasswordReset(email, options);
+  return authSupabase.sendPasswordReset(email, options);
 }
 
 export function updateCurrentUserProfile(patch) {
-  return impl().updateCurrentUserProfile(patch);
+  return authSupabase.updateCurrentUserProfile(patch);
 }
 
 export function resendEmailVerification(options) {
-  return impl().resendEmailVerification(options);
+  return authSupabase.resendEmailVerification(options);
 }
 
 export function logout() {
-  return impl().logout();
+  return authSupabase.logout();
 }
 
 export function getUserId() {
-  return impl().getUserId();
+  return authSupabase.getUserId();
 }
 
 export function getUserEmail() {
-  return impl().getUserEmail();
+  return authSupabase.getUserEmail();
 }
 
 export function getUserDisplayName() {
-  return impl().getUserDisplayName();
+  return authSupabase.getUserDisplayName();
 }
 
 export function getUserPhotoURL() {
-  return impl().getUserPhotoURL();
+  return authSupabase.getUserPhotoURL();
 }

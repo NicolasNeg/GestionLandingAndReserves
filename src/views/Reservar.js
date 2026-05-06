@@ -26,11 +26,11 @@ import {
 } from '../lib/distribucionMapa.js';
 import { formatFechaDia, isValidFechaDia } from '../lib/fechaDiaMexico.js';
 import { sweepExpiredMesaReservas } from '../lib/mesaLifecycle.js';
-import { getDataConnectErrorMessage, isDataConnectNotDeployed, isPermissionError } from '../lib/dataConnectErrors.js';
+import { getBackendErrorMessage, isBackendOperationUnavailable, isPermissionError } from '../lib/backendErrors.js';
 
 const LANDING_PAGE_ID = 'main';
 
-const isDataConnectMissing = isDataConnectNotDeployed;
+const isBackendUnavailable = isBackendOperationUnavailable;
 
 const TABLE_STATUS_META = {
   libre: {
@@ -392,9 +392,9 @@ export default {
           }
         });
       } catch (e) {
-        if (isDataConnectMissing(e)) {
+        if (isBackendUnavailable(e)) {
           setMsg(
-            'Servicio de reservas no disponible: despliega Data Connect con el esquema actualizado (MesaReserva).',
+            'Servicio de reservas no disponible: aplica supabase/schema.sql y revisa que existan mesas_reservas / políticas RLS.',
             'danger'
           );
         } else {
@@ -432,7 +432,7 @@ export default {
         },
         (e) => {
           if (!isPermissionError(e)) {
-            console.warn('mesa realtime', getDataConnectErrorMessage(e));
+            console.warn('mesa realtime', getBackendErrorMessage(e));
           }
           setMsg('Sin realtime; mostrando último estado.', 'danger');
           setLivePill('Sin realtime', 'danger');
@@ -523,9 +523,9 @@ export default {
           });
         });
       } catch (e) {
-        if (isDataConnectMissing(e)) {
+        if (isBackendUnavailable(e)) {
           misEl.innerHTML =
-            '<p class="text-rose-600 text-xs">Data Connect sin tabla MesaReserva desplegada.</p>';
+            '<p class="text-rose-600 text-xs">Postgres sin tabla mesas/reservas o sin permisos (RLS). Revisa Supabase.</p>';
         } else {
           misEl.innerHTML = '<p class="text-rose-600 text-xs">No se pudo cargar tu lista.</p>';
         }
@@ -723,9 +723,12 @@ export default {
           fechaDia: currentFecha,
           mapItemId: item.id
         });
-        if ((chkAfter.data?.mesaReservas || []).length > 0) {
+        const blockers = chkAfter.data?.mesaReservas || [];
+        const myId = user.uid ?? user.id;
+        const blockedByOther = blockers.some((row) => row.userId && row.userId !== myId);
+        if (blockedByOther) {
           const live = await getMesaReservaLive(currentFecha, item.id);
-          if (!live || live.userId !== (user.uid ?? user.id)) {
+          if (!live || live.userId !== myId) {
             await clearMesaReservaLive(currentFecha, item.id);
           }
           await loadApartadasBase();
@@ -813,8 +816,8 @@ export default {
         } catch {
           // noop
         }
-        const msg = isDataConnectMissing(e)
-          ? 'Despliega Data Connect con MesaReserva o revisa la consola.'
+        const msg = isBackendUnavailable(e)
+          ? 'Revisa Supabase (schema, tablas mesas/reservas, RLS) o la consola.'
           : e?.message || 'No se pudo apartar.';
         await showAlert(msg, { title: 'Error', variant: 'danger' });
       }

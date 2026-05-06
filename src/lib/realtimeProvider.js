@@ -1,26 +1,20 @@
 /**
- * Selección de backend realtime: Firebase (Firestore) por defecto.
+ * Realtime: Supabase (postgres_changes / broadcast).
  */
-import { isRealtimeSupabase } from './migrationEnv.js';
-import * as rtFirebase from './realtimeFirebase.js';
 import * as rtSupabase from './realtimeSupabase.js';
 
-function impl() {
-  return isRealtimeSupabase() ? rtSupabase : rtFirebase;
-}
-
 export function resolveRealtimeProvider() {
-  return isRealtimeSupabase() ? 'supabase' : 'firebase';
+  return 'supabase';
 }
 
 export const subscribeMesaReservasByFecha = (...args) =>
-  impl().subscribeMesaReservasByFecha(...args);
-export const upsertMesaReservaLive = (...args) => impl().upsertMesaReservaLive(...args);
-export const clearMesaReservaLive = (...args) => impl().clearMesaReservaLive(...args);
-export const claimMesaReservaLive = (...args) => impl().claimMesaReservaLive(...args);
-export const getMesaReservaLive = (...args) => impl().getMesaReservaLive(...args);
+  rtSupabase.subscribeMesaReservasByFecha(...args);
+export const upsertMesaReservaLive = (...args) => rtSupabase.upsertMesaReservaLive(...args);
+export const clearMesaReservaLive = (...args) => rtSupabase.clearMesaReservaLive(...args);
+export const claimMesaReservaLive = (...args) => rtSupabase.claimMesaReservaLive(...args);
+export const getMesaReservaLive = (...args) => rtSupabase.getMesaReservaLive(...args);
 
-export const subscribeParkingSpots = (...args) => impl().subscribeParkingSpots(...args);
-export const upsertParkingSpot = (...args) => impl().upsertParkingSpot(...args);
-export const updateParkingSpot = (...args) => impl().updateParkingSpot(...args);
-export const removeParkingSpot = (...args) => impl().removeParkingSpot(...args);
+export const subscribeParkingSpots = (...args) => rtSupabase.subscribeParkingSpots(...args);
+export const upsertParkingSpot = (...args) => rtSupabase.upsertParkingSpot(...args);
+export const updateParkingSpot = (...args) => rtSupabase.updateParkingSpot(...args);
+export const removeParkingSpot = (...args) => rtSupabase.removeParkingSpot(...args);

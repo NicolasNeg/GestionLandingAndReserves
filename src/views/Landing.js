@@ -786,7 +786,7 @@ export default {
       const res = await getLandingPage({ id: LANDING_PAGE_ID });
       landing = mergeLanding(res.data?.landingPage);
     } catch (e) {
-      console.warn('Landing page no disponible aun (despliega Data Connect y crea fila main):', e);
+      console.warn('Landing page no disponible aun (Supabase: tabla landing_pages / RLS y fila main):', e);
     }
 
     const descEl = document.getElementById('landing-descripcion');
@@ -1010,7 +1010,7 @@ export default {
           msg.includes('ListProductosPublic');
         if (notDeployed) {
           productosWrap.innerHTML =
-            '<p class="text-sm text-slate-600">Los productos del catalogo estaran visibles despues de desplegar Data Connect en Firebase (<code class="text-xs">firebase deploy --only dataconnect</code>).</p>';
+            '<p class="text-sm text-slate-600">Los productos del catalogo dependen de Postgres (Supabase). Revisa RLS y datos en la tabla <code class="text-xs">productos</code>.</p>';
         } else {
           console.error('Productos landing:', e);
           productosWrap.innerHTML =
@@ -1083,7 +1083,7 @@ export default {
         },
         (error) => {
           if (error?.code === 'permission-denied') {
-            parkingSummary.textContent = 'Estacionamiento: sin permisos de lectura (revisa reglas Firestore).';
+            parkingSummary.textContent = 'Estacionamiento: sin permisos de lectura (revisa RLS de parking_spots).';
             return;
           }
           console.warn('Parking realtime:', error);

@@ -1,5 +1,5 @@
 /**
- * Firebase suele colocar mode y oobCode en la query; en algunos flujos pueden venir en el hash.
+ * Recuperación de contraseña / enlaces de auth: mode y oobCode suelen ir en query o en el hash.
  */
 export function getAuthActionParams() {
     const q = new URLSearchParams(window.location.search);

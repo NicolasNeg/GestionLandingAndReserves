@@ -38,5 +38,5 @@ Documento de referencia acordado con el negocio. Avanzar fase a fase solo cuando
 
 | Fase | Estado |
 |------|--------|
-| A | Modelo `MesaReserva` + UI `/reservar` (calendario por día, mapa coloreado). Falta validación en producción tras `firebase deploy --only dataconnect`. |
+| A | Modelo `MesaReserva` + UI `/reservar` (calendario por día, mapa coloreado). Validar contra Postgres en Supabase (`mesa_reservas` + RLS). |
 | B–E | Pendiente |

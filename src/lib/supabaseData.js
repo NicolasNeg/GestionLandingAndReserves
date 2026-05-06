@@ -712,13 +712,17 @@ export async function checkMesaReservaLibre({ fechaDia, mapItemId }) {
   const sb = requireClient();
   const { data, error } = await sb
     .from('mesa_reservas')
-    .select('id')
+    .select('id,user_id')
     .eq('fecha_dia', fechaDia)
     .eq('map_item_id', mapItemId)
     .eq('estado', 'apartada')
-    .limit(1);
+    .limit(5);
   if (error) throw error;
-  return { data: { mesaReservas: data || [] } };
+  const rows = (data || []).map((r) => ({
+    id: r.id,
+    userId: r.user_id || ''
+  }));
+  return { data: { mesaReservas: rows } };
 }
 
 export async function listMisMesaReservas({ userId }) {
@@ -768,6 +772,20 @@ export async function createMesaReservaMonetizable(vars) {
     metodo_pago: vars.metodoPago,
     notas_cliente: vars.notasCliente
   };
+  const { data: prior, error: findErr } = await sb
+    .from('mesa_reservas')
+    .select('id')
+    .eq('fecha_dia', vars.fechaDia)
+    .eq('map_item_id', vars.mapItemId)
+    .eq('user_id', uid)
+    .eq('estado', 'apartada')
+    .maybeSingle();
+  if (findErr) throw findErr;
+  if (prior?.id) {
+    const { data, error } = await sb.from('mesa_reservas').update(row).eq('id', prior.id).select('id').single();
+    if (error) throw error;
+    return { data: { mesaReserva_insert: { id: data.id } } };
+  }
   const { data, error } = await sb.from('mesa_reservas').insert(row).select('id').single();
   if (error) throw error;
   return { data: { mesaReserva_insert: { id: data.id } } };
@@ -866,4 +884,34 @@ export async function deleteMesaReserva({ id }) {
   const { error } = await sb.from('mesa_reservas').delete().eq('id', id);
   if (error) throw error;
   return { data: {} };
+}
+
+export async function getAppThemeRow() {
+  const sb = requireClient();
+  const { data, error } = await sb.from('app_theme').select('payload,updated_at').eq('id', 'global').maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
+export async function upsertAppThemePayload(payload) {
+  const sb = requireClient();
+  const { error } = await sb.from('app_theme').upsert(
+    {
+      id: 'global',
+      payload,
+      updated_at: new Date().toISOString()
+    },
+    { onConflict: 'id' }
+  );
+  if (error) throw error;
+}
+
+export async function listParkingSpotsRows() {
+  const sb = requireClient();
+  const { data, error } = await sb
+    .from('parking_spots')
+    .select('*')
+    .order('id', { ascending: true });
+  if (error) throw error;
+  return data || [];
 }

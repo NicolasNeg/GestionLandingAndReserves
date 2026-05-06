@@ -10,12 +10,11 @@
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.2.4",
-    "firebase": "^12.12.1",
     "tailwindcss": "^4.2.4",
     "vite": "^8.0.10"
   },
   "dependencies": {
-    "@dataconnect/generated": "file:src/dataconnect-generated",
+    "@supabase/supabase-js": "^2.49.8",
     "cropperjs": "^1.6.2",
     "html2pdf.js": "^0.14.0",
     "html5-qrcode": "^2.3.8",

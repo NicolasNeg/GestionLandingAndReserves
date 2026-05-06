@@ -1,16 +1,5 @@
-import { auth, googleProvider, facebookProvider } from '../firebase-config.js';
-import {
-  applyActionCode,
-  confirmPasswordReset,
-  signInWithEmailAndPassword,
-  signInWithPopup
-} from 'firebase/auth';
 import { navigateTo } from '../router.js';
-import { getAuthActionParams } from '../lib/authUrlParams.js';
-import { isBootstrapProgramadorEmail, syncFirestoreUserProfile } from '../lib/accessControl.js';
-import { getUserProfile, upsertUser } from '../lib/dataLayer.js';
 import {
-  resolveAuthProvider,
   signInWithGoogle,
   signInWithFacebook,
   signInWithEmail,
@@ -20,9 +9,8 @@ import {
   normalizeAuthUser,
   resendEmailVerification
 } from '../lib/authProvider.js';
-import { sendEmailVerificationForUser } from '../lib/authFirebase.js';
 import { mergeUserProfileFromAuth } from '../lib/supabaseData.js';
-import { isAuthSupabase, isBackendSupabase } from '../lib/migrationEnv.js';
+import { supabase } from '../supabase/client.js';
 
 function profilePayloadFromSupabaseUser(su) {
   if (!su) return null;
@@ -80,7 +68,7 @@ const Login = {
 
                     <div id="resend-verification-wrap" class="hidden mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
                         <p class="font-semibold mb-2">¿No llegó el correo o está en spam?</p>
-                        <p class="mb-3 text-amber-800">Deja el mismo correo y contraseña arriba y pulsa reenviar (Firebase envía un <strong>enlace</strong>, no un código numérico).</p>
+                        <p class="mb-3 text-amber-800">Deja el mismo correo arriba y pulsa reenviar; Supabase envía un <strong>enlace</strong> de confirmación.</p>
                         <button type="button" id="btn-resend-verification" class="w-full rounded-lg bg-amber-600 px-4 py-2 font-bold text-white hover:bg-amber-700">Reenviar correo de verificación</button>
                     </div>
 
@@ -150,17 +138,6 @@ const Login = {
     `,
   mount: () => {
     let isRegistering = false;
-    let resetOobCode = null;
-
-    const getActionCodeSettings = () => {
-      const fallback = `${window.location.origin}/login`;
-      const fromEnv = import.meta.env.VITE_AUTH_CONTINUE_URL;
-      const url = typeof fromEnv === 'string' && fromEnv.trim() ? fromEnv.trim() : fallback;
-      return {
-        url,
-        handleCodeInApp: false
-      };
-    };
 
     const form = document.getElementById('auth-form');
     const emailInput = document.getElementById('email');
@@ -240,6 +217,21 @@ const Login = {
       if (resendWrap) resendWrap.classList.add('hidden');
     };
 
+    const friendlyAuthMessage = (err) => {
+      const raw = String(err?.message || err || '');
+      const low = raw.toLowerCase();
+      if (low.includes('network') || low.includes('fetch')) {
+        return 'Error de red. Comprueba tu conexión e inténtalo de nuevo.';
+      }
+      if (low.includes('invalid login') || low.includes('invalid_credentials') || low.includes('wrong password')) {
+        return 'Credenciales incorrectas.';
+      }
+      if (low.includes('email not confirmed')) {
+        return 'Debes confirmar tu correo antes de continuar.';
+      }
+      return raw.replace(/^Supabase:\s*/i, '').replace(/^AuthApiError:\s*/i, '') || 'No se pudo completar la acción.';
+    };
+
     const toggleMode = () => {
       isRegistering = !isRegistering;
       if (isRegistering) {
@@ -269,7 +261,6 @@ const Login = {
     btnToggleMode.addEventListener('click', toggleMode);
 
     const showLoginFlow = () => {
-      resetOobCode = null;
       loginMainFlow?.classList.remove('hidden');
       resetPanel?.classList.add('hidden');
       if (resetPassInput) resetPassInput.value = '';
@@ -288,16 +279,6 @@ const Login = {
       const btn = document.getElementById('btn-submit-reset');
       const p1 = resetPassInput?.value || '';
       const p2 = resetConfirmInput?.value || '';
-      if (resolveAuthProvider() !== 'firebase') {
-        showError('El restablecimiento desde este formulario es para Firebase. Con Supabase usa el enlace del correo de recuperación.');
-        return;
-      }
-      if (!resetOobCode) {
-        showError(
-          'El enlace de restablecimiento no es válido. Solicita uno nuevo desde «¿Olvidaste tu contraseña?».'
-        );
-        return;
-      }
       if (p1.length < 6) {
         showError('La contraseña debe tener al menos 6 caracteres.');
         return;
@@ -311,127 +292,37 @@ const Login = {
       errorMsg.classList.add('hidden');
       successMsg.classList.add('hidden');
       try {
-        await confirmPasswordReset(auth, resetOobCode, p1);
+        const { error } = await supabase.auth.updateUser({ password: p1 });
+        if (error) throw error;
         showSuccess('Contraseña actualizada. Ya puedes iniciar sesión.');
         showLoginFlow();
       } catch (err) {
         console.error(err);
-        showError(
-          err.message.replace('Firebase: ', '') || 'No se pudo actualizar la contraseña. Solicita un nuevo enlace.'
-        );
+        showError(friendlyAuthMessage(err) || 'No se pudo actualizar la contraseña. Usa el enlace del correo de recuperación.');
       } finally {
         btn.disabled = false;
         btn.textContent = 'Guardar contraseña';
       }
     });
 
-    const syncUserToDataConnect = async (user, displayName) => {
-      let profileUser = null;
-      const targetRole = isBootstrapProgramadorEmail(user.email) ? 'programador' : 'cliente';
-      const targetName = displayName || user.displayName || 'Usuario';
-      try {
-        const uid = user.uid ?? user.id;
-        const profileRes = await getUserProfile({ id: uid });
-        profileUser = profileRes.data?.user || null;
-        if (!profileUser || (targetRole === 'programador' && profileUser.rol !== 'programador')) {
-          await upsertUser({
-            id: uid,
-            email: user.email,
-            nombre: profileUser?.nombre || targetName,
-            rol: targetRole
-          });
-          profileUser = {
-            ...profileUser,
-            email: user.email,
-            nombre: profileUser?.nombre || targetName,
-            rol: targetRole
-          };
-        }
-      } catch (err) {
-        console.error('Error sincronizando Data Connect:', err);
-      }
-      try {
-        await syncFirestoreUserProfile(user, profileUser || {
-          email: user.email,
-          nombre: targetName,
-          rol: targetRole
-        });
-      } catch (err) {
-        console.error('Error sincronizando Firestore:', err);
-      }
-    };
-
-    const afterLoginProfileSync = async (userLike, displayNameHint) => {
+    const afterLoginProfileSync = async (userLike) => {
       if (!userLike) return;
-      if (isBackendSupabase() && isAuthSupabase()) {
-        try {
-          await mergeUserProfileFromAuth(userLike);
-        } catch (e) {
-          console.warn('[perfil]', e?.message || e);
-        }
-        return;
+      try {
+        await mergeUserProfileFromAuth(userLike);
+      } catch (e) {
+        console.warn('[perfil]', e?.message || e);
       }
-      await syncUserToDataConnect(userLike, displayNameHint);
-    };
-
-    const friendlyAuthMessage = (err) => {
-      const raw = String(err?.message || err || '');
-      const low = raw.toLowerCase();
-      if (low.includes('network') || low.includes('fetch')) {
-        return 'Error de red. Comprueba tu conexión e inténtalo de nuevo.';
-      }
-      if (low.includes('invalid login') || low.includes('invalid_credentials') || low.includes('wrong password')) {
-        return 'Credenciales incorrectas.';
-      }
-      if (low.includes('email not confirmed')) {
-        return 'Debes confirmar tu correo antes de continuar.';
-      }
-      return raw.replace(/^Firebase:\s*/i, '').replace(/^AuthApiError:\s*/i, '') || 'No se pudo completar la acción.';
     };
 
     (async () => {
-      const { mode, oobCode } = getAuthActionParams();
-      const params = new URLSearchParams(window.location.search);
-
-      if (mode === 'resetPassword' && oobCode) {
-        if (resolveAuthProvider() !== 'firebase') {
-          showError(
-            'Los enlaces ?mode=resetPassword de Firebase no aplican con VITE_AUTH_PROVIDER=supabase. Usa «¿Olvidaste tu contraseña?» para recibir el correo de Supabase.'
-          );
-          window.history.replaceState({}, '', window.location.pathname);
-          return;
-        }
-        resetOobCode = oobCode;
+      const hashParams = new URLSearchParams((window.location.hash || '').replace(/^#/, ''));
+      if (hashParams.get('type') === 'recovery') {
         loginMainFlow?.classList.add('hidden');
         resetPanel?.classList.remove('hidden');
         formSubtitle.textContent = 'Establece una nueva contraseña';
-        window.history.replaceState({}, '', window.location.pathname);
         return;
       }
-
-      if (mode === 'verifyEmail' && oobCode) {
-        if (resolveAuthProvider() !== 'firebase') {
-          showError(
-            'Este enlace de verificación es para Firebase. Con Supabase abre el enlace que envía Supabase desde tu correo.'
-          );
-          window.history.replaceState({}, '', window.location.pathname);
-          return;
-        }
-        try {
-          await applyActionCode(auth, oobCode);
-          if (auth.currentUser) {
-            await auth.currentUser.reload();
-          }
-          showSuccess('Correo verificado correctamente. Ya puedes iniciar sesión con tu correo y contraseña.');
-        } catch (err) {
-          console.error(err);
-          showError(
-            'El enlace de verificación expiró o ya fue usado. Inicia sesión e intenta "Reenviar correo de verificación".'
-          );
-        }
-        window.history.replaceState({}, '', window.location.pathname);
-        return;
-      }
+      const params = new URLSearchParams(window.location.search);
       if (params.get('verified') === '1') {
         showSuccess('Correo verificado. Inicia sesión cuando quieras.');
         window.history.replaceState({}, '', window.location.pathname);
@@ -447,65 +338,36 @@ const Login = {
 
       try {
         if (isRegistering) {
-          if (resolveAuthProvider() === 'firebase') {
-            const cred = await signUpWithEmail(emailInput.value, passwordInput.value, {
-              nombre: nameInput.value
-            });
-            await sendEmailVerificationForUser(cred.user, getActionCodeSettings());
-            try {
-              await syncUserToDataConnect(cred.user, nameInput.value);
-            } catch (syncErr) {
-              console.error('syncUserToDataConnect tras registro:', syncErr);
-            }
-            await logout();
+          const data = await signUpWithEmail(emailInput.value, passwordInput.value, {
+            nombre: nameInput.value
+          });
+          const su = data?.user;
+          if (data?.session && su) {
+            const payload = profilePayloadFromSupabaseUser(su);
+            await afterLoginProfileSync(payload);
+            navigateTo('/home');
+          } else {
             showSuccess(
-              '¡Cuenta creada! Te enviamos un correo con un enlace para verificar tu dirección (revisa spam). Después podrás iniciar sesión.'
+              'Si tu proyecto exige confirmación por correo, revisa tu bandeja (y spam). Luego inicia sesión aquí.'
             );
             toggleMode();
-          } else {
-            const data = await signUpWithEmail(emailInput.value, passwordInput.value, {
-              nombre: nameInput.value
-            });
-            const su = data?.user;
-            if (data?.session && su) {
-              const payload = profilePayloadFromSupabaseUser(su);
-              await afterLoginProfileSync(payload, payload.displayName);
-              navigateTo('/home');
-            } else {
-              showSuccess(
-                'Si tu proyecto exige confirmación por correo, revisa tu bandeja (y spam). Luego inicia sesión aquí.'
-              );
-              toggleMode();
-            }
           }
         } else {
           const result = await signInWithEmail(emailInput.value, passwordInput.value);
-          if (resolveAuthProvider() === 'firebase') {
-            const sessionUser = result.user;
-            if (!sessionUser.emailVerified) {
-              await logout();
-              if (resendWrap) resendWrap.classList.remove('hidden');
-              throw new Error(
-                'Por favor, verifica tu correo electrónico antes de continuar. Revisa tu bandeja de entrada o spam.'
-              );
-            }
-            await afterLoginProfileSync(sessionUser, sessionUser.displayName);
-          } else {
-            const su = result?.user;
-            if (!su) {
-              throw new Error('No se pudo iniciar sesión. Intenta de nuevo.');
-            }
-            const payload = profilePayloadFromSupabaseUser(su);
-            const norm = normalizeAuthUser(payload);
-            if (norm && !norm.emailVerified) {
-              await logout();
-              if (resendWrap) resendWrap.classList.remove('hidden');
-              throw new Error(
-                'Por favor, confirma tu correo electrónico antes de continuar (revisa spam).'
-              );
-            }
-            await afterLoginProfileSync(payload, norm?.displayName);
+          const su = result?.user;
+          if (!su) {
+            throw new Error('No se pudo iniciar sesión. Intenta de nuevo.');
           }
+          const payload = profilePayloadFromSupabaseUser(su);
+          const norm = normalizeAuthUser(payload);
+          if (norm && !norm.emailVerified) {
+            await logout();
+            if (resendWrap) resendWrap.classList.remove('hidden');
+            throw new Error(
+              'Por favor, confirma tu correo electrónico antes de continuar (revisa spam).'
+            );
+          }
+          await afterLoginProfileSync(payload);
           navigateTo('/home');
         }
       } catch (error) {
@@ -518,14 +380,8 @@ const Login = {
 
     const handleSSO = async (which) => {
       try {
-        if (resolveAuthProvider() === 'supabase') {
-          if (which === 'google') await signInWithGoogle();
-          else await signInWithFacebook();
-          return;
-        }
-        const result = await signInWithPopup(auth, which === 'google' ? googleProvider : facebookProvider);
-        await afterLoginProfileSync(result.user, result.user.displayName);
-        navigateTo('/home');
+        if (which === 'google') await signInWithGoogle();
+        else await signInWithFacebook();
       } catch (error) {
         showError(friendlyAuthMessage(error));
       }
@@ -545,11 +401,7 @@ const Login = {
       errorMsg.classList.add('hidden');
       successMsg.classList.add('hidden');
       try {
-        if (resolveAuthProvider() === 'firebase') {
-          await sendPasswordReset(email, getActionCodeSettings());
-        } else {
-          await sendPasswordReset(email);
-        }
+        await sendPasswordReset(email);
         showSuccess('Si existe una cuenta con ese correo, recibirás un enlace para restablecer tu contraseña (revisa spam).');
       } catch (err) {
         showError(friendlyAuthMessage(err));
@@ -561,26 +413,14 @@ const Login = {
     document.getElementById('btn-resend-verification')?.addEventListener('click', async () => {
       const btn = document.getElementById('btn-resend-verification');
       const email = emailInput.value.trim();
-      const password = passwordInput.value;
       btn.disabled = true;
       btn.textContent = 'Enviando...';
       errorMsg.classList.add('hidden');
       successMsg.classList.add('hidden');
       try {
-        if (resolveAuthProvider() === 'firebase') {
-          if (!email || !password) {
-            throw new Error('Ingresa correo y contraseña para poder reenviar el correo de verificación.');
-          }
-          const cred = await signInWithEmailAndPassword(auth, email, password);
-          await sendEmailVerificationForUser(cred.user, getActionCodeSettings());
-          await logout();
-          showSuccess('Te enviamos otro correo de verificación. Revisa también la carpeta de spam.');
-          if (resendWrap) resendWrap.classList.add('hidden');
-        } else {
-          await resendEmailVerification({ email });
-          showSuccess('Si el correo es válido, se ha enviado un nuevo enlace de verificación.');
-          if (resendWrap) resendWrap.classList.add('hidden');
-        }
+        await resendEmailVerification({ email });
+        showSuccess('Si el correo es válido, se ha enviado un nuevo enlace de verificación.');
+        if (resendWrap) resendWrap.classList.add('hidden');
       } catch (err) {
         showError(friendlyAuthMessage(err));
       } finally {

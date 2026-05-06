@@ -1,6 +1,4 @@
-/** Constantes y utilidades de rol/permiso sin dependencias de Firebase (evita ciclos de import). */
-
-export const BOOTSTRAP_PROGRAMADOR_EMAIL = 'angelarmentta@icloud.com';
+/** Constantes y utilidades de rol/permiso (sin acoplar al cliente HTTP; evita ciclos de import). */
 
 export const PERMISSIONS = [
   { key: 'dashboard.manage', label: 'Gestion' },
@@ -52,10 +50,6 @@ export const ROLE_LABELS = {
   jefe: 'Jefe',
   programador: 'Programador'
 };
-
-export function isBootstrapProgramadorEmail(email) {
-  return String(email || '').trim().toLowerCase() === BOOTSTRAP_PROGRAMADOR_EMAIL;
-}
 
 export function normalizeRole(role) {
   const normalized = String(role || 'cliente').trim().toLowerCase().replace(/\s+/g, '-');

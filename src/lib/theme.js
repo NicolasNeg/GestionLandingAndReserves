@@ -1,5 +1,4 @@
-import { doc, getDoc } from 'firebase/firestore';
-import { db } from '../firebase-config.js';
+import { getAppThemeRow, upsertAppThemePayload } from './supabaseData.js';
 
 export const DEFAULT_THEME = {
   primary: '#0f766e',
@@ -23,7 +22,7 @@ function safeColor(value, fallback) {
 
 export function mergeTheme(data = {}) {
   const envMarquee = import.meta.env.VITE_PROMO_MARQUEE;
-  const fromFirestore = data.promoText != null && String(data.promoText).trim() !== '';
+  const fromDb = data.promoText != null && String(data.promoText).trim() !== '';
   return {
     primary: safeColor(data.primary, DEFAULT_THEME.primary),
     primaryDark: safeColor(data.primaryDark, DEFAULT_THEME.primaryDark),
@@ -31,7 +30,7 @@ export function mergeTheme(data = {}) {
     surface: safeColor(data.surface, DEFAULT_THEME.surface),
     text: safeColor(data.text, DEFAULT_THEME.text),
     promoText: String(
-      fromFirestore
+      fromDb
         ? data.promoText
         : (envMarquee && String(envMarquee).trim()) || DEFAULT_THEME.promoText
     )
@@ -50,19 +49,33 @@ export function applyTheme(theme = DEFAULT_THEME) {
 
 export async function readThemeConfig() {
   try {
-    const snap = await Promise.race([
-      getDoc(doc(db, 'appConfig', 'theme')),
+    const row = await Promise.race([
+      getAppThemeRow(),
       new Promise((_, reject) => {
-        globalThis.setTimeout(() => reject(new Error('Timeout leyendo tema Firestore')), THEME_READ_TIMEOUT_MS);
+        globalThis.setTimeout(() => reject(new Error('Timeout leyendo tema')), THEME_READ_TIMEOUT_MS);
       })
     ]);
-    return mergeTheme(snap.exists() ? snap.data() : {});
+    const raw = row?.payload && typeof row.payload === 'object' ? row.payload : {};
+    return mergeTheme(raw);
   } catch (error) {
     if (!isPermissionDenied(error)) {
-      console.warn('Tema Firestore no disponible:', error);
+      console.warn('Tema no disponible:', error);
     }
-    return DEFAULT_THEME;
+    return mergeTheme({});
   }
+}
+
+export async function saveThemeConfig(themeLike) {
+  const merged = mergeTheme(themeLike || {});
+  await upsertAppThemePayload({
+    primary: merged.primary,
+    primaryDark: merged.primaryDark,
+    accent: merged.accent,
+    surface: merged.surface,
+    text: merged.text,
+    promoText: merged.promoText
+  });
+  return merged;
 }
 
 export async function initTheme() {

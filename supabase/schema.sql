@@ -133,6 +133,11 @@ create table if not exists public.mesa_reservas (
 
 create index if not exists idx_mesa_reservas_fecha_item on public.mesa_reservas(fecha_dia, map_item_id);
 
+-- Una mesa solo puede estar apartada una vez por día (bloqueo para mapa / realtime).
+create unique index if not exists uq_mesa_reservas_apartada_dia_item
+  on public.mesa_reservas (fecha_dia, map_item_id)
+  where (estado = 'apartada');
+
 -- Migración suave para bases ya creadas sin columnas Fase 4B
 alter table public.mesa_reservas add column if not exists mesa_label text;
 alter table public.mesa_reservas add column if not exists mesa_zona text;
@@ -156,6 +161,36 @@ alter table public.landing_page enable row level security;
 alter table public.descuentos enable row level security;
 alter table public.tickets enable row level security;
 alter table public.mesa_reservas enable row level security;
+
+-- Estacionamiento en tiempo real (UI sync)
+create table if not exists public.parking_spots (
+  id text primary key,
+  x double precision not null default 20,
+  y double precision not null default 20,
+  estado text not null default 'libre',
+  tipo_vehiculo text not null default '',
+  placas text not null default '',
+  modelo text not null default '',
+  reservado_por text not null default '',
+  ubicacion text not null default 'patio',
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists idx_parking_spots_updated on public.parking_spots(updated_at desc);
+
+alter table public.parking_spots enable row level security;
+
+-- Paleta global / marquee
+create table if not exists public.app_theme (
+  id text primary key default 'global',
+  payload jsonb not null default '{}'::jsonb,
+  updated_at timestamptz not null default now()
+);
+
+insert into public.app_theme (id, payload) values ('global', '{}'::jsonb)
+  on conflict (id) do nothing;
+
+alter table public.app_theme enable row level security;
 
 -- =============================================================================
 -- Fase 5C — Funciones de permiso (SECURITY DEFINER, search_path fijo)
@@ -489,6 +524,39 @@ drop policy if exists "mesa_update_own" on public.mesa_reservas;
 create policy "mesa_update_own" on public.mesa_reservas for update to authenticated
   using (auth.uid()::text = user_id)
   with check (auth.uid()::text = user_id);
+
+-- Lectura de ocupación del mapa: cualquier apartado visible (anon + auth) para UX Reservar/Landing.
+drop policy if exists "mesa_select_apartadas_public_anon" on public.mesa_reservas;
+create policy "mesa_select_apartadas_public_anon" on public.mesa_reservas for select to anon
+  using (estado = 'apartada');
+
+drop policy if exists "mesa_select_apartadas_catalogo" on public.mesa_reservas;
+create policy "mesa_select_apartadas_catalogo" on public.mesa_reservas for select to authenticated
+  using (estado = 'apartada');
+
+-- =============================================================================
+-- Parking spots (lectura pública, escritura staff)
+-- =============================================================================
+
+drop policy if exists "parking_select_all" on public.parking_spots;
+create policy "parking_select_all" on public.parking_spots for select to anon, authenticated using (true);
+
+drop policy if exists "parking_write_staff" on public.parking_spots;
+create policy "parking_write_staff" on public.parking_spots for all to authenticated
+  using (public.app_has_permission('parking.manage'))
+  with check (public.app_has_permission('parking.manage'));
+
+-- =============================================================================
+-- Tema global (lectura pública, escritura theme.manage)
+-- =============================================================================
+
+drop policy if exists "app_theme_select_all" on public.app_theme;
+create policy "app_theme_select_all" on public.app_theme for select to anon, authenticated using (true);
+
+drop policy if exists "app_theme_write_managers" on public.app_theme;
+create policy "app_theme_write_managers" on public.app_theme for all to authenticated
+  using (public.app_has_permission('theme.manage'))
+  with check (public.app_has_permission('theme.manage'));
 
 -- =============================================================================
 -- Movimientos inventario

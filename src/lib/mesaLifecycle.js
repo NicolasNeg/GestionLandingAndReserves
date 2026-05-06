@@ -1,18 +1,17 @@
 import { listMesaReservasVencibles, updateMesaReservaEstado } from './dataLayer.js';
 import { getCurrentUser } from './authProvider.js';
-import { getDataConnectErrorMessage, isDataConnectNotDeployed, isPermissionError } from './dataConnectErrors.js';
+import { getBackendErrorMessage, isBackendOperationUnavailable, isPermissionError } from './backendErrors.js';
 import { clearMesaReservaLive } from './mesaRealtime.js';
 import { formatFechaDia } from './fechaDiaMexico.js';
 
 function warnSweepSkipped(error, context = 'consulta') {
-  console.warn(`Barrido de reservas vencidas omitido (${context}):`, getDataConnectErrorMessage(error));
+  console.warn(`Barrido de reservas vencidas omitido (${context}):`, getBackendErrorMessage(error));
 }
 
 /**
  * Marca como vencidas las reservas "apartada" de días anteriores.
  * Se puede ejecutar al iniciar vistas operativas.
- * Es best-effort: nunca debe bloquear rutas públicas si Data Connect o reglas
- * de backend aún no están desplegadas.
+ * Es best-effort: no debe bloquear rutas públicas si Postgres o RLS no están listos.
  */
 export async function sweepExpiredMesaReservas({ rethrowUnexpected = false } = {}) {
   if (!getCurrentUser()) return 0;
@@ -22,7 +21,7 @@ export async function sweepExpiredMesaReservas({ rethrowUnexpected = false } = {
   try {
     res = await listMesaReservasVencibles({ fechaDia: hoy });
   } catch (error) {
-    if (isDataConnectNotDeployed(error) || isPermissionError(error)) {
+    if (isBackendOperationUnavailable(error) || isPermissionError(error)) {
       warnSweepSkipped(error);
       return 0;
     }
@@ -41,7 +40,7 @@ export async function sweepExpiredMesaReservas({ rethrowUnexpected = false } = {
         await clearMesaReservaLive(r.fechaDia, r.mapItemId);
       }
     } catch (error) {
-      if (isDataConnectNotDeployed(error) || isPermissionError(error)) {
+      if (isBackendOperationUnavailable(error) || isPermissionError(error)) {
         warnSweepSkipped(error, `actualizacion ${r.id || ''}`.trim());
         continue;
       }

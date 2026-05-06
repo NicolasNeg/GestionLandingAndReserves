@@ -1,34 +1,28 @@
 /**
- * Subida de archivos: Firebase Storage por defecto.
+ * Subida de archivos: Supabase Storage.
  */
-import { isStorageSupabase } from './migrationEnv.js';
-import * as stFirebase from './storageFirebase.js';
 import * as stSupabase from './storageSupabase.js';
 
-function impl() {
-  return isStorageSupabase() ? stSupabase : stFirebase;
-}
-
 export function resolveStorageProvider() {
-  return isStorageSupabase() ? 'supabase' : 'firebase';
+  return 'supabase';
 }
 
 export function uploadProductImage(file, uid) {
-  return impl().uploadProductImage(file, uid);
+  return stSupabase.uploadProductImage(file, uid);
 }
 
 export function uploadServiceImage(file, uid) {
-  return impl().uploadServiceImage(file, uid);
+  return stSupabase.uploadServiceImage(file, uid);
 }
 
 export function uploadAvatarImage(file, uid) {
-  return impl().uploadAvatarImage(file, uid);
+  return stSupabase.uploadAvatarImage(file, uid);
 }
 
 export function deleteImage(path) {
-  return impl().deleteImage(path);
+  return stSupabase.deleteImage(path);
 }
 
 export function getPublicUrl(path) {
-  return impl().getPublicUrl(path);
+  return stSupabase.getPublicUrl(path);
 }
