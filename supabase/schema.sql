@@ -110,6 +110,19 @@ create table if not exists public.tickets (
   fecha_escaneo timestamptz
 );
 
+create table if not exists public.ticket_scans (
+  id uuid primary key default gen_random_uuid(),
+  ticket_id uuid references public.tickets(id) on delete set null,
+  scanned_by text references public.users(id) on delete set null,
+  scanned_at timestamptz not null default now(),
+  device_id text,
+  mode text not null default 'online',
+  result text not null default 'valid',
+  raw_qr text not null default '',
+  metadata jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now()
+);
+
 create table if not exists public.mesa_reservas (
   id uuid primary key default gen_random_uuid(),
   fecha_dia text not null,
@@ -160,6 +173,7 @@ alter table public.servicios enable row level security;
 alter table public.landing_page enable row level security;
 alter table public.descuentos enable row level security;
 alter table public.tickets enable row level security;
+alter table public.ticket_scans enable row level security;
 alter table public.mesa_reservas enable row level security;
 
 -- Estacionamiento en tiempo real (UI sync)
@@ -484,6 +498,18 @@ create policy "tickets_update_staff" on public.tickets for update to authenticat
   with check (
     public.app_has_permission('tickets.scan')
     or public.app_has_permission('dashboard.manage')
+  );
+
+drop policy if exists "ticket_scans_insert_staff" on public.ticket_scans;
+create policy "ticket_scans_insert_staff" on public.ticket_scans for insert to authenticated
+  with check (public.app_has_permission('tickets.scan') or public.app_is_role_manager());
+
+drop policy if exists "ticket_scans_select_staff" on public.ticket_scans;
+create policy "ticket_scans_select_staff" on public.ticket_scans for select to authenticated
+  using (
+    public.app_has_permission('tickets.scan')
+    or public.app_has_permission('dashboard.manage')
+    or public.app_is_role_manager()
   );
 
 -- =============================================================================

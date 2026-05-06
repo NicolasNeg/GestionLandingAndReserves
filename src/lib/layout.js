@@ -77,6 +77,9 @@ function renderHeader(access, theme) {
       : '',
     access.can('admin.panel')
       ? navLink({ href: '/admin/dashboard?section=admin', label: 'Panel administracion', iconName: 'dashboard', active: path === '/admin/dashboard' })
+      : '',
+    access.can('tickets.scan')
+      ? navLink({ href: '/escaner', label: 'Escanear', iconName: 'scan', active: path === '/escaner' })
       : ''
   ].join('');
 

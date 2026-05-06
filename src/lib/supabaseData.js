@@ -251,6 +251,22 @@ function mapMovRow(r) {
   };
 }
 
+function mapTicketScanRow(r) {
+  if (!r) return null;
+  return {
+    id: r.id,
+    ticketId: r.ticket_id,
+    scannedBy: r.scanned_by,
+    scannedAt: r.scanned_at,
+    deviceId: r.device_id,
+    mode: r.mode,
+    result: r.result,
+    rawQr: r.raw_qr,
+    metadata: r.metadata || {},
+    createdAt: r.created_at
+  };
+}
+
 function mapDescuentoRow(r) {
   if (!r) return null;
   const rules =
@@ -471,6 +487,97 @@ export async function updateTicketStatus({ id, estadoTicket, estadoPago }) {
     .eq('id', id);
   if (error) throw error;
   return { data: {} };
+}
+
+export async function getTicketForScan(ticketId) {
+  return getTicketById({ id: ticketId });
+}
+
+export async function listTicketsForScannerCache({ date }) {
+  const sb = requireClient();
+  const fecha = String(date || new Date().toISOString().slice(0, 10));
+  const start = `${fecha}T00:00:00.000Z`;
+  const end = `${fecha}T23:59:59.999Z`;
+  const { data, error } = await sb
+    .from('tickets')
+    .select('*')
+    .gte('fecha_creacion', start)
+    .lte('fecha_creacion', end)
+    .order('fecha_creacion', { ascending: false })
+    .limit(2000);
+  if (error) throw error;
+  return { data: { tickets: (data || []).map((r) => mapTicketRow(r)) } };
+}
+
+function scanInvalid(reason, ticket = null) {
+  return { data: { result: 'invalid', reason, ticket } };
+}
+
+export async function scanTicketOnline({ ticketId, rawQr, deviceId, scannedBy }) {
+  const sb = requireClient();
+  const lookup = await getTicketById({ id: ticketId });
+  const ticket = lookup.data?.ticket;
+  if (!ticket) return scanInvalid('not_found');
+  if (ticket.estadoTicket === 'escaneado') return scanInvalid('already_scanned', ticket);
+  if (ticket.estadoTicket === 'cancelado') return scanInvalid('cancelled', ticket);
+
+  const now = new Date().toISOString();
+  const { data: updated, error: updErr } = await sb
+    .from('tickets')
+    .update({ estado_ticket: 'escaneado', fecha_escaneo: now })
+    .eq('id', ticketId)
+    .eq('estado_ticket', 'valido')
+    .select('*')
+    .maybeSingle();
+  if (updErr) throw updErr;
+
+  if (!updated) {
+    const after = await getTicketById({ id: ticketId });
+    const t2 = after.data?.ticket;
+    if (!t2) return scanInvalid('not_found');
+    if (t2.estadoTicket === 'escaneado') return scanInvalid('already_scanned', t2);
+    if (t2.estadoTicket === 'cancelado') return scanInvalid('cancelled', t2);
+    return scanInvalid('not_valid_state', t2);
+  }
+
+  const updatedTicket = mapTicketRow(updated);
+  try {
+    await sb.from('ticket_scans').insert({
+      ticket_id: ticketId,
+      scanned_by: scannedBy || getCanonicalUserId() || null,
+      scanned_at: now,
+      device_id: deviceId || null,
+      mode: 'online',
+      result: 'valid',
+      raw_qr: String(rawQr || ''),
+      metadata: {}
+    });
+  } catch {
+    // Auditoria opcional; no bloquear validacion canonica del ticket.
+  }
+
+  return { data: { result: 'valid', reason: 'ok', ticket: updatedTicket } };
+}
+
+export async function syncPendingTicketScan(scan) {
+  const res = await scanTicketOnline({
+    ticketId: scan.ticketId,
+    rawQr: scan.rawQr,
+    deviceId: scan.deviceId,
+    scannedBy: scan.scannedBy
+  });
+  return res;
+}
+
+export async function listRecentTicketScans({ limit = 50 } = {}) {
+  const sb = requireClient();
+  const { data, error } = await sb
+    .from('ticket_scans')
+    .select('*')
+    .order('scanned_at', { ascending: false })
+    .limit(Math.max(1, Math.min(200, Number(limit || 50))));
+  if (error) throw error;
+  return { data: { scans: (data || []).map(mapTicketScanRow) } };
 }
 
 export async function createAnonymousTicket(variables) {

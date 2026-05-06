@@ -1,655 +1,384 @@
 import { Html5Qrcode } from 'html5-qrcode';
 import {
-    getTicketById,
-    updateTicketStatus,
-    listRecentTickets,
-    listMisMesaReservas,
-    updateMesaReservaEstado,
-    vincularTicketMesaReserva
+  listTicketsForScannerCache,
+  scanTicketOnline,
+  syncPendingTicketScan
 } from '../lib/dataLayer.js';
 import { getCurrentUser } from '../lib/authProvider.js';
 import { getUserAccess } from '../lib/accessControl.js';
 import { icon } from '../lib/icons.js';
-import { showAlert } from '../lib/appDialog.js';
-import { upsertMesaReservaLive } from '../lib/mesaRealtime.js';
-import { formatFechaDia } from '../lib/fechaDiaMexico.js';
-import { sweepExpiredMesaReservas } from '../lib/mesaLifecycle.js';
-import { publishAppUpdate } from '../lib/realtimeSync.js';
+import {
+  addPendingScan,
+  addRecentScan,
+  cacheTicketsForDay,
+  clearOldCache,
+  getCachedTicket,
+  getScannerDeviceId,
+  listPendingScans,
+  listRecentScans,
+  markPendingScanConflict,
+  markPendingScanSynced,
+  markTicketScannedLocal
+} from '../lib/offlineScannerStore.js';
 
 const UUID_PATTERN = /[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/i;
 
-function extractTicketId(value) {
-    const text = String(value || '').trim();
-    if (!text) return null;
-
-    const directMatch = text.match(UUID_PATTERN);
-    if (directMatch) return directMatch[0].toLowerCase();
-
-    try {
-        const parsed = JSON.parse(text);
-        const candidate = parsed?.ticketId || parsed?.ticket_id || parsed?.ticket || parsed?.id;
-        if (candidate) return extractTicketId(candidate);
-    } catch {
-        // El QR normal del sistema es texto plano; JSON solo es tolerancia futura.
-    }
-
-    try {
-        const url = new URL(text);
-        const candidate =
-            url.searchParams.get('ticketId') ||
-            url.searchParams.get('ticket_id') ||
-            url.searchParams.get('ticket') ||
-            url.searchParams.get('id') ||
-            url.pathname;
-        return extractTicketId(candidate);
-    } catch {
-        return null;
-    }
+function parseTicketQr(rawValue) {
+  const text = String(rawValue || '').trim();
+  if (!text) return { ticketId: null, raw: text };
+  const direct = text.match(UUID_PATTERN);
+  if (direct) return { ticketId: direct[0].toLowerCase(), raw: text };
+  if (text.toLowerCase().startsWith('ticket:')) {
+    return parseTicketQr(text.slice(7).trim());
+  }
+  try {
+    const parsed = JSON.parse(text);
+    const candidate = parsed?.ticketId || parsed?.ticket_id || parsed?.ticket || parsed?.id;
+    if (candidate) return parseTicketQr(candidate);
+  } catch {}
+  try {
+    const url = new URL(text);
+    const qCandidate =
+      url.searchParams.get('ticket') ||
+      url.searchParams.get('ticketId') ||
+      url.searchParams.get('ticket_id') ||
+      url.searchParams.get('id');
+    if (qCandidate) return parseTicketQr(qCandidate);
+    const parts = url.pathname.split('/').filter(Boolean);
+    const idx = parts.findIndex((p) => p.toLowerCase() === 'ticket');
+    if (idx >= 0 && parts[idx + 1]) return parseTicketQr(parts[idx + 1]);
+  } catch {}
+  return { ticketId: null, raw: text };
 }
-
-function formatMoney(value) {
-    return `$${Number(value || 0).toFixed(2)}`;
-}
-
 
 function playTone(ok = true) {
-    try {
-        const Ctx = window.AudioContext || window.webkitAudioContext;
-        if (!Ctx) return;
-        const ctx = new Ctx();
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.type = 'sine';
-        osc.frequency.value = ok ? 920 : 280;
-        gain.gain.value = 0.0001;
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        const now = ctx.currentTime;
-        gain.gain.exponentialRampToValueAtTime(0.18, now + 0.01);
-        gain.gain.exponentialRampToValueAtTime(0.0001, now + (ok ? 0.16 : 0.26));
-        osc.start(now);
-        osc.stop(now + (ok ? 0.18 : 0.28));
-    } catch {
-        // noop
-    }
+  try {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return;
+    const ctx = new Ctx();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.value = ok ? 920 : 280;
+    gain.gain.value = 0.0001;
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    const now = ctx.currentTime;
+    gain.gain.exponentialRampToValueAtTime(0.2, now + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + (ok ? 0.14 : 0.24));
+    osc.start(now);
+    osc.stop(now + (ok ? 0.16 : 0.26));
+  } catch {}
 }
 
 const Escaner = {
-    render: () => `
-        <div class="min-h-full bg-gradient-to-br from-cyan-50 via-white to-amber-50 p-4 pt-8">
-            <div class="mx-auto max-w-6xl">
-                <div class="mb-5 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-                    <div>
-                        <p class="flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-cyan-700">
-                            ${icon('waves', 'h-4 w-4')} Entrada del balneario
-                        </p>
-                        <h1 class="text-3xl font-black text-slate-900">Escáner de tickets</h1>
-                    </div>
-                    <div class="rounded-full border border-cyan-200 bg-white/80 px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm">
-                        QR oficial: ID de boleto del sistema
-                    </div>
-                </div>
+  render: () => `
+    <section class="min-h-full bg-slate-100 p-3 sm:p-4">
+      <div class="mx-auto max-w-3xl space-y-3">
+        <header class="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
+          <h1 class="text-xl font-black text-slate-900">Escáner operativo</h1>
+          <p class="mt-1 text-sm text-slate-600">Validación online/offline para personal con permiso tickets.scan.</p>
+          <div id="scanner-connection-state" class="mt-2 text-xs font-bold text-slate-500" aria-live="polite"></div>
+        </header>
 
-                <div class="grid gap-5 lg:grid-cols-[minmax(0,1fr)_380px]">
-                    <section class="overflow-hidden rounded-3xl border border-slate-200 bg-slate-950 shadow-2xl">
-                        <div class="relative aspect-[4/5] min-h-[420px] sm:aspect-video">
-                            <div id="qr-reader-root" class="absolute inset-0 z-0 bg-slate-950"></div>
-                            <div class="pointer-events-none absolute inset-0 z-10 bg-[radial-gradient(circle_at_center,transparent_35%,rgba(2,6,23,0.72)_72%)]"></div>
-                            <div class="pointer-events-none absolute inset-0 z-10 flex items-center justify-center p-8">
-                                <div class="relative h-72 w-72 max-w-full rounded-[2rem] border-4 border-cyan-300/90 shadow-[0_0_38px_rgba(34,211,238,0.45)]">
-                                    <div class="absolute left-4 right-4 top-1/2 h-1 -translate-y-1/2 rounded-full bg-cyan-300 shadow-[0_0_18px_rgba(103,232,249,0.95)] animate-[scan_2s_ease-in-out_infinite]"></div>
-                                    <div class="absolute -left-1 -top-1 h-12 w-12 rounded-tl-[1.8rem] border-l-4 border-t-4 border-white"></div>
-                                    <div class="absolute -right-1 -top-1 h-12 w-12 rounded-tr-[1.8rem] border-r-4 border-t-4 border-white"></div>
-                                    <div class="absolute -bottom-1 -left-1 h-12 w-12 rounded-bl-[1.8rem] border-b-4 border-l-4 border-white"></div>
-                                    <div class="absolute -bottom-1 -right-1 h-12 w-12 rounded-br-[1.8rem] border-b-4 border-r-4 border-white"></div>
-                                </div>
-                            </div>
-                            <div class="pointer-events-none absolute left-4 right-4 top-4 z-20 flex items-center justify-between gap-3">
-                                <div class="rounded-full bg-black/55 px-3 py-2 text-xs font-bold uppercase tracking-wide text-cyan-100 backdrop-blur">
-                                    ${icon('scan', 'mr-1 inline h-4 w-4')} Cámara QR
-                                </div>
-                                <div id="camera-chip" class="rounded-full bg-slate-900/80 px-3 py-2 text-xs font-bold text-slate-200 backdrop-blur">
-                                    En espera
-                                </div>
-                            </div>
-                        </div>
+        <section class="overflow-hidden rounded-2xl bg-slate-950 shadow-lg">
+          <div class="relative aspect-[4/5] min-h-[320px]">
+            <div id="qr-reader-root" class="absolute inset-0"></div>
+            <div class="pointer-events-none absolute inset-x-6 top-6 bottom-6 rounded-3xl border-4 border-cyan-300/80"></div>
+            <div class="absolute left-3 top-3 rounded-full bg-black/60 px-3 py-1 text-xs font-bold text-cyan-100">${icon('scan', 'inline h-4 w-4 mr-1')} Cámara</div>
+            <div id="camera-chip" class="absolute right-3 top-3 rounded-full bg-black/60 px-3 py-1 text-xs font-bold text-slate-100">En espera</div>
+          </div>
+          <div class="grid grid-cols-1 gap-2 border-t border-white/10 p-3 sm:grid-cols-2">
+            <button id="btn-start-camera" class="rounded-xl bg-cyan-400 px-3 py-3 text-sm font-black text-slate-900">Iniciar cámara</button>
+            <button id="btn-stop-camera" class="rounded-xl border border-white/20 px-3 py-3 text-sm font-bold text-white" disabled>Detener cámara</button>
+          </div>
+        </section>
 
-                        <div class="grid gap-3 border-t border-white/10 bg-slate-950 p-4 sm:grid-cols-2">
-                            <button id="btn-start-camera" type="button" class="flex items-center justify-center gap-2 rounded-xl bg-cyan-400 px-4 py-3 font-black text-slate-950 transition hover:bg-cyan-300">
-                                ${icon('scan', 'h-5 w-5')} Iniciar cámara
-                            </button>
-                            <button id="btn-stop-camera" type="button" class="flex items-center justify-center gap-2 rounded-xl border border-white/15 px-4 py-3 font-bold text-white transition hover:bg-white/10" disabled>
-                                ${icon('info', 'h-5 w-5')} Detener
-                            </button>
-                        </div>
-                    </section>
+        <section id="scanner-result-box" class="rounded-2xl border border-slate-200 bg-white p-4 text-sm shadow-sm" aria-live="polite">
+          <p id="scanner-result-title" class="font-black text-slate-900">Listo para escanear</p>
+          <p id="scanner-result-message" class="mt-1 text-slate-600">Escanea un QR o pega un código manual.</p>
+        </section>
 
-                    <aside class="space-y-4">
-                        <div id="scanner-status" class="rounded-2xl border border-cyan-200 bg-cyan-50 p-4 text-cyan-950 shadow-sm transition">
-                            <div class="flex items-start gap-3">
-                                <div id="scanner-status-icon" class="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-cyan-100 text-cyan-700">
-                                    ${icon('scan', 'h-6 w-6')}
-                                </div>
-                                <div>
-                                    <h2 id="scanner-status-title" class="text-lg font-black">Listo para escanear</h2>
-                                    <p id="scanner-status-message" class="mt-1 text-sm leading-5">Apunta la cámara al QR del boleto. Si el QR no pertenece al sistema, se rechazará aquí mismo.</p>
-                                </div>
-                            </div>
-                        </div>
-                        <div id="scanner-role-breakdown" class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                            <p class="text-xs font-black uppercase tracking-wide text-slate-500">Desglose trabajador</p>
-                            <h3 id="scanner-breakdown-title" class="mt-1 text-sm font-black text-slate-900">Sin ticket seleccionado</h3>
-                            <div id="scanner-breakdown-body" class="mt-2 text-xs text-slate-600">Escanea un ticket para ver estado, pago y acción recomendada.</div>
-                        </div>
+        <section class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+          <p class="text-xs font-black uppercase text-slate-500">Entrada manual</p>
+          <div class="mt-2 flex gap-2">
+            <input id="scanner-manual-input" class="flex-1 rounded-xl border border-slate-300 px-3 py-2 text-sm" placeholder="UUID, URL o ticket:..." />
+            <button id="scanner-manual-btn" class="rounded-xl bg-slate-900 px-4 py-2 text-sm font-bold text-white">Validar</button>
+          </div>
+          <div class="mt-3 flex flex-wrap gap-2">
+            <button id="scanner-cache-btn" class="rounded-xl border border-slate-300 px-3 py-2 text-xs font-bold">Actualizar cache hoy</button>
+            <button id="scanner-sync-btn" class="rounded-xl border border-slate-300 px-3 py-2 text-xs font-bold">Sincronizar ahora</button>
+            <button id="scanner-another-btn" class="rounded-xl border border-slate-300 px-3 py-2 text-xs font-bold">Escanear otro</button>
+          </div>
+        </section>
 
-                        <div class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                            <h2 class="mb-3 flex items-center gap-2 text-lg font-black text-slate-900">
-                                ${icon('ticket', 'h-5 w-5 text-cyan-700')} Validación manual
-                            </h2>
-                            <div class="flex flex-col gap-2">
-                                <input type="text" id="sim-ticket-id" placeholder="Pega el ID o contenido del QR" class="w-full rounded-xl border-2 border-slate-200 px-4 py-3 text-slate-900 outline-none transition focus:border-cyan-500">
-                                <button id="btn-simulate" type="button" class="w-full rounded-xl bg-slate-900 py-3 font-black text-white transition hover:bg-black">Validar manualmente</button>
-                            </div>
-                        </div>
+        <section class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+          <h2 class="text-sm font-black text-slate-900">Pendientes offline</h2>
+          <div id="scanner-pending-list" class="mt-2 text-xs text-slate-600"></div>
+        </section>
 
-                        <div class="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950 shadow-sm">
-                            <p class="font-black">Última lectura</p>
-                            <p id="last-qr-value" class="mt-2 break-all rounded-xl bg-white/70 p-3 font-mono text-xs text-slate-700">--</p>
-                        </div>
-                    </aside>
-                </div>
-            </div>
+        <section class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+          <h2 class="text-sm font-black text-slate-900">Historial reciente</h2>
+          <div id="scanner-history-list" class="mt-2 text-xs text-slate-600"></div>
+        </section>
+      </div>
+    </section>
+  `,
+  mount: async () => {
+    const access = await getUserAccess(getCurrentUser());
+    if (!access.can('tickets.scan')) return;
 
-            <div id="modal-ticket" class="fixed inset-0 bg-black/60 hidden flex items-end sm:items-center justify-center z-50 p-4 transition-opacity">
-                <div class="bg-white rounded-t-3xl sm:rounded-2xl w-full max-w-sm p-6 transform transition-transform" id="modal-content">
-                    <div id="t-icon" class="w-16 h-16 rounded-full flex items-center justify-center text-3xl mx-auto -mt-12 border-4 border-white mb-4 bg-green-500 text-white">
-                        ${icon('check', 'h-8 w-8')}
-                    </div>
-                    
-                    <h2 id="t-title" class="text-2xl font-bold text-center text-green-600 mb-1">Ticket Válido</h2>
-                    <p id="t-id" class="text-center text-gray-500 text-sm mb-6 font-mono">#TRX-000</p>
-                    
-                    <div class="space-y-3 mb-6 text-sm">
-                        <div class="flex justify-between border-b pb-2"><span class="text-gray-500">Cliente:</span><span id="t-client" class="font-bold">--</span></div>
-                        <div class="flex justify-between border-b pb-2"><span class="text-gray-500">Total a Pagar/Pagado:</span><span id="t-price" class="font-bold">--</span></div>
-                        <div id="t-payment-status" class="bg-green-100 text-green-800 p-3 rounded-lg text-center font-bold">--</div>
-                    </div>
-                    
-                    <button id="btn-action" class="w-full bg-gray-900 text-white font-bold py-4 rounded-xl text-lg hover:bg-black transition shadow-lg">Registrar Ingreso</button>
-                    <button id="btn-close" class="w-full text-gray-500 font-bold py-3 mt-2 text-sm hover:text-gray-700">Cerrar (No ingresar)</button>
-                </div>
-            </div>
+    const btnStart = document.getElementById('btn-start-camera');
+    const btnStop = document.getElementById('btn-stop-camera');
+    const btnManual = document.getElementById('scanner-manual-btn');
+    const btnCache = document.getElementById('scanner-cache-btn');
+    const btnSync = document.getElementById('scanner-sync-btn');
+    const btnAnother = document.getElementById('scanner-another-btn');
+    const inputManual = document.getElementById('scanner-manual-input');
+    const cameraChip = document.getElementById('camera-chip');
+    const connState = document.getElementById('scanner-connection-state');
+    const resultBox = document.getElementById('scanner-result-box');
+    const resultTitle = document.getElementById('scanner-result-title');
+    const resultMessage = document.getElementById('scanner-result-message');
+    const pendingList = document.getElementById('scanner-pending-list');
+    const historyList = document.getElementById('scanner-history-list');
 
-            <style>
-                @keyframes scan {
-                    0%, 100% { top: 12%; }
-                    50% { top: 88%; }
-                }
-                #qr-reader-root video {
-                    width: 100% !important;
-                    height: 100% !important;
-                    object-fit: cover;
-                }
-            </style>
-        </div>
-    `,
-    mount: () => {
-        if (window.__ticketScannerCleanup) {
-            window.__ticketScannerCleanup();
+    let scanner = null;
+    let lastRaw = '';
+    let lastAt = 0;
+    let busy = false;
+    const deviceId = getScannerDeviceId();
+
+    const paintResult = (variant, title, message) => {
+      const styles = {
+        ok: 'rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm shadow-sm',
+        bad: 'rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm shadow-sm',
+        warn: 'rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm shadow-sm',
+        pending: 'rounded-2xl border border-yellow-200 bg-yellow-50 p-4 text-sm shadow-sm',
+        idle: 'rounded-2xl border border-slate-200 bg-white p-4 text-sm shadow-sm'
+      };
+      resultBox.className = styles[variant] || styles.idle;
+      resultTitle.textContent = title;
+      resultMessage.textContent = message;
+    };
+
+    const updateConn = async () => {
+      const pending = await listPendingScans();
+      connState.textContent = `${navigator.onLine ? 'Online' : 'Offline'} · Pendientes: ${pending.filter((p) => p.status === 'pending').length}`;
+    };
+
+    const renderPending = async () => {
+      const rows = await listPendingScans();
+      if (!rows.length) {
+        pendingList.innerHTML = '<p class="text-emerald-700">Todo sincronizado.</p>';
+        return;
+      }
+      pendingList.innerHTML = rows
+        .slice(0, 10)
+        .map((row) => `<p class="mb-1 rounded-lg bg-slate-100 px-2 py-1">#${String(row.ticketId || '').slice(0, 8)} · ${row.status} · ${new Date(row.scannedAt).toLocaleTimeString()}</p>`)
+        .join('');
+    };
+
+    const renderHistory = async () => {
+      const rows = await listRecentScans(12);
+      if (!rows.length) {
+        historyList.innerHTML = '<p class="text-slate-500">Sin escaneos recientes.</p>';
+        return;
+      }
+      historyList.innerHTML = rows
+        .map((row) => `<p class="mb-1 rounded-lg bg-slate-100 px-2 py-1">${row.mode.toUpperCase()} · ${row.status} · ${String(row.ticketId || '').slice(0, 8)}</p>`)
+        .join('');
+    };
+
+    const processOnline = async ({ ticketId, raw }) => {
+      const response = await scanTicketOnline({
+        ticketId,
+        rawQr: raw,
+        deviceId,
+        scannedBy: access.userId || access.uid || ''
+      });
+      const result = response.data?.result;
+      const reason = response.data?.reason;
+      if (result === 'valid') {
+        paintResult('ok', 'Entrada aceptada', 'Ticket válido y marcado como escaneado en Supabase.');
+        playTone(true);
+        if (navigator.vibrate) navigator.vibrate(55);
+        await addRecentScan({ ticketId, rawQr: raw, mode: 'online', status: 'accepted', message: 'valid' });
+      } else {
+        paintResult('bad', 'Entrada rechazada', `No válido: ${reason || 'invalid'}.`);
+        playTone(false);
+        if (navigator.vibrate) navigator.vibrate([80, 40, 80]);
+        await addRecentScan({ ticketId, rawQr: raw, mode: 'online', status: 'rejected', message: reason || 'invalid' });
+      }
+    };
+
+    const processOffline = async ({ ticketId, raw }) => {
+      const ticket = await getCachedTicket(ticketId);
+      if (!ticket) {
+        paintResult('warn', 'No validable offline', 'No se puede validar offline: ticket no descargado en este dispositivo.');
+        playTone(false);
+        await addRecentScan({ ticketId, rawQr: raw, mode: 'offline', status: 'not_cached' });
+        return;
+      }
+      if (ticket.estadoTicket === 'cancelado') {
+        paintResult('bad', 'Ticket cancelado', 'Ticket cancelado en cache local.');
+        playTone(false);
+        await addRecentScan({ ticketId, rawQr: raw, mode: 'offline', status: 'cancelled' });
+        return;
+      }
+      if (ticket.estadoTicket === 'escaneado') {
+        paintResult('bad', 'Duplicado offline', 'Este ticket ya fue marcado como escaneado en este dispositivo.');
+        playTone(false);
+        await addRecentScan({ ticketId, rawQr: raw, mode: 'offline', status: 'already_scanned' });
+        return;
+      }
+      if (ticket.estadoTicket !== 'valido') {
+        paintResult('bad', 'Estado no válido', `Estado local no válido: ${ticket.estadoTicket || 'desconocido'}`);
+        playTone(false);
+        await addRecentScan({ ticketId, rawQr: raw, mode: 'offline', status: 'invalid_state' });
+        return;
+      }
+      const now = new Date().toISOString();
+      await markTicketScannedLocal(ticketId, { scannedAt: now });
+      await addPendingScan({
+        ticketId,
+        scannedAt: now,
+        scannedBy: access.userId || access.uid || '',
+        deviceId,
+        mode: 'offline',
+        status: 'pending',
+        rawQr: raw,
+        resultSnapshot: { ticketEstado: ticket.estadoTicket }
+      });
+      await addRecentScan({ ticketId, rawQr: raw, mode: 'offline', status: 'accepted_pending_sync' });
+      paintResult('pending', 'Aceptado offline', 'Entrada aceptada offline — pendiente de sincronizar.');
+      playTone(true);
+      if (navigator.vibrate) navigator.vibrate(35);
+    };
+
+    const processRaw = async (rawInput) => {
+      if (busy) return;
+      const now = Date.now();
+      if (rawInput === lastRaw && now - lastAt < 1800) return;
+      lastRaw = rawInput;
+      lastAt = now;
+      busy = true;
+      try {
+        const parsed = parseTicketQr(rawInput);
+        if (!parsed.ticketId) {
+          paintResult('bad', 'QR inválido', 'No se encontró ticket id válido en el código.');
+          playTone(false);
+          return;
         }
+        if (navigator.onLine) await processOnline(parsed);
+        else await processOffline(parsed);
+        await renderPending();
+        await renderHistory();
+        await updateConn();
+      } catch (error) {
+        paintResult('warn', 'Error de validación', error?.message || 'No se pudo validar.');
+      } finally {
+        busy = false;
+      }
+    };
 
-        const readerRoot = document.getElementById('qr-reader-root');
-        const btnStartCamera = document.getElementById('btn-start-camera');
-        const btnStopCamera = document.getElementById('btn-stop-camera');
-        const cameraChip = document.getElementById('camera-chip');
-        const statusBox = document.getElementById('scanner-status');
-        const statusIcon = document.getElementById('scanner-status-icon');
-        const statusTitle = document.getElementById('scanner-status-title');
-        const statusMessage = document.getElementById('scanner-status-message');
-        const breakdownTitle = document.getElementById('scanner-breakdown-title');
-        const breakdownBody = document.getElementById('scanner-breakdown-body');
-        const lastQrValue = document.getElementById('last-qr-value');
-        const btnSimulate = document.getElementById('btn-simulate');
-        const inputId = document.getElementById('sim-ticket-id');
-        const modal = document.getElementById('modal-ticket');
-        const btnAction = document.getElementById('btn-action');
-        const btnClose = document.getElementById('btn-close');
-        
-        // Elementos UI Modal
-        const tIcon = document.getElementById('t-icon');
-        const tTitle = document.getElementById('t-title');
-        const tId = document.getElementById('t-id');
-        const tClient = document.getElementById('t-client');
-        const tPrice = document.getElementById('t-price');
-        const tPaymentStatus = document.getElementById('t-payment-status');
-        
-        let currentTicketId = null;
-        let currentTicketData = null;
-        let currentActionLabel = 'Registrar Ingreso';
-        let html5QrCode = null;
-        let cameraActive = false;
-        let isValidating = false;
-        let lastScanRaw = '';
-        let lastScanAt = 0;
-        let scannerDisposed = false;
+    const stopCamera = async () => {
+      if (!scanner) return;
+      try {
+        if (scanner.isScanning) await scanner.stop();
+        scanner.clear();
+      } catch {}
+      scanner = null;
+      btnStart.disabled = false;
+      btnStop.disabled = true;
+      cameraChip.textContent = 'En espera';
+    };
 
-        const statusClasses = {
-            idle: 'rounded-2xl border border-cyan-200 bg-cyan-50 p-4 text-cyan-950 shadow-sm transition',
-            loading: 'rounded-2xl border border-blue-200 bg-blue-50 p-4 text-blue-950 shadow-sm transition',
-            success: 'rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-emerald-950 shadow-sm transition',
-            warning: 'rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-950 shadow-sm transition',
-            danger: 'rounded-2xl border border-rose-300 bg-rose-50 p-4 text-rose-950 shadow-sm transition'
-        };
+    const startCamera = async () => {
+      if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
+        paintResult('warn', 'Cámara no disponible', 'Usa validación manual en este dispositivo.');
+        return;
+      }
+      await stopCamera();
+      btnStart.disabled = true;
+      btnStop.disabled = false;
+      cameraChip.textContent = 'Activa';
+      scanner = new Html5Qrcode('qr-reader-root', { verbose: false });
+      try {
+        await scanner.start(
+          { facingMode: 'environment' },
+          { fps: 8, qrbox: { width: 220, height: 220 } },
+          (decodedText) => processRaw(decodedText),
+          () => {}
+        );
+      } catch {
+        await stopCamera();
+        paintResult('warn', 'Error de cámara', 'No se pudo abrir la cámara. Usa entrada manual.');
+      }
+    };
 
-        const statusIconClasses = {
-            idle: 'flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-cyan-100 text-cyan-700',
-            loading: 'flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-blue-100 text-blue-700',
-            success: 'flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-700',
-            warning: 'flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-amber-100 text-amber-700',
-            danger: 'flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-rose-100 text-rose-700'
-        };
-
-        const statusIcons = {
-            idle: icon('scan', 'h-6 w-6'),
-            loading: icon('clock', 'h-6 w-6 animate-spin'),
-            success: icon('check', 'h-6 w-6'),
-            warning: icon('alertTriangle', 'h-6 w-6'),
-            danger: icon('x', 'h-6 w-6')
-        };
-
-        const showScannerStatus = (variant, title, message) => {
-            statusBox.className = statusClasses[variant] || statusClasses.idle;
-            statusIcon.className = statusIconClasses[variant] || statusIconClasses.idle;
-            statusIcon.innerHTML = statusIcons[variant] || statusIcons.idle;
-            statusTitle.textContent = title;
-            statusMessage.textContent = message;
-        };
-        const updateBreakdown = (ticket, actionLabel = '--') => {
-            if (!breakdownTitle || !breakdownBody) return;
-            if (!ticket) {
-                breakdownTitle.textContent = 'Sin ticket seleccionado';
-                breakdownBody.textContent = 'Escanea un ticket para ver estado, pago y acción recomendada.';
-                return;
-            }
-            const estado = ticket.estadoTicket || 'desconocido';
-            const pago = ticket.estadoPago || 'desconocido';
-            breakdownTitle.textContent = `Ticket #${String(ticket.id || '').substring(0, 8)} · ${estado.toUpperCase()}`;
-            breakdownBody.innerHTML = `
-                <div class="space-y-1">
-                    <p><strong>Cliente:</strong> ${ticket.clienteNombre || 'N/A'}</p>
-                    <p><strong>Pago:</strong> ${pago}</p>
-                    <p><strong>Total:</strong> ${formatMoney(ticket.precioTotal)}</p>
-                    <p><strong>Acción:</strong> ${actionLabel}</p>
-                </div>
-            `;
-        };
-
-        const updateLastRead = (rawValue) => {
-            const text = String(rawValue || '').trim();
-            lastQrValue.textContent = text ? (text.length > 180 ? `${text.slice(0, 177)}...` : text) : '--';
-        };
-
-        const setBusy = (busy) => {
-            btnSimulate.disabled = busy;
-            btnSimulate.textContent = busy ? 'Validando boleto...' : 'Validar manualmente';
-        };
-
-        const setCameraUi = (active, label = active ? 'Cámara activa' : 'En espera') => {
-            cameraActive = active;
-            cameraChip.textContent = label;
-            cameraChip.className = active
-                ? 'rounded-full bg-cyan-400 px-3 py-2 text-xs font-black text-slate-950 backdrop-blur'
-                : 'rounded-full bg-slate-900/80 px-3 py-2 text-xs font-bold text-slate-200 backdrop-blur';
-            btnStartCamera.disabled = active;
-            btnStopCamera.disabled = !active;
-        };
-
-        const showInvalidScan = (message = 'Este QR no pertenece al sistema del balneario. No permitir acceso.') => {
-            currentTicketId = null;
-            currentTicketData = null;
-            updateBreakdown(null);
-            showScannerStatus('danger', 'BOLETO INVALIDO', message);
-            playTone(false);
-            if (navigator.vibrate) navigator.vibrate([90, 40, 90]);
-        };
-
-        const stopCamera = async ({ silent = false } = {}) => {
-            if (html5QrCode) {
-                try {
-                    if (html5QrCode.isScanning) {
-                        await html5QrCode.stop();
-                    }
-                    html5QrCode.clear();
-                } catch (err) {
-                    console.warn('Al detener el escaner:', err);
-                }
-                html5QrCode = null;
-            }
-            setCameraUi(false);
-
-            if (!silent) {
-                showScannerStatus('idle', 'Cámara detenida', 'Puedes reiniciar la cámara o validar el ID manualmente.');
-            }
-        };
-
-        const validateRawCode = async (rawValue) => {
-            if (isValidating) return;
-
-            const raw = String(rawValue || '').trim();
-            updateLastRead(raw);
-
-            if (!raw) {
-                showScannerStatus('warning', 'Sin código', 'Acerca un QR válido o pega el ID del boleto.');
-                return;
-            }
-
-            const ticketId = extractTicketId(raw);
-            if (!ticketId) {
-                showInvalidScan('Este QR no tiene un ID de boleto válido. Coméntale al cliente que este boleto es inválido.');
-                return;
-            }
-
-            isValidating = true;
-            setBusy(true);
-            showScannerStatus('loading', 'Validando boleto', `Buscando ticket #${ticketId.substring(0, 8)} en el sistema...`);
-
-            try {
-                const res = await getTicketById({ id: ticketId });
-                let ticket = res.data?.ticket;
-
-                if (!ticket) {
-                    if (ticketId.length === 8) {
-                        try {
-                            const recent = await listRecentTickets();
-                            const alt = (recent.data?.tickets || []).find((t) => String(t.id || '').toLowerCase().startsWith(ticketId));
-                            if (alt?.id) {
-                                const byAlt = await getTicketById({ id: alt.id });
-                                ticket = byAlt.data?.ticket || null;
-                            }
-                        } catch {}
-                    }
-                    if (!ticket) {
-                        showInvalidScan('El ID leído no existe en la base de datos. Coméntale al cliente que este boleto es inválido.');
-                        return;
-                    }
-                }
-
-                currentTicketData = ticket;
-                currentTicketId = ticket.id;
-                const fechaTicket = ticket.fechaCreacion ? formatFechaDia(new Date(ticket.fechaCreacion)) : '';
-                const hoy = formatFechaDia();
-                if (fechaTicket && fechaTicket !== hoy) {
-                    showInvalidScan(`Ticket de fecha ${fechaTicket}. Hoy es ${hoy}; no se permite acceso con fecha distinta.`);
-                    return;
-                }
-                showTicketModal(currentTicketId, currentTicketData);
-            } catch (error) {
-                console.error('Error obteniendo ticket: ', error);
-                showScannerStatus(
-                    'warning',
-                    'No se pudo validar',
-                    'Hubo un problema consultando el servidor. Revisa la conexión e intenta de nuevo antes de permitir el acceso.'
-                );
-            } finally {
-                isValidating = false;
-                setBusy(false);
-            }
-        };
-
-        const handleDetectedCode = (rawValue) => {
-            const raw = String(rawValue || '').trim();
-            const now = Date.now();
-
-            if (!raw || isValidating) return;
-            if (raw === lastScanRaw && now - lastScanAt < 2400) return;
-
-            lastScanRaw = raw;
-            lastScanAt = now;
-            validateRawCode(raw);
-        };
-
-        const startCamera = async () => {
-            if (scannerDisposed) return;
-            if (cameraActive) return;
-
-            if (!window.isSecureContext) {
-                showScannerStatus(
-                    'warning',
-                    'Contexto no seguro',
-                    'La camara requiere HTTPS (o localhost). Usa la validacion manual del boleto.'
-                );
-                return;
-            }
-
-            if (!navigator.mediaDevices?.getUserMedia) {
-                showScannerStatus('warning', 'Cámara no disponible', 'Este navegador no permite acceso a cámara. Usa la validación manual.');
-                return;
-            }
-
-            if (!readerRoot) {
-                showScannerStatus('warning', 'Interfaz incompleta', 'Recarga la página e intenta de nuevo.');
-                return;
-            }
-
-            try {
-                btnStartCamera.disabled = true;
-                cameraChip.textContent = 'Abriendo...';
-
-                await stopCamera({ silent: true });
-
-                html5QrCode = new Html5Qrcode('qr-reader-root', { verbose: false });
-                await html5QrCode.start(
-                    { facingMode: 'environment' },
-                    {
-                        fps: 8,
-                        qrbox: { width: 260, height: 260 },
-                        aspectRatio: 1.777778
-                    },
-                    (decodedText) => {
-                        handleDetectedCode(decodedText);
-                    },
-                    () => {}
-                );
-
-                setCameraUi(true);
-                showScannerStatus('idle', 'Cámara lista', 'Apunta al QR del boleto. El sistema validará el ticket automáticamente.');
-            } catch (error) {
-                console.error('Error iniciando cámara:', error);
-                await stopCamera({ silent: true });
-                const name = error?.name || '';
-                const hint =
-                    name === 'NotAllowedError' || name === 'PermissionDeniedError'
-                        ? 'Permite el acceso a la camara en la barra del navegador y vuelve a pulsar Iniciar.'
-                        : 'Prueba otro navegador o usa la validacion manual del boleto.';
-                showScannerStatus('warning', 'No se pudo abrir la cámara', hint);
-            } finally {
-                if (!cameraActive) btnStartCamera.disabled = false;
-            }
-        };
-
-        const cleanupScanner = () => {
-            scannerDisposed = true;
-            void stopCamera({ silent: true });
-            document.removeEventListener('click', stopOnNavigation, true);
-            window.removeEventListener('beforeunload', cleanupScanner);
-            window.removeEventListener('popstate', cleanupScanner);
-            if (window.__ticketScannerCleanup === cleanupScanner) {
-                window.__ticketScannerCleanup = null;
-            }
-        };
-
-        const stopOnNavigation = (event) => {
-            if (event.target.closest?.('[data-link]')) cleanupScanner();
-        };
-
-        window.__ticketScannerCleanup = cleanupScanner;
-        document.addEventListener('click', stopOnNavigation, true);
-        window.addEventListener('beforeunload', cleanupScanner);
-        window.addEventListener('popstate', cleanupScanner);
-
-        btnClose.addEventListener('click', () => {
-            modal.classList.add('hidden');
-            btnAction.disabled = false;
-            btnAction.textContent = currentActionLabel;
-        });
-
-        btnStartCamera.addEventListener('click', () => void startCamera());
-        btnStopCamera.addEventListener('click', () => void stopCamera());
-
-        btnSimulate.addEventListener('click', () => {
-            validateRawCode(inputId.value);
-        });
-
-        inputId.addEventListener('keydown', (event) => {
-            if (event.key === 'Enter') validateRawCode(inputId.value);
-        });
-
-        function showTicketModal(id, data) {
-            tId.textContent = "#" + id.substring(0, 8);
-            tClient.textContent = data.clienteNombre || '--';
-            tPrice.textContent = formatMoney(data.precioTotal);
-            
-            // Reset clases
-            tIcon.className = "w-16 h-16 rounded-full flex items-center justify-center text-3xl mx-auto -mt-12 border-4 border-white mb-4";
-            tTitle.className = "text-2xl font-bold text-center mb-1";
-            tPaymentStatus.className = "p-3 rounded-lg text-center font-bold";
-            
-            btnAction.style.display = 'block';
-            btnAction.disabled = false;
-            currentActionLabel = 'Registrar Ingreso';
-
-            if (data.estadoTicket === 'escaneado') {
-                // Rechazado - Ya usado
-                tIcon.classList.add('bg-red-500', 'text-white');
-                tIcon.innerHTML = icon('x', 'h-8 w-8');
-                tTitle.classList.add('text-red-600');
-                tTitle.textContent = "Ticket Ya Utilizado";
-                tPaymentStatus.classList.add('bg-red-100', 'text-red-800');
-                
-                const fechaUso = data.fechaEscaneo ? new Date(data.fechaEscaneo).toLocaleString() : 'Recientemente';
-                tPaymentStatus.textContent = "Este ticket ya ingresó al balneario el: " + fechaUso;
-                btnAction.style.display = 'none'; // No se puede registrar ingreso
-                updateBreakdown(data, 'Ya usado. No permitir reingreso');
-                showScannerStatus('danger', 'BOLETO RECHAZADO', 'Este ticket ya fue usado. No permitir acceso nuevamente.');
-                
-            } else if (data.estadoTicket === 'valido') {
-                if (data.estadoPago === 'pagado') {
-                    // Válido y Pagado
-                    tIcon.classList.add('bg-green-500', 'text-white');
-                    tIcon.innerHTML = icon('check', 'h-8 w-8');
-                    tTitle.classList.add('text-green-600');
-                    tTitle.textContent = "Ticket Válido";
-                    tPaymentStatus.classList.add('bg-green-100', 'text-green-800');
-                    tPaymentStatus.textContent = "Pago Confirmado 100%";
-                    currentActionLabel = "Aceptar Ingreso y Marcar Usado";
-                    btnAction.textContent = currentActionLabel;
-                    btnAction.className = "w-full bg-gray-900 text-white font-bold py-4 rounded-xl text-lg hover:bg-black transition shadow-lg";
-                    showScannerStatus('success', 'BOLETO VALIDO', 'Pago confirmado. Puedes aceptar el ingreso y marcar el boleto como usado.');
-                    updateBreakdown(data, 'Registrar entrada');
-                playTone(true);
-                if (navigator.vibrate) navigator.vibrate([25, 20, 45]);
-                } else {
-                    // Válido pero Pago Pendiente (Taquilla)
-                    tIcon.classList.add('bg-amber-500', 'text-white');
-                    tIcon.innerHTML = icon('alertTriangle', 'h-8 w-8');
-                    tTitle.classList.add('text-amber-600');
-                    tTitle.textContent = "Pago Pendiente";
-                    tPaymentStatus.classList.add('bg-amber-100', 'text-amber-800');
-                    tPaymentStatus.textContent = "Cobrar en taquilla: " + formatMoney(data.precioTotal);
-                    currentActionLabel = "Cobrar y Aceptar Ingreso";
-                    btnAction.textContent = currentActionLabel;
-                    btnAction.className = "w-full bg-amber-500 text-white font-bold py-4 rounded-xl text-lg hover:bg-amber-600 transition shadow-lg";
-                    showScannerStatus('warning', 'PAGO PENDIENTE', 'El boleto existe, pero primero debe cobrarse en taquilla.');
-                    updateBreakdown(data, 'Cobrar y registrar entrada');
-                    playTone(false);
-                    if (navigator.vibrate) navigator.vibrate([70]);
-                }
-            } else {
-                // Cancelado u otro
-                tIcon.classList.add('bg-gray-500', 'text-white');
-                tIcon.innerHTML = icon('ban', 'h-8 w-8');
-                tTitle.classList.add('text-gray-600');
-                tTitle.textContent = "Ticket Inválido o Cancelado";
-                tPaymentStatus.classList.add('hidden');
-                btnAction.style.display = 'none';
-                updateBreakdown(data, 'No permitir acceso');
-                showScannerStatus('danger', 'BOLETO INVALIDO', 'Este ticket está cancelado o no tiene estado válido. No permitir acceso.');
-            }
-
-            modal.classList.remove('hidden');
+    const syncPending = async () => {
+      const rows = await listPendingScans();
+      const pending = rows.filter((row) => row.status === 'pending' || row.status === 'conflict');
+      if (!pending.length) {
+        paintResult('idle', 'Sin pendientes', 'No hay escaneos por sincronizar.');
+        return;
+      }
+      paintResult('warn', 'Sincronizando', `Procesando ${pending.length} escaneos pendientes...`);
+      for (const row of pending) {
+        try {
+          const res = await syncPendingTicketScan(row);
+          if (res.data?.result === 'valid') await markPendingScanSynced(row.localId, res.data);
+          else await markPendingScanConflict(row.localId, new Error(res.data?.reason || 'rejected'));
+        } catch (error) {
+          await markPendingScanConflict(row.localId, error);
         }
+      }
+      paintResult('idle', 'Sincronización terminada', 'Revisa pendientes y conflictos.');
+      await renderPending();
+      await renderHistory();
+      await updateConn();
+    };
 
-        btnAction.addEventListener('click', async () => {
-            if (!currentTicketId) return;
-            
-            btnAction.textContent = "Validando ingreso...";
-            btnAction.disabled = true;
+    const refreshCache = async () => {
+      if (!navigator.onLine) {
+        paintResult('warn', 'Offline', 'Conéctate a internet para actualizar cache del día.');
+        return;
+      }
+      const date = new Date().toISOString().slice(0, 10);
+      const res = await listTicketsForScannerCache({ date });
+      const rows = res.data?.tickets || [];
+      await cacheTicketsForDay(date, rows);
+      await clearOldCache(5);
+      paintResult('ok', 'Cache actualizado', `Cache actualizado: ${rows.length} tickets.`);
+    };
 
-            try {
-                const access = await getUserAccess(getCurrentUser());
-                if (!access.can('tickets.scan')) {
-                    await showAlert('Tu usuario ya no tiene permiso para escanear tickets.', {
-                        title: 'Sin permiso',
-                        variant: 'danger'
-                    });
-                    return;
-                }
+    btnStart?.addEventListener('click', () => void startCamera());
+    btnStop?.addEventListener('click', () => void stopCamera());
+    btnManual?.addEventListener('click', () => void processRaw(inputManual.value));
+    inputManual?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') void processRaw(inputManual.value);
+    });
+    btnCache?.addEventListener('click', () => void refreshCache());
+    btnSync?.addEventListener('click', () => void syncPending());
+    btnAnother?.addEventListener('click', () => {
+      inputManual.value = '';
+      paintResult('idle', 'Listo para escanear', 'Escanea un QR o pega un código manual.');
+    });
 
-                await updateTicketStatus({
-                    id: currentTicketId,
-                    estadoTicket: 'escaneado',
-                    estadoPago: 'pagado'
-                });
-                const ticketOwnerId = currentTicketData?.user?.id || '';
-                const fechaDia = formatFechaDia();
-                if (ticketOwnerId) {
-                    const myMesaRes = await listMisMesaReservas({ userId: ticketOwnerId });
-                    const target = (myMesaRes.data?.mesaReservas || []).filter(
-                        (r) => r.fechaDia === fechaDia && r.estado === 'apartada'
-                    );
-                    for (const row of target) {
-                        await updateMesaReservaEstado({ id: row.id, estado: 'ocupada' });
-                        await vincularTicketMesaReserva({ id: row.id, ticketId: currentTicketId });
-                        await upsertMesaReservaLive({
-                            fechaDia,
-                            mapItemId: row.mapItemId,
-                            userId: ticketOwnerId,
-                            estado: 'ocupada'
-                        });
-                    }
-                }
+    window.addEventListener('online', () => void syncPending());
+    window.addEventListener('online', () => void updateConn());
+    window.addEventListener('offline', () => void updateConn());
 
-                showScannerStatus('success', 'INGRESO REGISTRADO', 'El boleto quedó marcado como usado en el sistema.');
-                updateBreakdown({ ...currentTicketData, estadoTicket: 'escaneado', estadoPago: 'pagado' }, 'Entrada registrada');
-                await publishAppUpdate('tickets', `scanner:${currentTicketId}`);
-                playTone(true);
-                if (navigator.vibrate) navigator.vibrate([45, 20, 45]);
-                await showAlert('Ingreso registrado exitosamente en el sistema.', {
-                    title: 'Listo',
-                    variant: 'success'
-                });
-                modal.classList.add('hidden');
-                inputId.value = ''; // limpiar
-                
-            } catch (error) {
-                console.error("Error registrando ingreso:", error);
-                await showAlert(
-                    'Error al actualizar la base de datos (permisos o conexión).',
-                    { title: 'Error', variant: 'danger' }
-                );
-                btnAction.textContent = "Reintentar";
-            } finally {
-                btnAction.disabled = false;
-            }
-        });
+    await renderPending();
+    await renderHistory();
+    await updateConn();
+    await clearOldCache(5);
 
-        const ticketFromUrl = new URLSearchParams(window.location.search).get('ticket');
-        sweepExpiredMesaReservas().catch((e) => console.warn('sweep expired mesas', e));
-        if (ticketFromUrl) {
-            inputId.value = ticketFromUrl;
-            validateRawCode(ticketFromUrl);
-        }
-    }
+    window.__ticketScannerCleanup = () => {
+      void stopCamera();
+    };
+  }
 };
 
 export default Escaner;
