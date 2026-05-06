@@ -1514,6 +1514,7 @@ const AdminDashboard = {
       document.getElementById('ticket-admin-refresh')?.addEventListener('click', reload);
 
       document.getElementById('ticket-edit-save')?.addEventListener('click', async () => {
+        const saveBtn = document.getElementById('ticket-edit-save');
         const rawNombre = String(nombre?.value || '').trim();
         const p = Number(precio?.value || 0);
         if (!rawNombre) {
@@ -1536,6 +1537,7 @@ const AdminDashboard = {
           metadata: {}
         };
         setStatus('Guardando...');
+        if (saveBtn) saveBtn.disabled = true;
         try {
           const existingId = String(idEl?.value || '').trim();
           if (existingId) {
@@ -1556,6 +1558,8 @@ const AdminDashboard = {
             m.includes('permission denied') ||
             m.includes('row-level security');
           setStatus(isRls ? 'Sin permiso (RLS). Revisa rol en Supabase.' : e?.message || 'Error al guardar.', 'err');
+        } finally {
+          if (saveBtn) saveBtn.disabled = false;
         }
       });
 
@@ -1622,7 +1626,28 @@ const AdminDashboard = {
           fillForm(null, 'new');
           setStatus('Eliminado.', 'ok');
         } catch (e) {
-          setStatus(e?.message || 'No se pudo eliminar. Prueba desactivar.', 'err');
+          const raw = String(e?.message || '');
+          const low = raw.toLowerCase();
+          const code = e?.code;
+          const fk =
+            code === '23503' ||
+            low.includes('foreign key') ||
+            low.includes('llave for') ||
+            low.includes('referencia') ||
+            low.includes('still referenced');
+          const rls =
+            code === '42501' ||
+            e?.status === 403 ||
+            low.includes('permission denied') ||
+            low.includes('row-level security');
+          setStatus(
+            fk
+              ? 'No se puede eliminar: hay ventas u otras referencias a este ticket. Usa Activar/desactivar para ocultarlo.'
+              : rls
+                ? 'Sin permiso para eliminar (RLS). Prueba desactivar el ticket.'
+                : raw || 'No se pudo eliminar. Prueba desactivar.',
+            'err'
+          );
         }
       });
 
@@ -1765,6 +1790,23 @@ const AdminDashboard = {
         `;
 
         root.querySelectorAll('[data-lb-ce]').forEach((el) => {
+          el.addEventListener('paste', (ev) => {
+            ev.preventDefault();
+            const text = ev.clipboardData?.getData('text/plain') ?? '';
+            if (typeof document.execCommand === 'function' && document.execCommand('insertText', false, text)) return;
+            const sel = window.getSelection();
+            if (!sel?.rangeCount) return;
+            const range = sel.getRangeAt(0);
+            range.deleteContents();
+            const node = document.createTextNode(text);
+            range.insertNode(node);
+            range.setStartAfter(node);
+            range.collapse(true);
+            sel.removeAllRanges();
+            sel.addRange(range);
+            syncHeroInputsFromCe(el.getAttribute('data-lb-ce') || '', el.textContent || '');
+            markDirty();
+          });
           el.addEventListener('input', () => {
             syncHeroInputsFromCe(el.getAttribute('data-lb-ce') || '', el.textContent || '');
             markDirty();
@@ -2685,6 +2727,8 @@ const AdminDashboard = {
 
       document.getElementById('lp-save')?.addEventListener('click', async () => {
         const msg = document.getElementById('lp-save-msg');
+        const lpSaveBtn = document.getElementById('lp-save');
+        const lpDiscardBtn = document.getElementById('lp-discard');
         const editedMapJson = mapEditor ? mapEditor.getJson() : getMapByContext();
         if (mapContext === 'parque') landing.mapaDistribucionJson = editedMapJson;
         if (mapContext === 'mesas') landing.mapaMesasJson = editedMapJson;
@@ -2711,6 +2755,8 @@ const AdminDashboard = {
           botonesJson
         };
         if (msg) msg.textContent = 'Guardando...';
+        if (lpSaveBtn) lpSaveBtn.disabled = true;
+        if (lpDiscardBtn) lpDiscardBtn.disabled = true;
         try {
           await upsertLandingPage(payload);
           await publishAppUpdate('landing', 'Contenido landing actualizado');
@@ -2749,6 +2795,8 @@ const AdminDashboard = {
             { title: 'Error', variant: 'danger' }
           );
         } finally {
+          if (lpSaveBtn) lpSaveBtn.disabled = false;
+          if (lpDiscardBtn) lpDiscardBtn.disabled = false;
           if (msg && msg.textContent === 'Guardando...') msg.textContent = '';
         }
       });

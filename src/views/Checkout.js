@@ -19,6 +19,15 @@ import { publishAppUpdate } from '../lib/realtimeSync.js';
 import { getUserAccess } from '../lib/accessControl.js';
 import { applyDiscountToCart } from '../lib/discountRules.js';
 
+function escapeHtml(text) {
+  return String(text ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
 const Checkout = {
     render: () => `
         <div class="max-w-3xl mx-auto p-8 h-full pb-20 pt-10">
@@ -233,15 +242,15 @@ const Checkout = {
                   <article class="rounded-lg border border-slate-200 bg-slate-50 p-3">
                     <div class="flex items-start justify-between gap-2">
                       <div>
-                        <p class="text-sm font-black text-slate-900">${t.nombre}</p>
-                        <p class="text-xs text-slate-500">${t.descripcion || 'Ticket configurable desde panel'}</p>
-                        ${t.incluye ? `<p class="mt-1 text-xs text-slate-600"><strong>Incluye:</strong> ${t.incluye}</p>` : ''}
+                        <p class="text-sm font-black text-slate-900">${escapeHtml(t.nombre)}</p>
+                        <p class="text-xs text-slate-500">${escapeHtml(t.descripcion || 'Ticket configurable desde panel')}</p>
+                        ${t.incluye ? `<p class="mt-1 text-xs text-slate-600"><strong>Incluye:</strong> ${escapeHtml(t.incluye)}</p>` : ''}
                       </div>
                       ${t.especial ? '<span class="rounded-full bg-amber-100 px-2 py-1 text-[10px] font-black text-amber-700">Especial</span>' : ''}
                     </div>
                     <div class="mt-3 flex items-center justify-between">
                       <strong class="text-sm text-emerald-700">${fmt(t.precio)}</strong>
-                      <button class="checkout-add-ticket rounded border border-slate-300 bg-white px-2 py-1 text-xs font-bold hover:bg-slate-100" data-ticket-id="${t.id}" data-ticket-name="${t.nombre}" data-ticket-price="${t.precio}">
+                      <button type="button" class="checkout-add-ticket rounded border border-slate-300 bg-white px-2 py-1 text-xs font-bold hover:bg-slate-100" data-ticket-id="${escapeHtml(t.id)}" data-ticket-name="${escapeHtml(t.nombre)}" data-ticket-price="${Number(t.precio || 0)}">
                         Agregar
                       </button>
                     </div>

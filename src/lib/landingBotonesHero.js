@@ -18,18 +18,18 @@ export function splitBotonesJson(raw) {
   } catch {
     arr = [];
   }
-  const heroIdx = arr.findIndex((x) => x && String(x.type || '') === 'landingHero');
+  const heroEntries = arr.filter((x) => x && String(x.type || '') === 'landingHero');
   let hero = { ...DEFAULT_LANDING_HERO };
-  if (heroIdx >= 0) {
-    const h = arr[heroIdx];
+  if (heroEntries.length) {
+    const h = heroEntries[heroEntries.length - 1];
     hero = {
       kicker: String(h.kicker ?? DEFAULT_LANDING_HERO.kicker),
       title: String(h.title ?? DEFAULT_LANDING_HERO.title),
       subtitle: String(h.subtitle ?? DEFAULT_LANDING_HERO.subtitle)
     };
-    arr = arr.filter((_, i) => i !== heroIdx);
   }
-  return { hero, buttons: arr.filter((b) => b && String(b.type || '') !== 'landingHero') };
+  const buttons = arr.filter((b) => b && String(b.type || '') !== 'landingHero');
+  return { hero, buttons };
 }
 
 export function mergeBotonesJson(hero, buttons) {
