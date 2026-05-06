@@ -49,7 +49,8 @@ export function createMapViewer(canvas, jsonOrDoc, options = {}) {
     drawMapCanvasViewport(canvas, doc, state, {
       ...options,
       hoveredId,
-      selectedIds: options.selectedIds || (selectedId ? [selectedId] : [])
+      selectedIds: options.selectedIds || (selectedId ? [selectedId] : []),
+      requestRedraw: draw
     });
   };
 

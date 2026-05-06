@@ -979,6 +979,10 @@
     padding: 1rem;
   }
 
+#landing-map-info-mobile {
+  display: none;
+}
+
   .public-map-cta {
     display: inline-flex;
     width: fit-content;
@@ -1339,10 +1343,18 @@
     cursor: grab;
   }
 
+.parking-vehicle-chip.cursor-default {
+  cursor: default;
+}
+
   .parking-vehicle-chip:active {
     cursor: grabbing;
     transform: translate(-50%, -50%) scale(1.03);
   }
+
+.parking-vehicle-chip.is-dragging {
+  box-shadow: 0 0 0 3px rgb(34 211 238 / 0.35), 0 24px 48px rgb(2 6 23 / 0.36);
+}
 
   .parking-chip-id,
   .parking-chip-state,
@@ -1508,6 +1520,17 @@
       right: 0.75rem;
       top: 0.75rem;
     }
+
+  #landing-map-info {
+    display: none;
+  }
+
+  #landing-map-info-mobile {
+    display: block;
+    border-top: 1px solid rgb(226 232 240);
+    background: rgb(255 255 255 / 0.96);
+    padding: 0.85rem 1rem calc(0.85rem + env(safe-area-inset-bottom));
+  }
   }
 
   @media (max-width: 900px) {

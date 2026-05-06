@@ -203,9 +203,10 @@ export default {
               <canvas id="reservar-canvas" width="1000" height="620" class="absolute inset-0 h-full w-full cursor-pointer"></canvas>
               <div id="reservar-map-tooltip" class="map-tooltip hidden"></div>
               <div class="map-floating-toolbar absolute right-3 top-3 z-10">
-                <button type="button" id="reservar-map-zoom-out" class="map-icon-btn">−</button>
-                <button type="button" id="reservar-map-reset" class="map-reset-btn">Reset</button>
-                <button type="button" id="reservar-map-zoom-in" class="map-icon-btn">+</button>
+                <button type="button" id="reservar-map-zoom-out" class="map-icon-btn" aria-label="Alejar mapa de mesas">−</button>
+                <button type="button" id="reservar-map-center" class="map-reset-btn" aria-label="Centrar mapa">${icon('compass', 'h-3.5 w-3.5')}</button>
+                <button type="button" id="reservar-map-reset" class="map-reset-btn" aria-label="Resetear mapa de mesas">Reset</button>
+                <button type="button" id="reservar-map-zoom-in" class="map-icon-btn" aria-label="Acercar mapa de mesas">+</button>
               </div>
               <p id="reservar-canvas-placeholder" class="hidden py-16 text-center text-sm text-slate-500"></p>
             </div>
@@ -372,6 +373,7 @@ export default {
         document.getElementById('reservar-map-zoom-in')?.addEventListener('click', () => mesaViewer?.zoomIn());
         document.getElementById('reservar-map-zoom-out')?.addEventListener('click', () => mesaViewer?.zoomOut());
         document.getElementById('reservar-map-reset')?.addEventListener('click', () => mesaViewer?.reset());
+          document.getElementById('reservar-map-center')?.addEventListener('click', () => mesaViewer?.fit());
       } else {
         mesaViewer.redraw();
       }
@@ -561,6 +563,16 @@ export default {
       const user = getCurrentUser();
       const canReserve = status === 'libre' && meta.reservable && Boolean(user);
       const needsLogin = status === 'libre' && meta.reservable && !user;
+      const blockedReason =
+        status === 'no_reservable'
+          ? 'Esta mesa está marcada como no reservable por el personal.'
+          : status === 'ocupada'
+            ? 'Esta mesa está ocupada para la fecha seleccionada.'
+            : status === 'apartada'
+              ? 'Esta mesa ya fue apartada por otra persona.'
+              : status === 'apartada_mia'
+                ? 'Esta mesa ya está apartada por ti para esta fecha.'
+                : '';
       const tagsHtml = meta.tags.length
         ? `<div class="flex flex-wrap gap-1.5">${meta.tags.map((tag) => `<span class="rounded-full bg-teal-50 px-2 py-1 text-[11px] font-black text-teal-700">${escapeHtml(tag)}</span>`).join('')}</div>`
         : '<p class="text-xs font-semibold text-slate-400">Sin tags publicados.</p>';
@@ -599,6 +611,7 @@ export default {
             ${tagsHtml}
           </div>
           ${needsLogin ? '<p class="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs font-bold leading-5 text-amber-800">Inicia sesion para confirmar esta mesa. Puedes revisar los detalles antes de entrar.</p>' : ''}
+          ${!needsLogin && blockedReason ? `<p class="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs font-bold leading-5 text-slate-700">${escapeHtml(blockedReason)}</p>` : ''}
           <div>
             <p class="mb-2 text-xs font-black uppercase tracking-wide text-slate-500">Extras visuales</p>
             <div class="space-y-2">${extrasHtml}</div>
@@ -624,7 +637,7 @@ export default {
           <div id="reservar-total" class="space-y-1 rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700"></div>
           <div class="grid gap-2">
             ${needsLogin ? '<button type="button" id="reservar-login-mesa" class="w-full rounded-xl bg-slate-900 px-4 py-3 text-sm font-black text-white hover:bg-slate-700">Iniciar sesion para apartar</button>' : ''}
-            ${canReserve ? '<button type="button" id="reservar-confirmar-mesa" class="w-full rounded-xl bg-emerald-600 px-4 py-3 text-sm font-black text-white hover:bg-emerald-700">Confirmar apartado</button>' : (needsLogin ? '' : `<button type="button" disabled class="w-full rounded-xl bg-slate-300 px-4 py-3 text-sm font-black text-white">${escapeHtml(statusMeta.label)}</button>`)}
+            ${canReserve ? '<button type="button" id="reservar-confirmar-mesa" class="w-full rounded-xl bg-emerald-600 px-4 py-3 text-sm font-black text-white hover:bg-emerald-700">Confirmar apartado</button>' : (needsLogin ? '' : `<button type="button" disabled title="${escapeHtml(blockedReason || statusMeta.label)}" class="w-full rounded-xl bg-slate-300 px-4 py-3 text-sm font-black text-white">${escapeHtml(statusMeta.label)}</button>`)}
             <button type="button" id="reservar-cerrar-detalle" class="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-black text-slate-700 hover:bg-slate-50">Cerrar</button>
           </div>
         </div>

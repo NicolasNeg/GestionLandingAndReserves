@@ -218,16 +218,32 @@ const Login = {
     };
 
     const friendlyAuthMessage = (err) => {
+      const code = String(err?.code || '').toLowerCase();
       const raw = String(err?.message || err || '');
       const low = raw.toLowerCase();
+      if (code === 'email_not_confirmed') {
+        return 'Debes confirmar tu correo antes de iniciar sesión. Revisa tu bandeja y spam.';
+      }
+      if (code === 'invalid_credentials') {
+        return 'Correo o contraseña incorrectos (o el usuario no existe).';
+      }
+      if (code === 'oauth_only') {
+        return 'Esa cuenta se creó con proveedor social. Inicia con Google/Facebook.';
+      }
+      if (code === 'email_provider_disabled') {
+        return 'Email/contraseña está deshabilitado en Supabase (Auth > Providers > Email).';
+      }
       if (low.includes('network') || low.includes('fetch')) {
         return 'Error de red. Comprueba tu conexión e inténtalo de nuevo.';
       }
       if (low.includes('invalid login') || low.includes('invalid_credentials') || low.includes('wrong password')) {
-        return 'Credenciales incorrectas.';
+        return 'Correo o contraseña incorrectos (o el usuario no existe).';
       }
       if (low.includes('email not confirmed')) {
-        return 'Debes confirmar tu correo antes de continuar.';
+        return 'Debes confirmar tu correo antes de iniciar sesión. Revisa tu bandeja y spam.';
+      }
+      if (low.includes('email provider is disabled') || low.includes('provider disabled')) {
+        return 'Email/contraseña está deshabilitado en Supabase (Auth > Providers > Email).';
       }
       return raw.replace(/^Supabase:\s*/i, '').replace(/^AuthApiError:\s*/i, '') || 'No se pudo completar la acción.';
     };
@@ -316,6 +332,7 @@ const Login = {
 
     (async () => {
       const hashParams = new URLSearchParams((window.location.hash || '').replace(/^#/, ''));
+      const authType = hashParams.get('type');
       if (hashParams.get('type') === 'recovery') {
         loginMainFlow?.classList.add('hidden');
         resetPanel?.classList.remove('hidden');
@@ -323,8 +340,8 @@ const Login = {
         return;
       }
       const params = new URLSearchParams(window.location.search);
-      if (params.get('verified') === '1') {
-        showSuccess('Correo verificado. Inicia sesión cuando quieras.');
+      if (authType === 'signup' || params.get('verified') === '1') {
+        showSuccess('Correo confirmado correctamente. Ya puedes iniciar sesión.');
         window.history.replaceState({}, '', window.location.pathname);
       }
     })();
@@ -348,7 +365,7 @@ const Login = {
             navigateTo('/home');
           } else {
             showSuccess(
-              'Si tu proyecto exige confirmación por correo, revisa tu bandeja (y spam). Luego inicia sesión aquí.'
+              'Te enviamos un correo de confirmación. Revisa tu bandeja antes de iniciar sesión.'
             );
             toggleMode();
           }

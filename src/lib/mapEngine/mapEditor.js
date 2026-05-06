@@ -1,5 +1,6 @@
 import { hitTestMapDocument, itemsIntersectRect } from './mapHitTesting.js';
 import { parseMapDocument, serializeMapDocument } from './mapMigrations.js';
+import { buildPresetItemDefs } from './mapPresets.js';
 import { drawMapCanvas } from './mapRenderer.js';
 import { alignItems, distributeItems } from './mapSelection.js';
 import { DEFAULT_MAP_ITEM_KIND, getMapKind } from './mapTypes.js';
@@ -64,6 +65,7 @@ export function createMapEditor(canvas, initialJson, onChange, options = {}) {
   let resizeHandle = '';
   let marqueeRect = null;
   let clipboard = [];
+  let previewMode = false;
   const selectionListeners = new Set();
   const documentListeners = new Set();
   const history = [serializeMapDocument(doc)];
@@ -93,11 +95,12 @@ export function createMapEditor(canvas, initialJson, onChange, options = {}) {
   const redraw = () => {
     drawMapCanvas(canvas, doc, {
       ...options,
-      editor: true,
-      showItemIds: true,
-      showKindBadge: true,
-      selectedIds,
-      marqueeRect
+      editor: !previewMode,
+      showItemIds: !previewMode,
+      showKindBadge: !previewMode,
+      selectedIds: previewMode ? [] : selectedIds,
+      marqueeRect: previewMode ? null : marqueeRect,
+      requestRedraw: redraw
     });
   };
 
@@ -118,6 +121,23 @@ export function createMapEditor(canvas, initialJson, onChange, options = {}) {
     redraw();
   };
 
+  const duplicateSelected = () => {
+    const items = selectedItems();
+    if (!items.length) return;
+    saveHistory();
+    const created = items.map((item, index) =>
+      makeNewItem(doc, {
+        ...item,
+        id: `${item.id}-copia-${index + 1}`,
+        x: Number(item.x || 0) + 24,
+        y: Number(item.y || 0) + 24
+      })
+    );
+    doc.items.push(...created);
+    selectedIds = created.map((item) => item.id);
+    commit();
+  };
+
   const handleHit = (point, item) => {
     if (!item || selectedIds.length !== 1) return '';
     const x = Number(item.x || 0);
@@ -129,6 +149,7 @@ export function createMapEditor(canvas, initialJson, onChange, options = {}) {
   };
 
   const onDown = (ev) => {
+    if (previewMode) return;
     const point = pointerFor(canvas, doc, ev);
     if (tool === 'pan') {
       dragMode = 'pan';
@@ -198,6 +219,7 @@ export function createMapEditor(canvas, initialJson, onChange, options = {}) {
   };
 
   const onMove = (ev) => {
+    if (previewMode) return;
     const point = pointerFor(canvas, doc, ev);
     if (dragMode === 'pan' && dragStart) {
       const scroller = canvas.closest('.mapa-viewport-outer');
@@ -247,6 +269,7 @@ export function createMapEditor(canvas, initialJson, onChange, options = {}) {
   };
 
   const onUp = (ev) => {
+    if (previewMode) return;
     const point = pointerFor(canvas, doc, ev);
     if (dragMode === 'draw' && dragStart) {
       const x = Math.min(dragStart.x, point.x);
@@ -305,8 +328,11 @@ export function createMapEditor(canvas, initialJson, onChange, options = {}) {
   };
 
   const onKey = (ev) => {
-    const tag = document.activeElement?.tagName;
+    if (previewMode && ev.key !== 'Escape') return;
+    const active = document.activeElement;
+    const tag = active?.tagName;
     if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+    if (active?.isContentEditable) return;
     if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'z') {
       ev.preventDefault();
       if (ev.shiftKey) redo();
@@ -320,6 +346,11 @@ export function createMapEditor(canvas, initialJson, onChange, options = {}) {
     }
     if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'c') {
       clipboard = selectedItems().map((item) => cloneDoc(item));
+      return;
+    }
+    if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'd') {
+      ev.preventDefault();
+      duplicateSelected();
       return;
     }
     if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'v') {
@@ -338,9 +369,15 @@ export function createMapEditor(canvas, initialJson, onChange, options = {}) {
       return;
     }
     if (ev.key === 'Escape') {
+      if (previewMode) {
+        previewMode = false;
+        redraw();
+        return;
+      }
       adding = false;
       tool = 'select';
       marqueeRect = null;
+      setSelection([]);
       redraw();
       return;
     }
@@ -492,18 +529,53 @@ export function createMapEditor(canvas, initialJson, onChange, options = {}) {
       selectedIds = [];
       commit();
     },
-    duplicateSelected: () => {
-      const items = selectedItems();
-      if (!items.length) return;
+    duplicateSelected,
+    setPreviewMode: (on) => {
+      previewMode = Boolean(on);
+      if (previewMode) {
+        adding = false;
+        tool = 'select';
+        marqueeRect = null;
+      }
+      redraw();
+    },
+    getPreviewMode: () => previewMode,
+    updateDocumentBackground: (patch = {}) => {
       saveHistory();
-      const created = items.map((item, index) => makeNewItem(doc, {
-        ...item,
-        id: `${item.id}-copia-${index + 1}`,
-        x: Number(item.x || 0) + 24,
-        y: Number(item.y || 0) + 24
-      }));
-      doc.items.push(...created);
-      selectedIds = created.map((item) => item.id);
+      doc.background = { ...(doc.background || {}), ...patch };
+      commit();
+    },
+    setGridVisible: (visible) => {
+      doc.grid = { ...(doc.grid || {}), visible: Boolean(visible) };
+      commit();
+    },
+    applyMapPreset: (presetId) => {
+      const defs = buildPresetItemDefs(String(presetId || ''), doc);
+      if (!defs.length) return;
+      saveHistory();
+      const createdIds = [];
+      defs.forEach((def) => {
+        const item = makeNewItem(doc, def);
+        doc.items.push(item);
+        createdIds.push(item.id);
+      });
+      selectedIds = createdIds;
+      commit();
+    },
+    setSelectedVisibility: (visible) => {
+      if (!selectedIds.length) return;
+      saveHistory();
+      selectedItems().forEach((item) => {
+        item.visible = Boolean(visible);
+      });
+      commit();
+    },
+    setSelectedLockedAll: (locked) => {
+      if (!selectedIds.length) return;
+      saveHistory();
+      selectedItems().forEach((item) => {
+        item.locked = Boolean(locked);
+      });
       commit();
     },
     moveSelectedLayer: (dir) => {

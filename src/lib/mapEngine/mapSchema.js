@@ -73,7 +73,12 @@ export function createDefaultMapDocument(view = 'global') {
     background: {
       type: 'park',
       fill: '#ecfdf5',
-      stroke: '#0f766e'
+      stroke: '#0f766e',
+      url: '',
+      opacity: 1,
+      fit: 'cover',
+      locked: true,
+      visible: true
     },
     grid: {
       visible: true,
@@ -213,6 +218,16 @@ export function normalizeMapDocument(raw = {}, options = {}) {
         }))
     : [];
 
+  const rawBg = raw.background && typeof raw.background === 'object' ? raw.background : {};
+  const bgTypeRaw = String(rawBg.type || '').toLowerCase();
+  const bgType =
+    bgTypeRaw === 'none' ||
+    bgTypeRaw === 'color' ||
+    bgTypeRaw === 'image' ||
+    bgTypeRaw === 'park'
+      ? bgTypeRaw
+      : fallback.background.type || 'park';
+
   return {
     version: MAP_SCHEMA_VERSION,
     view,
@@ -222,7 +237,16 @@ export function normalizeMapDocument(raw = {}, options = {}) {
     h: undefined,
     background: {
       ...fallback.background,
-      ...(raw.background && typeof raw.background === 'object' ? raw.background : {})
+      ...rawBg,
+      type: bgType,
+      fill: String(rawBg.fill || rawBg.color || fallback.background.fill || '#ecfdf5'),
+      url: String(rawBg.url || '').trim(),
+      opacity: clamp(numberOr(rawBg.opacity, fallback.background.opacity ?? 1), 0, 1),
+      fit: ['cover', 'contain', 'stretch'].includes(String(rawBg.fit || '').toLowerCase())
+        ? String(rawBg.fit).toLowerCase()
+        : fallback.background.fit || 'cover',
+      locked: rawBg.locked !== false,
+      visible: rawBg.visible !== false
     },
     grid: {
       ...fallback.grid,

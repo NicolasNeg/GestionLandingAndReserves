@@ -42,6 +42,41 @@ function loginRedirectUrl() {
   return `${window.location.origin}/login`;
 }
 
+function authError(message, code = 'auth_error') {
+  const e = new Error(message);
+  e.code = code;
+  return e;
+}
+
+function normalizeAuthError(err, context = 'signin') {
+  const raw = String(err?.message || err || '');
+  const low = raw.toLowerCase();
+
+  if (low.includes('email not confirmed')) {
+    return authError('Debes confirmar tu correo antes de iniciar sesión.', 'email_not_confirmed');
+  }
+  if (
+    low.includes('invalid login credentials') ||
+    low.includes('invalid_credentials') ||
+    low.includes('invalid grant') ||
+    low.includes('invalid email or password')
+  ) {
+    return authError('Credenciales inválidas o usuario inexistente.', 'invalid_credentials');
+  }
+  if (low.includes('email provider is disabled') || low.includes('provider disabled')) {
+    return authError('El inicio con correo/contraseña está deshabilitado en Supabase.', 'email_provider_disabled');
+  }
+  if (
+    context === 'signin' &&
+    (low.includes('oauth') || low.includes('sso') || low.includes('identity provider')) &&
+    low.includes('not') &&
+    low.includes('enabled')
+  ) {
+    return authError('Tu cuenta parece ser social/OAuth. Inicia con tu proveedor (Google/Facebook).', 'oauth_only');
+  }
+  return err instanceof Error ? err : authError(raw || 'No se pudo completar la autenticación.');
+}
+
 function setSessionCache(session) {
   sessionCache = session?.user ? mapUser(session.user) : null;
 }
@@ -123,7 +158,7 @@ export async function signInWithFacebook() {
 export async function signInWithEmail(email, password) {
   const sb = requireClient();
   const { data, error } = await sb.auth.signInWithPassword({ email, password });
-  if (error) throw error;
+  if (error) throw normalizeAuthError(error, 'signin');
   return data;
 }
 
@@ -133,13 +168,14 @@ export async function signUpWithEmail(email, password, metadata = {}) {
     email,
     password,
     options: {
+      emailRedirectTo: loginRedirectUrl(),
       data: {
         full_name: metadata.nombre || metadata.name || '',
         ...metadata
       }
     }
   });
-  if (error) throw error;
+  if (error) throw normalizeAuthError(error, 'signup');
   return data;
 }
 
@@ -148,7 +184,7 @@ export async function sendPasswordReset(email) {
   const { error } = await sb.auth.resetPasswordForEmail(email, {
     redirectTo: loginRedirectUrl()
   });
-  if (error) throw error;
+  if (error) throw normalizeAuthError(error, 'reset');
 }
 
 export async function updateCurrentUserProfile(patch) {
@@ -178,9 +214,12 @@ export async function resendEmailVerification(options = {}) {
   const { error } = await sb.auth.resend({
     type: 'signup',
     email,
-    options: options.captchaToken ? { captchaToken: options.captchaToken } : undefined
+    options: {
+      ...(options.captchaToken ? { captchaToken: options.captchaToken } : {}),
+      emailRedirectTo: loginRedirectUrl()
+    }
   });
-  if (error) throw error;
+  if (error) throw normalizeAuthError(error, 'resend');
 }
 
 export async function logout() {

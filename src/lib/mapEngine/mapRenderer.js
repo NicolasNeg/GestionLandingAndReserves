@@ -2,6 +2,56 @@ import { getSortedMapItems } from './mapHitTesting.js';
 import { parseMapDocument } from './mapMigrations.js';
 import { TABLE_STATES, getMapKind } from './mapTypes.js';
 
+const bgImageCache = new Map();
+
+function ensureBgImage(url, requestRedraw) {
+  if (!url) return { img: null, loaded: false, error: false };
+  let entry = bgImageCache.get(url);
+  if (!entry) {
+    const img = new Image();
+    entry = { img, loaded: false, error: false };
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      entry.loaded = true;
+      requestRedraw?.();
+    };
+    img.onerror = () => {
+      entry.error = true;
+      requestRedraw?.();
+    };
+    img.src = url;
+    bgImageCache.set(url, entry);
+  }
+  return entry;
+}
+
+function drawImageFit(ctx, img, dw, dh, fit, opacity) {
+  if (!img?.naturalWidth) return;
+  ctx.save();
+  ctx.globalAlpha = opacity;
+  const sw = img.naturalWidth;
+  const sh = img.naturalHeight;
+  let sx = 0;
+  let sy = 0;
+  let sWidth = sw;
+  let sHeight = sh;
+  if (fit === 'stretch') {
+    ctx.drawImage(img, 0, 0, sw, sh, 0, 0, dw, dh);
+    ctx.restore();
+    return;
+  }
+  const scale =
+    fit === 'contain'
+      ? Math.min(dw / sw, dh / sh)
+      : Math.max(dw / sw, dh / sh);
+  const rw = sw * scale;
+  const rh = sh * scale;
+  const dx = (dw - rw) / 2;
+  const dy = (dh - rh) / 2;
+  ctx.drawImage(img, 0, 0, sw, sh, dx, dy, rw, rh);
+  ctx.restore();
+}
+
 function roundRect(ctx, x, y, w, h, r = 10) {
   const radius = Math.min(r, Math.abs(w) / 2, Math.abs(h) / 2);
   ctx.beginPath();
@@ -57,9 +107,7 @@ function drawGrid(ctx, doc, options = {}) {
   ctx.restore();
 }
 
-function drawBackground(ctx, doc, options = {}) {
-  const bg = doc.background || {};
-  const view = options.view || doc.view;
+function drawParkGradient(ctx, doc, bg, view) {
   const gradient = ctx.createLinearGradient(0, 0, doc.width, doc.height);
   if (view === 'estacionamiento') {
     gradient.addColorStop(0, bg.fill || '#101827');
@@ -76,7 +124,9 @@ function drawBackground(ctx, doc, options = {}) {
   }
   ctx.fillStyle = gradient;
   ctx.fillRect(0, 0, doc.width, doc.height);
+}
 
+function drawParkDecor(ctx, doc, options, view) {
   ctx.save();
   if (view === 'estacionamiento') {
     ctx.globalAlpha = 0.18;
@@ -103,6 +153,63 @@ function drawBackground(ctx, doc, options = {}) {
     }
   }
   ctx.restore();
+}
+
+function drawBackground(ctx, doc, options = {}) {
+  const bg = doc.background || {};
+  const view = options.view || doc.view;
+  const bgType = String(bg.type || 'park').toLowerCase();
+  const requestRedraw = options.requestRedraw;
+  const url = String(bg.url || '').trim();
+  const imgOpacity = Math.min(1, Math.max(0, Number(bg.opacity ?? 1)));
+  const imgFit = ['cover', 'contain', 'stretch'].includes(String(bg.fit || '').toLowerCase())
+    ? String(bg.fit).toLowerCase()
+    : 'cover';
+  const showImageLayer = bgType === 'image' && url && bg.visible !== false;
+
+  if (bgType === 'none') {
+    ctx.fillStyle = '#f1f5f9';
+    ctx.fillRect(0, 0, doc.width, doc.height);
+  } else if (bgType === 'color') {
+    ctx.fillStyle = bg.fill || '#f8fafc';
+    ctx.fillRect(0, 0, doc.width, doc.height);
+  } else if (bgType === 'image') {
+    drawParkGradient(ctx, doc, bg, view);
+    if (showImageLayer) {
+      const entry = ensureBgImage(url, requestRedraw);
+      if (entry.loaded && entry.img) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(0, 0, doc.width, doc.height);
+        ctx.clip();
+        drawImageFit(ctx, entry.img, doc.width, doc.height, imgFit, imgOpacity);
+        ctx.restore();
+      } else if (entry.error) {
+        ctx.save();
+        ctx.fillStyle = 'rgba(15, 23, 42, 0.06)';
+        for (let i = -doc.height; i < doc.width + doc.height; i += 24) {
+          ctx.beginPath();
+          ctx.moveTo(i, 0);
+          ctx.lineTo(i + doc.height, doc.height);
+          ctx.strokeStyle = 'rgba(148, 163, 184, 0.35)';
+          ctx.lineWidth = 1;
+          ctx.stroke();
+        }
+        ctx.restore();
+        if (options.editor) {
+          ctx.save();
+          ctx.fillStyle = 'rgba(71, 85, 105, 0.85)';
+          ctx.font = '700 13px system-ui, sans-serif';
+          ctx.textAlign = 'center';
+          ctx.fillText('No se pudo cargar la imagen de fondo', doc.width / 2, doc.height / 2);
+          ctx.restore();
+        }
+      }
+    }
+  } else {
+    drawParkGradient(ctx, doc, bg, view);
+    drawParkDecor(ctx, doc, options, view);
+  }
 
   drawGrid(ctx, doc, { ...options, view });
 
@@ -597,7 +704,12 @@ export function drawMapCanvas(canvas, jsonOrDoc, options = {}) {
   if (!ctx) return doc;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, width, height);
-  drawMapDocument(ctx, doc, options);
+  const requestRedraw =
+    options.requestRedraw ||
+    (() => {
+      drawMapCanvas(canvas, jsonOrDoc, options);
+    });
+  drawMapDocument(ctx, doc, { ...options, requestRedraw });
   return doc;
 }
 
@@ -615,6 +727,11 @@ export function drawMapCanvasViewport(canvas, doc, viewport, options = {}) {
   ctx.save();
   ctx.translate(viewport.offsetX, viewport.offsetY);
   ctx.scale(viewport.scale, viewport.scale);
-  drawMapDocument(ctx, doc, options);
+  const requestRedraw =
+    options.requestRedraw ||
+    (() => {
+      drawMapCanvasViewport(canvas, doc, viewport, options);
+    });
+  drawMapDocument(ctx, doc, { ...options, requestRedraw });
   ctx.restore();
 }
