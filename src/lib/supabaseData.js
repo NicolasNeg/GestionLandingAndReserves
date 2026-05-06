@@ -284,6 +284,24 @@ function mapDescuentoRow(r) {
   };
 }
 
+function mapTicketTypeRow(r) {
+  if (!r) return null;
+  return {
+    id: r.id,
+    nombre: r.nombre,
+    descripcion: r.descripcion || '',
+    incluye: r.incluye || '',
+    precio: Number(r.precio || 0),
+    categoria: r.categoria || '',
+    orden: Number(r.orden || 0),
+    activo: Boolean(r.activo),
+    especial: Boolean(r.especial),
+    metadata: r.metadata || {},
+    createdAt: r.created_at || null,
+    updatedAt: r.updated_at || null
+  };
+}
+
 export async function getLandingPage({ id }) {
   const sb = requireClient();
   const { data, error } = await sb.from('landing_page').select('*').eq('id', id).maybeSingle();
@@ -376,6 +394,15 @@ export async function listDescuentosAdmin() {
   return { data: { descuentos: (data || []).map(mapDescuentoRow) } };
 }
 
+export async function getDescuentoByCodigo({ codigo }) {
+  const sb = requireClient();
+  const normalized = String(codigo || '').trim().toUpperCase();
+  if (!normalized) return { data: { descuento: null } };
+  const { data, error } = await sb.from('descuentos').select('*').eq('codigo', normalized).maybeSingle();
+  if (error) throw error;
+  return { data: { descuento: mapDescuentoRow(data) } };
+}
+
 export async function createDescuento({
   codigo,
   descuento,
@@ -452,6 +479,111 @@ export async function deleteDescuento({ id }) {
   return { data: {} };
 }
 
+export async function listTicketTypesPublic() {
+  const sb = requireClient();
+  const { data, error } = await sb
+    .from('ticket_types')
+    .select('*')
+    .eq('activo', true)
+    .order('orden', { ascending: true })
+    .order('created_at', { ascending: true });
+  if (error) throw error;
+  return { data: { ticketTypes: (data || []).map(mapTicketTypeRow) } };
+}
+
+export async function listTicketTypesAdmin() {
+  const sb = requireClient();
+  const { data, error } = await sb
+    .from('ticket_types')
+    .select('*')
+    .order('orden', { ascending: true })
+    .order('created_at', { ascending: true });
+  if (error) throw error;
+  return { data: { ticketTypes: (data || []).map(mapTicketTypeRow) } };
+}
+
+export async function createTicketType({
+  nombre,
+  descripcion,
+  incluye,
+  precio,
+  categoria,
+  orden,
+  activo,
+  especial,
+  metadata
+}) {
+  const sb = requireClient();
+  const { data, error } = await sb
+    .from('ticket_types')
+    .insert({
+      nombre: String(nombre || '').trim(),
+      descripcion: String(descripcion || '').trim(),
+      incluye: String(incluye || '').trim(),
+      precio: Number(precio || 0),
+      categoria: String(categoria || '').trim(),
+      orden: Number(orden || 0),
+      activo: Boolean(activo),
+      especial: Boolean(especial),
+      metadata: metadata && typeof metadata === 'object' ? metadata : {}
+    })
+    .select('*')
+    .single();
+  if (error) throw error;
+  return { data: { ticketType: mapTicketTypeRow(data) } };
+}
+
+export async function updateTicketType({
+  id,
+  nombre,
+  descripcion,
+  incluye,
+  precio,
+  categoria,
+  orden,
+  activo,
+  especial,
+  metadata
+}) {
+  const sb = requireClient();
+  const { data, error } = await sb
+    .from('ticket_types')
+    .update({
+      nombre: String(nombre || '').trim(),
+      descripcion: String(descripcion || '').trim(),
+      incluye: String(incluye || '').trim(),
+      precio: Number(precio || 0),
+      categoria: String(categoria || '').trim(),
+      orden: Number(orden || 0),
+      activo: Boolean(activo),
+      especial: Boolean(especial),
+      metadata: metadata && typeof metadata === 'object' ? metadata : {},
+      updated_at: new Date().toISOString()
+    })
+    .eq('id', id)
+    .select('*')
+    .single();
+  if (error) throw error;
+  return { data: { ticketType: mapTicketTypeRow(data) } };
+}
+
+export async function deactivateTicketType({ id, activo = false }) {
+  const sb = requireClient();
+  const { error } = await sb
+    .from('ticket_types')
+    .update({ activo: Boolean(activo), updated_at: new Date().toISOString() })
+    .eq('id', id);
+  if (error) throw error;
+  return { data: {} };
+}
+
+export async function deleteTicketType({ id }) {
+  const sb = requireClient();
+  const { error } = await sb.from('ticket_types').delete().eq('id', id);
+  if (error) throw error;
+  return { data: {} };
+}
+
 export async function listRecentTickets() {
   const sb = requireClient();
   const { data, error } = await sb
@@ -513,60 +645,66 @@ function scanInvalid(reason, ticket = null) {
   return { data: { result: 'invalid', reason, ticket } };
 }
 
+function isScanTicketRpcMissing(error) {
+  const code = String(error?.code || '');
+  const msg = String(error?.message || '').toLowerCase();
+  return (
+    code === 'PGRST202' ||
+    code === '42883' ||
+    msg.includes('scan_ticket') && (msg.includes('could not find') || msg.includes('does not exist'))
+  );
+}
+
 export async function scanTicketOnline({ ticketId, rawQr, deviceId, scannedBy }) {
   const sb = requireClient();
-  const lookup = await getTicketById({ id: ticketId });
-  const ticket = lookup.data?.ticket;
-  if (!ticket) return scanInvalid('not_found');
-  if (ticket.estadoTicket === 'escaneado') return scanInvalid('already_scanned', ticket);
-  if (ticket.estadoTicket === 'cancelado') return scanInvalid('cancelled', ticket);
-
-  const now = new Date().toISOString();
-  const { data: updated, error: updErr } = await sb
-    .from('tickets')
-    .update({ estado_ticket: 'escaneado', fecha_escaneo: now })
-    .eq('id', ticketId)
-    .eq('estado_ticket', 'valido')
-    .select('*')
-    .maybeSingle();
-  if (updErr) throw updErr;
-
-  if (!updated) {
-    const after = await getTicketById({ id: ticketId });
-    const t2 = after.data?.ticket;
-    if (!t2) return scanInvalid('not_found');
-    if (t2.estadoTicket === 'escaneado') return scanInvalid('already_scanned', t2);
-    if (t2.estadoTicket === 'cancelado') return scanInvalid('cancelled', t2);
-    return scanInvalid('not_valid_state', t2);
-  }
-
-  const updatedTicket = mapTicketRow(updated);
   try {
-    await sb.from('ticket_scans').insert({
-      ticket_id: ticketId,
-      scanned_by: scannedBy || getCanonicalUserId() || null,
-      scanned_at: now,
-      device_id: deviceId || null,
-      mode: 'online',
-      result: 'valid',
-      raw_qr: String(rawQr || ''),
-      metadata: {}
+    const { data, error } = await sb.rpc('scan_ticket', {
+      p_ticket_id: String(ticketId || ''),
+      p_raw_qr: String(rawQr || ''),
+      p_device_id: deviceId || null,
+      p_offline_local_id: null
     });
-  } catch {
-    // Auditoria opcional; no bloquear validacion canonica del ticket.
+    if (error) throw error;
+    const rawTicket = data?.ticket || null;
+    return {
+      data: {
+        result: data?.result || 'invalid',
+        reason: data?.reason || 'unknown',
+        ticket: rawTicket ? mapTicketRow(rawTicket) : null
+      }
+    };
+  } catch (error) {
+    if (isScanTicketRpcMissing(error)) {
+      throw new Error('Funcion scan_ticket no desplegada');
+    }
+    throw error;
   }
-
-  return { data: { result: 'valid', reason: 'ok', ticket: updatedTicket } };
 }
 
 export async function syncPendingTicketScan(scan) {
-  const res = await scanTicketOnline({
-    ticketId: scan.ticketId,
-    rawQr: scan.rawQr,
-    deviceId: scan.deviceId,
-    scannedBy: scan.scannedBy
-  });
-  return res;
+  const sb = requireClient();
+  try {
+    const { data, error } = await sb.rpc('scan_ticket', {
+      p_ticket_id: String(scan?.ticketId || ''),
+      p_raw_qr: String(scan?.rawQr || ''),
+      p_device_id: scan?.deviceId || null,
+      p_offline_local_id: scan?.localId || null
+    });
+    if (error) throw error;
+    const rawTicket = data?.ticket || null;
+    return {
+      data: {
+        result: data?.result || 'invalid',
+        reason: data?.reason || 'unknown',
+        ticket: rawTicket ? mapTicketRow(rawTicket) : null
+      }
+    };
+  } catch (error) {
+    if (isScanTicketRpcMissing(error)) {
+      throw new Error('Funcion scan_ticket no desplegada');
+    }
+    throw error;
+  }
 }
 
 export async function listRecentTicketScans({ limit = 50 } = {}) {

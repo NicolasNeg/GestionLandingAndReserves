@@ -5,7 +5,10 @@ import {
     getUserProfile,
     listProductosAdmin,
     updateProductoStock,
-    createMovimientoInventario
+    createMovimientoInventario,
+    getDescuentoByCodigo,
+    listTicketTypesPublic,
+    consumeDescuento
 } from '../lib/dataLayer.js';
 import { navigateTo } from '../router.js';
 import { showAlert } from '../lib/appDialog.js';
@@ -14,6 +17,7 @@ import { sendTicketEmailCopy } from '../lib/sendTicketEmail.js';
 import { listCartItems, setCartQty, removeFromCart, cartSubtotal, addToCart, clearCart } from '../lib/cart.js';
 import { publishAppUpdate } from '../lib/realtimeSync.js';
 import { getUserAccess } from '../lib/accessControl.js';
+import { applyDiscountToCart } from '../lib/discountRules.js';
 
 const Checkout = {
     render: () => `
@@ -31,7 +35,8 @@ const Checkout = {
             <div class="bg-white rounded-xl shadow-md p-6 mb-6">
                 <h2 class="text-xl font-bold mb-4 border-b pb-2">Carrito</h2>
                 <div id="checkout-cart-items" class="space-y-3 mb-4"></div>
-                <button id="btn-add-ticket" type="button" class="mb-2 rounded-lg border border-slate-300 px-3 py-1 text-sm font-semibold hover:bg-slate-50">+ Agregar ticket suelto</button>
+                <h3 class="text-sm font-black text-slate-800 mt-4 mb-2">Tickets disponibles</h3>
+                <div id="checkout-ticket-types" class="grid grid-cols-1 gap-2 sm:grid-cols-2"></div>
             </div>
 
             <div class="bg-white rounded-xl shadow-md p-6 mb-6">
@@ -69,13 +74,23 @@ const Checkout = {
             </div>
 
             <div class="bg-gray-100 rounded-xl p-6 flex justify-between items-center mb-6 shadow-inner border border-gray-200">
-                <div>
+                <div class="w-full">
                     <p class="text-gray-600">Subtotal: <span class="font-bold text-gray-800" id="subtotal-text">$0.00 MXN</span></p>
+                    <p class="text-gray-600">Descuento: <span class="font-bold text-emerald-700" id="discount-text">$0.00 MXN</span></p>
                 </div>
                 <div class="text-right">
                     <p class="text-sm text-gray-500">Total a pagar:</p>
                     <p class="text-3xl font-extrabold text-blue-600" id="total-text">$0.00 MXN</p>
                 </div>
+            </div>
+            <div class="bg-white rounded-xl shadow-md p-6 mb-6">
+                <h2 class="text-xl font-bold mb-4 border-b pb-2">Código de descuento</h2>
+                <div class="flex flex-col gap-2 sm:flex-row">
+                    <input id="discount-code-input" type="text" class="flex-1 rounded-md border-gray-300 shadow-sm p-2 border uppercase" placeholder="Ej. VERANO10">
+                    <button id="discount-apply-btn" type="button" class="rounded bg-emerald-600 px-4 py-2 text-sm font-bold text-white hover:bg-emerald-700">Aplicar</button>
+                    <button id="discount-remove-btn" type="button" class="hidden rounded border border-slate-300 px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50">Quitar descuento</button>
+                </div>
+                <p id="discount-status" class="mt-2 text-sm text-slate-600"></p>
             </div>
             <div id="checkout-role-breakdown" class="mb-6 rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-600">
                 Cargando desglose de rol...
@@ -124,7 +139,13 @@ const Checkout = {
         const authNotice = document.getElementById('auth-notice');
         const cartWrap = document.getElementById('checkout-cart-items');
         const subtotalText = document.getElementById('subtotal-text');
+        const discountText = document.getElementById('discount-text');
         const totalText = document.getElementById('total-text');
+        const ticketTypesWrap = document.getElementById('checkout-ticket-types');
+        const discountCodeInput = document.getElementById('discount-code-input');
+        const discountApplyBtn = document.getElementById('discount-apply-btn');
+        const discountRemoveBtn = document.getElementById('discount-remove-btn');
+        const discountStatus = document.getElementById('discount-status');
 
         const modalInvite = document.getElementById('modal-invite');
         const purchaseConfirm = document.getElementById('purchase-confirm');
@@ -133,12 +154,45 @@ const Checkout = {
 
         let selectedPayment = 'online';
         let cartItems = listCartItems();
+        let appliedDiscount = null;
+        let discountAmount = 0;
+        let effectiveTotal = cartSubtotal();
 
         const fmt = (n) => `$${Number(n || 0).toFixed(2)} MXN`;
+        const setDiscountStatus = (msg, tone = 'neutral') => {
+            if (!discountStatus) return;
+            discountStatus.textContent = msg || '';
+            discountStatus.className = 'mt-2 text-sm';
+            if (tone === 'ok') discountStatus.classList.add('text-emerald-700', 'font-semibold');
+            else if (tone === 'err') discountStatus.classList.add('text-rose-700', 'font-semibold');
+            else discountStatus.classList.add('text-slate-600');
+        };
         const syncTotals = () => {
-            const total = cartSubtotal();
-            subtotalText.textContent = fmt(total);
-            totalText.textContent = fmt(total);
+            const subtotal = cartSubtotal();
+            const totalQty = listCartItems().reduce((acc, item) => acc + Number(item.qty || 0), 0);
+            if (appliedDiscount) {
+                const evaluation = applyDiscountToCart({
+                    discount: appliedDiscount,
+                    cart: { subtotal, totalQty },
+                    paymentMethod: selectedPayment,
+                    user: getCurrentUser()
+                });
+                if (evaluation.ok) {
+                    discountAmount = Number(evaluation.discountAmount || 0);
+                    effectiveTotal = Number(evaluation.total || subtotal);
+                    setDiscountStatus(`Codigo ${appliedDiscount.codigo} aplicado.`, 'ok');
+                } else {
+                    discountAmount = 0;
+                    effectiveTotal = subtotal;
+                    setDiscountStatus(evaluation.message || 'El cupon ya no aplica con el carrito actual.', 'err');
+                }
+            } else {
+                discountAmount = 0;
+                effectiveTotal = subtotal;
+            }
+            subtotalText.textContent = fmt(subtotal);
+            discountText.textContent = `-${fmt(discountAmount)}`;
+            totalText.textContent = fmt(effectiveTotal);
         };
         const renderCart = () => {
             cartItems = listCartItems();
@@ -166,18 +220,116 @@ const Checkout = {
             syncTotals();
         };
 
-        document.getElementById('btn-add-ticket')?.addEventListener('click', () => {
-            addToCart({
-                key: 'ticket:entrada-general',
-                type: 'ticket',
-                id: 'entrada-general',
-                name: 'Ticket entrada general',
-                price: 1000,
-                qty: 1
-            });
-            renderCart();
+        const renderTicketTypes = async () => {
+            if (!ticketTypesWrap) return;
+            try {
+                const res = await listTicketTypesPublic();
+                const rows = res.data?.ticketTypes || [];
+                if (!rows.length) {
+                    ticketTypesWrap.innerHTML = '<p class="text-xs text-slate-500">No hay tickets publicados por el momento.</p>';
+                    return;
+                }
+                ticketTypesWrap.innerHTML = rows.map((t) => `
+                  <article class="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                    <div class="flex items-start justify-between gap-2">
+                      <div>
+                        <p class="text-sm font-black text-slate-900">${t.nombre}</p>
+                        <p class="text-xs text-slate-500">${t.descripcion || 'Ticket configurable desde panel'}</p>
+                        ${t.incluye ? `<p class="mt-1 text-xs text-slate-600"><strong>Incluye:</strong> ${t.incluye}</p>` : ''}
+                      </div>
+                      ${t.especial ? '<span class="rounded-full bg-amber-100 px-2 py-1 text-[10px] font-black text-amber-700">Especial</span>' : ''}
+                    </div>
+                    <div class="mt-3 flex items-center justify-between">
+                      <strong class="text-sm text-emerald-700">${fmt(t.precio)}</strong>
+                      <button class="checkout-add-ticket rounded border border-slate-300 bg-white px-2 py-1 text-xs font-bold hover:bg-slate-100" data-ticket-id="${t.id}" data-ticket-name="${t.nombre}" data-ticket-price="${t.precio}">
+                        Agregar
+                      </button>
+                    </div>
+                  </article>
+                `).join('');
+                ticketTypesWrap.querySelectorAll('.checkout-add-ticket').forEach((btn) => {
+                    btn.addEventListener('click', () => {
+                        addToCart({
+                            key: `ticket:${btn.dataset.ticketId}`,
+                            type: 'ticket',
+                            id: btn.dataset.ticketId,
+                            name: btn.dataset.ticketName,
+                            price: Number(btn.dataset.ticketPrice || 0),
+                            qty: 1
+                        });
+                        renderCart();
+                    });
+                });
+            } catch (e) {
+                ticketTypesWrap.innerHTML = '<p class="text-xs text-rose-600">No se pudieron cargar los tickets configurables.</p>';
+            }
+        };
+
+        const applyDiscountCode = async () => {
+            const code = String(discountCodeInput?.value || '').trim().toUpperCase();
+            if (!code) {
+                appliedDiscount = null;
+                discountAmount = 0;
+                setDiscountStatus('Ingresa un codigo para aplicar descuento.');
+                syncTotals();
+                return;
+            }
+            try {
+                discountApplyBtn.disabled = true;
+                setDiscountStatus('Aplicando cupón...');
+                const res = await getDescuentoByCodigo({ codigo: code });
+                const discount = res.data?.descuento;
+                if (!discount) {
+                    appliedDiscount = null;
+                    discountAmount = 0;
+                    if (discountRemoveBtn) discountRemoveBtn.classList.add('hidden');
+                    setDiscountStatus('Codigo invalido o no existe.', 'err');
+                    syncTotals();
+                    return;
+                }
+                const subtotal = cartSubtotal();
+                const totalQty = listCartItems().reduce((acc, item) => acc + Number(item.qty || 0), 0);
+                const evaluation = applyDiscountToCart({
+                    discount,
+                    cart: { subtotal, totalQty },
+                    paymentMethod: selectedPayment,
+                    user: getCurrentUser()
+                });
+                if (!evaluation.ok) {
+                    appliedDiscount = null;
+                    discountAmount = 0;
+                    if (discountRemoveBtn) discountRemoveBtn.classList.add('hidden');
+                    setDiscountStatus(evaluation.message || 'El cupon no cumple condiciones.', 'err');
+                    syncTotals();
+                    return;
+                }
+                appliedDiscount = discount;
+                discountAmount = Number(evaluation.discountAmount || 0);
+                setDiscountStatus(`Codigo ${discount.codigo} aplicado correctamente.`, 'ok');
+                if (discountRemoveBtn) discountRemoveBtn.classList.remove('hidden');
+                syncTotals();
+            } catch (e) {
+                setDiscountStatus(e?.message || 'Error de red al aplicar descuento.', 'err');
+            } finally {
+                discountApplyBtn.disabled = false;
+            }
+        };
+
+        discountApplyBtn?.addEventListener('click', () => void applyDiscountCode());
+        discountCodeInput?.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter') void applyDiscountCode();
         });
+        discountRemoveBtn?.addEventListener('click', () => {
+            appliedDiscount = null;
+            discountAmount = 0;
+            if (discountCodeInput) discountCodeInput.value = '';
+            discountRemoveBtn.classList.add('hidden');
+            setDiscountStatus('Descuento removido.');
+            syncTotals();
+        });
+
         renderCart();
+        renderTicketTypes();
 
         const fillUserData = async (user) => {
             if (user) {
@@ -229,6 +381,7 @@ const Checkout = {
                 } else {
                     document.getElementById('opt-taquilla').classList.add('border-blue-500', 'bg-blue-50');
                 }
+                syncTotals();
             });
         });
 
@@ -262,7 +415,8 @@ const Checkout = {
                     await showAlert('Agrega al menos un item al carrito antes de pagar.', { title: 'Carrito vacío', variant: 'warning' });
                     return;
                 }
-                const totalCarrito = cartItems.reduce((acc, item) => acc + Number(item.price || 0) * Number(item.qty || 0), 0);
+                const subtotalCarrito = cartItems.reduce((acc, item) => acc + Number(item.price || 0) * Number(item.qty || 0), 0);
+                const totalCarrito = Math.max(0, Number(effectiveTotal || subtotalCarrito));
                 const variables = {
                     clienteNombre: name,
                     clienteEmail: email,
@@ -280,6 +434,14 @@ const Checkout = {
                 } else {
                     const res = await createAnonymousTicket(variables);
                     ticketId = res.data.ticket_insert.id;
+                }
+                if (appliedDiscount?.id) {
+                    try {
+                        const next = Math.max(0, Number(appliedDiscount.usosRestantes || 0) - 1);
+                        await consumeDescuento({ id: appliedDiscount.id, usosRestantesNext: next });
+                    } catch (discErr) {
+                        console.warn('No se pudo consumir descuento post-compra:', discErr);
+                    }
                 }
                 try {
                     await publishAppUpdate('tickets', `created:${ticketId}`);

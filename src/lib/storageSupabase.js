@@ -37,7 +37,16 @@ async function uploadToBucket(path, file, contentType) {
     upsert: true,
     contentType
   });
-  if (error) throw error;
+  if (error) {
+    const msg = String(error?.message || '');
+    if (error?.statusCode === '404' || msg.toLowerCase().includes('bucket')) {
+      throw new Error('El bucket app-uploads no existe. Ejecuta patch_storage_app_uploads.sql.');
+    }
+    if (error?.statusCode === '403' || msg.toLowerCase().includes('row-level security')) {
+      throw new Error('No tienes permiso para subir imagenes en esta seccion.');
+    }
+    throw error;
+  }
   const {
     data: { publicUrl }
   } = sb.storage.from(bucket).getPublicUrl(path);
@@ -51,7 +60,7 @@ export async function uploadProductImage(file, uid) {
       ? file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
       : 'foto.jpg';
   const safeName = `${Date.now()}_${Math.random().toString(36).slice(2, 10)}_${base}`;
-  const path = `productos/${uid}/${safeName}`;
+  const path = `products/${uid}/${safeName}`;
   return uploadToBucket(path, file, type);
 }
 
@@ -69,7 +78,7 @@ export async function uploadServiceImage(file, uid) {
   const base =
     file.name && file.name.includes('.') ? file.name.replace(/[^a-zA-Z0-9._-]/g, '_') : 'servicio.jpg';
   const safeName = `${Date.now()}_${Math.random().toString(36).slice(2, 10)}_${base}`;
-  const path = `servicios/${uid}/${safeName}`;
+  const path = `services/${uid}/${safeName}`;
   return uploadToBucket(path, file, type);
 }
 

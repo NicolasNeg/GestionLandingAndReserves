@@ -2,7 +2,8 @@ import {
   listPaquetes,
   listProductosPublic,
   getLandingPage,
-  listServiciosLanding
+  listServiciosLanding,
+  listTicketTypesPublic
 } from '../lib/dataLayer.js';
 import { getCurrentUser } from '../lib/authProvider.js';
 import {
@@ -277,6 +278,58 @@ const renderProductos = (productos) => {
   `;
 };
 
+const renderTicketTypes = (ticketTypes) => {
+  if (!ticketTypes.length) {
+    return `<p class="text-sm text-slate-500">No hay tickets configurados en este momento.</p>`;
+  }
+  return `
+    <div class="mt-10 grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl mx-auto">
+      ${ticketTypes.map((t, i) => `
+        <article class="bg-white rounded-2xl shadow-xl relative overflow-hidden border-t-[12px] ${t.especial ? 'border-amber-500' : 'border-teal-700'}">
+          <div class="p-8">
+            <div class="flex justify-between items-start gap-4 mb-6">
+              <div>
+                <h3 class="text-xl font-black ${t.especial ? 'text-amber-700' : 'text-teal-700'}">${escapeHtml(t.nombre)}</h3>
+                <p class="text-sm text-slate-500">${escapeHtml(t.descripcion || 'Ticket configurable desde panel')}</p>
+              </div>
+              <span class="${t.especial ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-teal-50 text-teal-700 border-teal-200'} border px-4 py-2 rounded-full text-xs font-black">
+                ${t.especial ? 'Especial' : 'General'}
+              </span>
+            </div>
+            <ul class="space-y-3 text-sm text-slate-600">
+              <li class="flex items-center gap-2">
+                <span class="${t.especial ? 'text-amber-700' : 'text-teal-700'}">${icon('check', 'h-4 w-4')}</span>
+                ${escapeHtml(t.incluye || 'Acceso segun configuracion del panel')}
+              </li>
+            </ul>
+          </div>
+          <div class="mt-auto bg-slate-50 border-t-2 border-dashed border-slate-200 p-8">
+            <div class="flex items-center justify-between gap-4">
+              <div>
+                <p class="text-slate-400 text-sm block">Precio por persona</p>
+                <p class="text-4xl font-extrabold text-slate-900">${currencyFormatter.format(t.precio)}</p>
+              </div>
+              <button
+                type="button"
+                class="btn-add-ticket-individual rounded-xl ${t.especial ? 'bg-amber-500 hover:bg-amber-400' : 'bg-teal-700 hover:bg-teal-600'} px-8 py-4 text-sm font-black text-white transition active:scale-[0.99]"
+                data-ticket-key="ticket:${escapeHtml(t.id)}"
+                data-ticket-id="${escapeHtml(t.id)}"
+                data-ticket-name="${escapeHtml(t.nombre)}"
+                data-ticket-price="${Number(t.precio || 0)}"
+              >
+                Agregar al carrito
+              </button>
+            </div>
+            <div class="mt-6 h-12 rounded-xl border border-slate-200 bg-white/60 flex items-center justify-center text-slate-400 text-xs font-bold">
+              Codigo QR se genera al comprar
+            </div>
+          </div>
+        </article>
+      `).join('')}
+    </div>
+  `;
+};
+
 const navItems = [
   { id: 'inicio', label: 'Inicio', iconName: 'home' },
   { id: 'descripcion', label: 'El parque', iconName: 'info' },
@@ -459,96 +512,8 @@ export default {
                   </div>
                 </div>
 
-                <div class="mt-10 grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl mx-auto">
-                  <article class="bg-white rounded-2xl shadow-xl relative overflow-hidden border-t-[12px] border-teal-700">
-                    <div class="p-8">
-                      <div class="flex justify-between items-start gap-4 mb-6">
-                        <div>
-                          <h3 class="text-xl font-black text-teal-700">Ticket General</h3>
-                          <p class="text-sm text-slate-500">Acceso a albercas y zonas del parque</p>
-                        </div>
-                        <span class="bg-teal-50 text-teal-700 border border-teal-200 px-4 py-2 rounded-full text-xs font-black">1 Día</span>
-                      </div>
-
-                      <ul class="space-y-3 text-sm text-slate-600">
-                        <li class="flex items-center gap-2">
-                          <span class="text-teal-700">${icon('check', 'h-4 w-4')}</span>
-                          Acceso general al parque
-                        </li>
-                        <li class="flex items-center gap-2">
-                          <span class="text-teal-700">${icon('check', 'h-4 w-4')}</span>
-                          Zona de descanso y servicios
-                        </li>
-                      </ul>
-                    </div>
-
-                    <div class="mt-auto bg-slate-50 border-t-2 border-dashed border-slate-200 p-8">
-                      <div class="flex items-center justify-between gap-4">
-                        <div>
-                          <p class="text-slate-400 text-sm block">Precio por persona</p>
-                          <p class="text-4xl font-extrabold text-slate-900">$1000.00</p>
-                        </div>
-                        <button
-                          type="button"
-                          class="btn-add-ticket-individual rounded-xl bg-teal-700 px-8 py-4 text-sm font-black text-white transition hover:bg-teal-600 active:scale-[0.99]"
-                          data-ticket-key="ticket:entrada-general"
-                          data-ticket-id="entrada-general"
-                          data-ticket-name="Ticket entrada general"
-                          data-ticket-price="1000"
-                        >
-                          Agregar al carrito
-                        </button>
-                      </div>
-                      <div class="mt-6 h-12 rounded-xl border border-slate-200 bg-white/60 flex items-center justify-center text-slate-400 text-xs font-bold">
-                        Código QR se genera al comprar
-                      </div>
-                    </div>
-                  </article>
-
-                  <article class="bg-white rounded-2xl shadow-xl relative overflow-hidden border-t-[12px] border-amber-500">
-                    <div class="p-8">
-                      <div class="flex justify-between items-start gap-4 mb-6">
-                        <div>
-                          <h3 class="text-xl font-black text-amber-700">Ticket Familiar</h3>
-                          <p class="text-sm text-slate-500">Mejor precio para grupos</p>
-                        </div>
-                        <span class="bg-amber-50 text-amber-700 border border-amber-200 px-4 py-2 rounded-full text-xs font-black">Grupo</span>
-                      </div>
-
-                      <ul class="space-y-3 text-sm text-slate-600">
-                        <li class="flex items-center gap-2">
-                          <span class="text-amber-700">${icon('check', 'h-4 w-4')}</span>
-                          Incluye acceso compartido
-                        </li>
-                        <li class="flex items-center gap-2">
-                          <span class="text-amber-700">${icon('check', 'h-4 w-4')}</span>
-                          Ideal para 4 personas
-                        </li>
-                      </ul>
-                    </div>
-
-                    <div class="mt-auto bg-slate-50 border-t-2 border-dashed border-slate-200 p-8">
-                      <div class="flex items-center justify-between gap-4">
-                        <div>
-                          <p class="text-slate-400 text-sm block">Precio por persona</p>
-                          <p class="text-4xl font-extrabold text-slate-900">$950.00</p>
-                        </div>
-                        <button
-                          type="button"
-                          class="btn-add-ticket-individual rounded-xl bg-amber-500 px-8 py-4 text-sm font-black text-white transition hover:bg-amber-400 active:scale-[0.99]"
-                          data-ticket-key="ticket:entrada-familiar"
-                          data-ticket-id="entrada-familiar"
-                          data-ticket-name="Ticket familiar"
-                          data-ticket-price="950"
-                        >
-                          Agregar al carrito
-                        </button>
-                      </div>
-                      <div class="mt-6 h-12 rounded-xl border border-amber-100 bg-amber-50/50 flex items-center justify-center text-amber-700 text-xs font-bold">
-                        Código QR se genera al comprar
-                      </div>
-                    </div>
-                  </article>
+                <div id="landing-ticket-types" class="mt-10">
+                  <p class="text-sm text-slate-500">Cargando tickets configurados...</p>
                 </div>
               </div>
             </section>
@@ -655,7 +620,7 @@ export default {
                     </p>
                   </div>
                 </div>
-                <div class="public-map-card mt-8">
+                <div class="public-map-card mt-8 ring-1 ring-cyan-100/70 shadow-[0_20px_45px_-28px_rgba(14,116,144,0.35)]">
                   <div class="flex flex-col gap-3 border-b border-slate-100 bg-white/92 p-4 sm:flex-row sm:items-center sm:justify-between">
                     <div>
                       <p class="text-sm font-black text-slate-900">Mapa del parque</p>
@@ -670,9 +635,10 @@ export default {
                       ${icon('map', 'h-3.5 w-3.5 inline-block')} Arrastra para explorar
                     </div>
                     <div class="map-floating-toolbar absolute right-3 top-3 z-10">
-                      <button type="button" id="landing-map-zoom-out" class="map-icon-btn" title="Alejar">−</button>
-                      <button type="button" id="landing-map-reset" class="map-reset-btn" title="Restablecer">Reset</button>
-                      <button type="button" id="landing-map-zoom-in" class="map-icon-btn" title="Acercar">+</button>
+                      <button type="button" id="landing-map-zoom-out" class="map-icon-btn" title="Alejar" aria-label="Alejar mapa">−</button>
+                      <button type="button" id="landing-map-center" class="map-reset-btn" title="Centrar mapa" aria-label="Centrar mapa">${icon('compass', 'h-3.5 w-3.5')}</button>
+                      <button type="button" id="landing-map-reset" class="map-reset-btn" title="Resetear zoom y posición" aria-label="Resetear zoom y posición">Reset</button>
+                      <button type="button" id="landing-map-zoom-in" class="map-icon-btn" title="Acercar" aria-label="Acercar mapa">+</button>
                     </div>
                   </div>
                   <div id="landing-map-info" class="public-map-info">
@@ -681,6 +647,7 @@ export default {
                       <p class="mt-1 text-sm font-semibold text-slate-600">Toca una zona del mapa para ver su descripcion publica.</p>
                     </div>
                   </div>
+                  <div id="landing-map-info-mobile" class="public-map-info sm:hidden"></div>
                 </div>
               </div>
             </section>
@@ -833,16 +800,18 @@ export default {
     const mapCanvas = document.getElementById('landing-mapa-canvas');
     let globalMapViewer = null;
     const mapInfo = document.getElementById('landing-map-info');
+    const mapInfoMobile = document.getElementById('landing-map-info-mobile');
     const mapTooltip = document.getElementById('landing-map-tooltip');
     const setMapInfo = (item) => {
-      if (!mapInfo) return;
+      const emptyHtml = `
+        <div>
+          <p class="text-xs font-black uppercase tracking-wide text-cyan-700">Sin zona seleccionada</p>
+          <p class="mt-1 text-sm font-semibold text-slate-600">Toca una zona del mapa para ver su descripcion publica.</p>
+        </div>
+      `;
       if (!item) {
-        mapInfo.innerHTML = `
-          <div>
-            <p class="text-xs font-black uppercase tracking-wide text-cyan-700">Sin zona seleccionada</p>
-            <p class="mt-1 text-sm font-semibold text-slate-600">Toca una zona del mapa para ver su descripcion publica.</p>
-          </div>
-        `;
+        if (mapInfo) mapInfo.innerHTML = emptyHtml;
+        if (mapInfoMobile) mapInfoMobile.innerHTML = emptyHtml;
         return;
       }
       const publicDetail =
@@ -855,7 +824,7 @@ export default {
         item.kind === 'mesa'
           ? '<a href="/reservar" data-link class="public-map-cta">Ver mesas</a>'
           : '';
-      mapInfo.innerHTML = `
+      const html = `
         <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p class="text-xs font-black uppercase tracking-wide text-cyan-700">${escapeHtml(typeLabel)}</p>
@@ -865,6 +834,8 @@ export default {
           ${cta}
         </div>
       `;
+      if (mapInfo) mapInfo.innerHTML = html;
+      if (mapInfoMobile) mapInfoMobile.innerHTML = html;
     };
     const setMapTooltip = (item, _index, _point, pointer) => {
       if (!mapTooltip) return;
@@ -883,16 +854,33 @@ export default {
       mapTooltip.classList.remove('hidden');
     };
     if (mapCanvas) {
-      globalMapViewer = createMapViewer(mapCanvas, landing.mapaDistribucionJson, {
-        view: 'global',
-        showItemIds: false,
-        showKindBadge: false,
-        onHover: setMapTooltip,
-        onSelect: (item) => setMapInfo(item)
-      });
+      const parsedPublicMap = parseDistribucionJson(landing.mapaDistribucionJson);
+      if (!parsedPublicMap.items.length) {
+        mapCanvas.classList.add('hidden');
+        setMapInfo(null);
+        const stage = mapCanvas.closest('.public-map-stage');
+        stage?.insertAdjacentHTML(
+          'beforeend',
+          `<div class="absolute inset-3 grid place-items-center rounded-2xl border border-dashed border-slate-300 bg-white/90 p-6 text-center">
+            <div>
+              <p class="text-sm font-black text-slate-800">Mapa en preparación</p>
+              <p class="mt-2 text-xs font-semibold text-slate-500">El equipo puede publicar zonas desde el panel de sitio.</p>
+            </div>
+          </div>`
+        );
+      } else {
+        globalMapViewer = createMapViewer(mapCanvas, landing.mapaDistribucionJson, {
+          view: 'global',
+          showItemIds: false,
+          showKindBadge: false,
+          onHover: setMapTooltip,
+          onSelect: (item) => setMapInfo(item)
+        });
+      }
       document.getElementById('landing-map-zoom-in')?.addEventListener('click', () => globalMapViewer?.zoomIn());
       document.getElementById('landing-map-zoom-out')?.addEventListener('click', () => globalMapViewer?.zoomOut());
       document.getElementById('landing-map-reset')?.addEventListener('click', () => globalMapViewer?.reset());
+      document.getElementById('landing-map-center')?.addEventListener('click', () => globalMapViewer?.fit());
     }
 
     const parkingMapCanvas = document.getElementById('landing-parking-canvas');
@@ -1047,7 +1035,7 @@ export default {
       });
     });
 
-    document.querySelectorAll('.btn-add-ticket-individual').forEach((btn) => {
+    const bindTicketButtons = () => document.querySelectorAll('.btn-add-ticket-individual').forEach((btn) => {
       btn.addEventListener('click', async () => {
         addToCart({
           key: btn.dataset.ticketKey,
@@ -1060,6 +1048,19 @@ export default {
         await showAlert('Ticket agregado al carrito.', { title: 'Carrito', variant: 'success' });
       });
     });
+
+    const ticketTypesWrap = document.getElementById('landing-ticket-types');
+    if (ticketTypesWrap) {
+      try {
+        const res = await listTicketTypesPublic();
+        const ticketTypes = res.data?.ticketTypes || [];
+        ticketTypesWrap.innerHTML = renderTicketTypes(ticketTypes);
+      } catch (e) {
+        console.error('Ticket types landing:', e);
+        ticketTypesWrap.innerHTML = '<p class="text-sm text-rose-600">No se pudieron cargar los tickets configurados.</p>';
+      }
+    }
+    bindTicketButtons();
 
     const parkingMap = document.getElementById('landing-parking-map');
     const parkingSummary = document.getElementById('parking-summary');

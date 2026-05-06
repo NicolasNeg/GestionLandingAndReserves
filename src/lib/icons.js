@@ -28,6 +28,7 @@ const ICON_PATHS = {
   image: `<rect ${pathAttrs} x="3" y="3" width="18" height="18" rx="2"/><circle ${pathAttrs} cx="9" cy="9" r="2"/><path ${pathAttrs} d="m21 15-5-5L5 21"/>`,
   package: `<path ${pathAttrs} d="m21 8-9-5-9 5 9 5 9-5Z"/><path ${pathAttrs} d="M3 8v8l9 5 9-5V8"/><path ${pathAttrs} d="M12 13v8"/>`,
   phone: `<path ${pathAttrs} d="M22 16.92v3a2 2 0 0 1-2.18 2 19.8 19.8 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.12.91.32 1.79.59 2.64a2 2 0 0 1-.45 2.11L8 9.72a16 16 0 0 0 6 6l1.25-1.25a2 2 0 0 1 2.11-.45c.85.27 1.73.47 2.64.59A2 2 0 0 1 22 16.92Z"/>`,
+  shoppingCart: `<circle ${pathAttrs} cx="9" cy="20" r="1"/><circle ${pathAttrs} cx="17" cy="20" r="1"/><path ${pathAttrs} d="M3 4h2l2.4 10.2a2 2 0 0 0 2 1.5h7.7a2 2 0 0 0 2-1.6L22 7H7"/>`,
   ticket: `<path ${pathAttrs} d="M2 9a3 3 0 1 0 0 6v3a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-3a3 3 0 1 0 0-6V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v3Z"/><path ${pathAttrs} d="M13 5v2M13 17v2M13 11v2"/>`,
   scan: `<path ${pathAttrs} d="M3 7V5a2 2 0 0 1 2-2h2"/><path ${pathAttrs} d="M17 3h2a2 2 0 0 1 2 2v2"/><path ${pathAttrs} d="M21 17v2a2 2 0 0 1-2 2h-2"/><path ${pathAttrs} d="M7 21H5a2 2 0 0 1-2-2v-2"/><path ${pathAttrs} d="M7 12h10"/>`,
   briefcase: `<path ${pathAttrs} d="M10 6V5a2 2 0 0 1 2-2h0a2 2 0 0 1 2 2v1"/><rect ${pathAttrs} x="3" y="6" width="18" height="14" rx="2"/><path ${pathAttrs} d="M3 12h18"/><path ${pathAttrs} d="M12 12v2"/>`,

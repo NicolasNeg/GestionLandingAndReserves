@@ -97,6 +97,21 @@ create table if not exists public.descuentos (
   reglas_json jsonb not null default '[]'::jsonb
 );
 
+create table if not exists public.ticket_types (
+  id uuid primary key default gen_random_uuid(),
+  nombre text not null,
+  descripcion text not null default '',
+  incluye text not null default '',
+  precio numeric(10,2) not null default 0,
+  categoria text not null default '',
+  orden int not null default 0,
+  activo boolean not null default true,
+  especial boolean not null default false,
+  metadata jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
 create table if not exists public.tickets (
   id uuid primary key default gen_random_uuid(),
   user_id text references public.users(id) on delete set null,
@@ -172,6 +187,7 @@ alter table public.movimiento_inventarios enable row level security;
 alter table public.servicios enable row level security;
 alter table public.landing_page enable row level security;
 alter table public.descuentos enable row level security;
+alter table public.ticket_types enable row level security;
 alter table public.tickets enable row level security;
 alter table public.ticket_scans enable row level security;
 alter table public.mesa_reservas enable row level security;
@@ -264,6 +280,169 @@ grant execute on function public.app_has_permission(text) to authenticated;
 
 revoke all on function public.app_is_role_manager() from public;
 grant execute on function public.app_is_role_manager() to authenticated;
+
+create or replace function public.scan_ticket(
+  p_ticket_id text,
+  p_raw_qr text default '',
+  p_device_id text default null,
+  p_offline_local_id text default null
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_ticket_uuid uuid;
+  v_ticket public.tickets%rowtype;
+  v_after public.tickets%rowtype;
+  v_result text;
+  v_reason text;
+  v_mode text := case when coalesce(p_offline_local_id, '') <> '' then 'offline_sync' else 'online' end;
+  v_has_access boolean;
+begin
+  v_has_access := (
+    public.app_has_permission('tickets.scan')
+    or public.app_has_permission('admin.panel')
+    or public.app_has_permission('programador.access')
+    or public.app_is_role_manager()
+  );
+  if not v_has_access then
+    raise exception 'No autorizado para escanear tickets';
+  end if;
+
+  if p_ticket_id ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$' then
+    v_ticket_uuid := p_ticket_id::uuid;
+  else
+    v_ticket_uuid := null;
+  end if;
+
+  if v_ticket_uuid is null then
+    v_result := 'invalid';
+    v_reason := 'not_found';
+    insert into public.ticket_scans (ticket_id, scanned_by, device_id, mode, result, raw_qr, metadata)
+    values (
+      null,
+      auth.uid()::text,
+      p_device_id,
+      v_mode,
+      v_reason,
+      coalesce(p_raw_qr, ''),
+      jsonb_build_object('offline_local_id', p_offline_local_id, 'requested_ticket_id', p_ticket_id)
+    );
+    return jsonb_build_object('result', v_result, 'reason', v_reason, 'ticket', null);
+  end if;
+
+  select * into v_ticket from public.tickets where id = v_ticket_uuid;
+  if not found then
+    v_result := 'invalid';
+    v_reason := 'not_found';
+    insert into public.ticket_scans (ticket_id, scanned_by, device_id, mode, result, raw_qr, metadata)
+    values (
+      null,
+      auth.uid()::text,
+      p_device_id,
+      v_mode,
+      v_reason,
+      coalesce(p_raw_qr, ''),
+      jsonb_build_object('offline_local_id', p_offline_local_id, 'requested_ticket_id', p_ticket_id)
+    );
+    return jsonb_build_object('result', v_result, 'reason', v_reason, 'ticket', null);
+  end if;
+
+  if v_ticket.estado_ticket = 'cancelado' then
+    v_result := 'invalid';
+    v_reason := 'cancelled';
+    insert into public.ticket_scans (ticket_id, scanned_by, device_id, mode, result, raw_qr, metadata)
+    values (
+      v_ticket.id,
+      auth.uid()::text,
+      p_device_id,
+      v_mode,
+      v_reason,
+      coalesce(p_raw_qr, ''),
+      jsonb_build_object('offline_local_id', p_offline_local_id)
+    );
+    return jsonb_build_object('result', v_result, 'reason', v_reason, 'ticket', to_jsonb(v_ticket));
+  end if;
+
+  if v_ticket.estado_ticket = 'escaneado' then
+    v_result := 'invalid';
+    v_reason := 'already_scanned';
+    insert into public.ticket_scans (ticket_id, scanned_by, device_id, mode, result, raw_qr, metadata)
+    values (
+      v_ticket.id,
+      auth.uid()::text,
+      p_device_id,
+      v_mode,
+      v_reason,
+      coalesce(p_raw_qr, ''),
+      jsonb_build_object('offline_local_id', p_offline_local_id)
+    );
+    return jsonb_build_object('result', v_result, 'reason', v_reason, 'ticket', to_jsonb(v_ticket));
+  end if;
+
+  if coalesce(v_ticket.estado_pago, '') <> 'pagado' then
+    v_result := 'invalid';
+    v_reason := 'unpaid';
+    insert into public.ticket_scans (ticket_id, scanned_by, device_id, mode, result, raw_qr, metadata)
+    values (
+      v_ticket.id,
+      auth.uid()::text,
+      p_device_id,
+      v_mode,
+      v_reason,
+      coalesce(p_raw_qr, ''),
+      jsonb_build_object('offline_local_id', p_offline_local_id, 'estado_pago', v_ticket.estado_pago)
+    );
+    return jsonb_build_object('result', v_result, 'reason', v_reason, 'ticket', to_jsonb(v_ticket));
+  end if;
+
+  update public.tickets
+  set estado_ticket = 'escaneado', fecha_escaneo = now()
+  where id = v_ticket_uuid and estado_ticket = 'valido'
+  returning * into v_after;
+
+  if found then
+    v_result := 'valid';
+    v_reason := 'accepted';
+    insert into public.ticket_scans (ticket_id, scanned_by, device_id, mode, result, raw_qr, metadata)
+    values (
+      v_after.id,
+      auth.uid()::text,
+      p_device_id,
+      v_mode,
+      v_result,
+      coalesce(p_raw_qr, ''),
+      jsonb_build_object('offline_local_id', p_offline_local_id)
+    );
+    return jsonb_build_object('result', v_result, 'reason', v_reason, 'ticket', to_jsonb(v_after));
+  end if;
+
+  select * into v_after from public.tickets where id = v_ticket_uuid;
+  if found and v_after.estado_ticket = 'escaneado' then
+    v_result := 'invalid';
+    v_reason := 'already_scanned';
+  else
+    v_result := 'invalid';
+    v_reason := 'conflict';
+  end if;
+  insert into public.ticket_scans (ticket_id, scanned_by, device_id, mode, result, raw_qr, metadata)
+  values (
+    v_ticket_uuid,
+    auth.uid()::text,
+    p_device_id,
+    v_mode,
+    v_reason,
+    coalesce(p_raw_qr, ''),
+    jsonb_build_object('offline_local_id', p_offline_local_id)
+  );
+  return jsonb_build_object('result', v_result, 'reason', v_reason, 'ticket', to_jsonb(v_after));
+end;
+$$;
+
+revoke all on function public.scan_ticket(text, text, text, text) from public;
+grant execute on function public.scan_ticket(text, text, text, text) to authenticated;
 
 -- Impide que un no gestor cambie su propio rol o permissions jsonb (los gestores siguen usando políticas).
 create or replace function public.users_block_priv_change_by_non_manager()
@@ -443,6 +622,50 @@ create policy "config_update_manager" on public.configuracion for update to auth
 drop policy if exists "public read descuentos activos" on public.descuentos;
 create policy "public read descuentos activos" on public.descuentos for select using (activo = true and usos_restantes > 0);
 
+drop policy if exists "ticket_types_select_public" on public.ticket_types;
+create policy "ticket_types_select_public" on public.ticket_types for select using (activo = true);
+
+drop policy if exists "ticket_types_select_staff" on public.ticket_types;
+create policy "ticket_types_select_staff" on public.ticket_types for select to authenticated
+  using (
+    public.app_has_permission('admin.panel')
+    or public.app_has_permission('packages.manage')
+    or public.app_has_permission('programador.access')
+    or public.app_is_role_manager()
+  );
+
+drop policy if exists "ticket_types_insert_staff" on public.ticket_types;
+create policy "ticket_types_insert_staff" on public.ticket_types for insert to authenticated
+  with check (
+    public.app_has_permission('admin.panel')
+    or public.app_has_permission('packages.manage')
+    or public.app_has_permission('programador.access')
+    or public.app_is_role_manager()
+  );
+
+drop policy if exists "ticket_types_update_staff" on public.ticket_types;
+create policy "ticket_types_update_staff" on public.ticket_types for update to authenticated
+  using (
+    public.app_has_permission('admin.panel')
+    or public.app_has_permission('packages.manage')
+    or public.app_has_permission('programador.access')
+    or public.app_is_role_manager()
+  )
+  with check (
+    public.app_has_permission('admin.panel')
+    or public.app_has_permission('packages.manage')
+    or public.app_has_permission('programador.access')
+    or public.app_is_role_manager()
+  );
+
+drop policy if exists "ticket_types_delete_staff" on public.ticket_types;
+create policy "ticket_types_delete_staff" on public.ticket_types for delete to authenticated
+  using (
+    public.app_has_permission('admin.panel')
+    or public.app_has_permission('programador.access')
+    or public.app_is_role_manager()
+  );
+
 drop policy if exists "descuentos_write_manager" on public.descuentos;
 drop policy if exists "descuentos_insert_manager" on public.descuentos;
 create policy "descuentos_insert_manager" on public.descuentos for insert to authenticated
@@ -492,12 +715,14 @@ create policy "tickets_insert_authenticated" on public.tickets for insert to aut
 drop policy if exists "tickets_update_staff" on public.tickets;
 create policy "tickets_update_staff" on public.tickets for update to authenticated
   using (
-    public.app_has_permission('tickets.scan')
-    or public.app_has_permission('dashboard.manage')
+    public.app_has_permission('dashboard.manage')
+    or public.app_has_permission('admin.panel')
+    or public.app_is_role_manager()
   )
   with check (
-    public.app_has_permission('tickets.scan')
-    or public.app_has_permission('dashboard.manage')
+    public.app_has_permission('dashboard.manage')
+    or public.app_has_permission('admin.panel')
+    or public.app_is_role_manager()
   );
 
 drop policy if exists "ticket_scans_insert_staff" on public.ticket_scans;

@@ -54,8 +54,8 @@ function renderHeader(access, theme) {
   const path = lastPath;
   const count = cartCount();
   const cartButton = `
-    <button type="button" class="app-nav-link ${cartOpen ? 'is-active' : ''}" data-app-cart-toggle title="Carrito">
-      ${icon('ticket', 'h-4 w-4')}
+    <button type="button" class="app-nav-link ${cartOpen ? 'is-active' : ''}" data-app-cart-toggle title="Ver carrito" aria-label="Ver carrito">
+      ${icon('shoppingCart', 'h-4 w-4')}
       <span>Carrito ${count > 0 ? `(${count})` : ''}</span>
     </button>
   `;
@@ -193,7 +193,7 @@ function renderCartDrawer() {
         : item.type === 'producto'
           ? 'from-cyan-200 to-blue-100 text-cyan-700'
           : 'from-emerald-200 to-teal-100 text-emerald-700';
-    return `<div class="grid h-16 w-16 place-items-center rounded-2xl bg-gradient-to-br ${tint}">${icon('ticket', 'h-7 w-7')}</div>`;
+    return `<div class="grid h-16 w-16 place-items-center rounded-2xl bg-gradient-to-br ${tint}">${icon('shoppingCart', 'h-7 w-7')}</div>`;
   };
   const subtotal = cartSubtotal();
   const fees = subtotal * CART_TAX_RATE;

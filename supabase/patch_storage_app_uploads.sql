@@ -1,0 +1,175 @@
+-- Storage patch: app-uploads bucket + RLS policies
+-- Ejecutar en Supabase SQL editor.
+
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values (
+  'app-uploads',
+  'app-uploads',
+  true,
+  6291456,
+  array['image/jpeg', 'image/png', 'image/webp', 'image/gif']
+)
+on conflict (id) do update set
+  public = excluded.public,
+  file_size_limit = excluded.file_size_limit,
+  allowed_mime_types = excluded.allowed_mime_types;
+
+drop policy if exists "app_uploads_public_read" on storage.objects;
+create policy "app_uploads_public_read"
+on storage.objects
+for select
+using (bucket_id = 'app-uploads');
+
+drop policy if exists "app_uploads_insert_avatars_own" on storage.objects;
+create policy "app_uploads_insert_avatars_own"
+on storage.objects
+for insert
+to authenticated
+with check (
+  bucket_id = 'app-uploads'
+  and split_part(name, '/', 1) = 'avatars'
+  and split_part(name, '/', 2) = auth.uid()::text
+);
+
+drop policy if exists "app_uploads_update_avatars_own" on storage.objects;
+create policy "app_uploads_update_avatars_own"
+on storage.objects
+for update
+to authenticated
+using (
+  bucket_id = 'app-uploads'
+  and split_part(name, '/', 1) = 'avatars'
+  and split_part(name, '/', 2) = auth.uid()::text
+)
+with check (
+  bucket_id = 'app-uploads'
+  and split_part(name, '/', 1) = 'avatars'
+  and split_part(name, '/', 2) = auth.uid()::text
+);
+
+drop policy if exists "app_uploads_delete_avatars_own" on storage.objects;
+create policy "app_uploads_delete_avatars_own"
+on storage.objects
+for delete
+to authenticated
+using (
+  bucket_id = 'app-uploads'
+  and split_part(name, '/', 1) = 'avatars'
+  and split_part(name, '/', 2) = auth.uid()::text
+);
+
+drop policy if exists "app_uploads_insert_products_staff" on storage.objects;
+create policy "app_uploads_insert_products_staff"
+on storage.objects
+for insert
+to authenticated
+with check (
+  bucket_id = 'app-uploads'
+  and split_part(name, '/', 1) = 'products'
+  and (
+    public.app_has_permission('inventory.manage')
+    or public.app_has_permission('admin.panel')
+    or public.app_has_permission('programador.access')
+    or public.app_is_role_manager()
+  )
+);
+
+drop policy if exists "app_uploads_mutate_products_staff" on storage.objects;
+create policy "app_uploads_mutate_products_staff"
+on storage.objects
+for update
+to authenticated
+using (
+  bucket_id = 'app-uploads'
+  and split_part(name, '/', 1) = 'products'
+  and (
+    public.app_has_permission('inventory.manage')
+    or public.app_has_permission('admin.panel')
+    or public.app_has_permission('programador.access')
+    or public.app_is_role_manager()
+  )
+)
+with check (
+  bucket_id = 'app-uploads'
+  and split_part(name, '/', 1) = 'products'
+  and (
+    public.app_has_permission('inventory.manage')
+    or public.app_has_permission('admin.panel')
+    or public.app_has_permission('programador.access')
+    or public.app_is_role_manager()
+  )
+);
+
+drop policy if exists "app_uploads_delete_products_staff" on storage.objects;
+create policy "app_uploads_delete_products_staff"
+on storage.objects
+for delete
+to authenticated
+using (
+  bucket_id = 'app-uploads'
+  and split_part(name, '/', 1) = 'products'
+  and (
+    public.app_has_permission('inventory.manage')
+    or public.app_has_permission('admin.panel')
+    or public.app_has_permission('programador.access')
+    or public.app_is_role_manager()
+  )
+);
+
+drop policy if exists "app_uploads_insert_services_staff" on storage.objects;
+create policy "app_uploads_insert_services_staff"
+on storage.objects
+for insert
+to authenticated
+with check (
+  bucket_id = 'app-uploads'
+  and split_part(name, '/', 1) in ('services', 'landing', 'theme')
+  and (
+    public.app_has_permission('landing.manage')
+    or public.app_has_permission('admin.panel')
+    or public.app_has_permission('programador.access')
+    or public.app_is_role_manager()
+  )
+);
+
+drop policy if exists "app_uploads_mutate_services_staff" on storage.objects;
+create policy "app_uploads_mutate_services_staff"
+on storage.objects
+for update
+to authenticated
+using (
+  bucket_id = 'app-uploads'
+  and split_part(name, '/', 1) in ('services', 'landing', 'theme')
+  and (
+    public.app_has_permission('landing.manage')
+    or public.app_has_permission('admin.panel')
+    or public.app_has_permission('programador.access')
+    or public.app_is_role_manager()
+  )
+)
+with check (
+  bucket_id = 'app-uploads'
+  and split_part(name, '/', 1) in ('services', 'landing', 'theme')
+  and (
+    public.app_has_permission('landing.manage')
+    or public.app_has_permission('admin.panel')
+    or public.app_has_permission('programador.access')
+    or public.app_is_role_manager()
+  )
+);
+
+drop policy if exists "app_uploads_delete_services_staff" on storage.objects;
+create policy "app_uploads_delete_services_staff"
+on storage.objects
+for delete
+to authenticated
+using (
+  bucket_id = 'app-uploads'
+  and split_part(name, '/', 1) in ('services', 'landing', 'theme')
+  and (
+    public.app_has_permission('landing.manage')
+    or public.app_has_permission('admin.panel')
+    or public.app_has_permission('programador.access')
+    or public.app_is_role_manager()
+  )
+);
