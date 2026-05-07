@@ -46,10 +46,18 @@ export function createMapViewer(canvas, jsonOrDoc, options = {}) {
 
   const draw = () => {
     if (destroyed) return;
+    const resolvedSelection =
+      options.selectedIds === undefined
+        ? selectedId
+          ? [selectedId]
+          : []
+        : Array.isArray(options.selectedIds)
+          ? options.selectedIds
+          : [];
     drawMapCanvasViewport(canvas, doc, state, {
       ...options,
       hoveredId,
-      selectedIds: options.selectedIds || (selectedId ? [selectedId] : []),
+      selectedIds: resolvedSelection,
       requestRedraw: draw
     });
   };

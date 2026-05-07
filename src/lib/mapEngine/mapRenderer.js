@@ -271,6 +271,9 @@ function colorsForItem(item, options = {}) {
     } else if (stateParking === 'mantenimiento' || stateParking === 'taller' || stateParking === 'sucio') {
       fill = 'rgba(100, 116, 139, 0.20)';
       stroke = '#475569';
+    } else if (stateParking === 'libre' || !stateParking) {
+      fill = 'rgba(34, 197, 94, 0.14)';
+      stroke = '#15803d';
     }
   }
   return { fill, stroke };
@@ -284,19 +287,35 @@ function drawLabel(ctx, item, options, stroke) {
   const showIds = options.showItemIds === true;
   const showKind = options.showKindBadge === true;
   const view = options.view || options.docView;
-  const label = String(item.metadata?.publicName || item.label || '');
-  const fallbackId = !label && !showIds && view === 'mesas' && (item.kind === 'mesa' || item.type === 'table')
+  const kindLabel = getMapKind(item.kind).label;
+  const label = String(item.metadata?.publicName || item.label || '').trim();
+  const isGlobalLike = view === 'global' || view === 'parque';
+  const fallbackGlobal = !label && !showIds && isGlobalLike ? kindLabel : '';
+  const fallbackId = !label && !fallbackGlobal && !showIds && view === 'mesas' && (item.kind === 'mesa' || item.type === 'table')
     ? String(item.id || 'Mesa')
     : '';
-  if (!label && !fallbackId && !showIds && !showKind) return;
+  if (!label && !fallbackGlobal && !fallbackId && !showIds && !showKind) return;
 
   ctx.save();
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.font = item.type === 'text' ? '800 18px system-ui, sans-serif' : '800 13px system-ui, sans-serif';
+  const fontSize =
+    options.publicTypography === 'mesa'
+      ? item.type === 'table'
+        ? 13
+        : 12
+      : item.type === 'text'
+        ? 18
+        : view === 'global' || view === 'parque'
+          ? 12
+          : 13;
+  ctx.font =
+    item.type === 'text'
+      ? `${Number(item.metadata?.fontWeight || 800)} ${Number(item.metadata?.fontSize || 18)}px system-ui, sans-serif`
+      : `800 ${fontSize}px system-ui, sans-serif`;
   const labelInk = view === 'estacionamiento' && item.type !== 'parkingSpot' ? '#e2e8f0' : '#0f172a';
   ctx.fillStyle = item.type === 'text' ? (item.fill || labelInk) : labelInk;
-  const text = showIds ? String(item.id || label) : (label || fallbackId);
+  const text = showIds ? String(item.id || label || kindLabel) : (label || fallbackGlobal || fallbackId);
   const yPos = item.type === 'table' ? y + h / 2 + 1 : y + h / 2;
   if (item.type !== 'text') {
     ctx.shadowColor = 'rgba(255,255,255,0.82)';
@@ -379,7 +398,7 @@ function drawPool(ctx, item, fill, stroke) {
   ctx.restore();
 }
 
-function drawTable(ctx, item, fill, stroke) {
+function drawTable(ctx, item, fill, stroke, options = {}) {
   const x = Number(item.x || 0);
   const y = Number(item.y || 0);
   const w = Number(item.width || 0);
@@ -407,6 +426,18 @@ function drawTable(ctx, item, fill, stroke) {
   ctx.lineWidth = 2.4;
   ctx.stroke();
   ctx.restore();
+  const vip = item.metadata?.vip === true || item.metadata?.vip === 'true';
+  if (vip && !options.editor) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, r + 5, r + 5, 0, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(245, 158, 11, 0.85)';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([4, 4]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
+  }
 }
 
 function drawParkingSpot(ctx, item, options, fill, stroke) {
@@ -414,7 +445,7 @@ function drawParkingSpot(ctx, item, options, fill, stroke) {
   const y = Number(item.y || 0);
   const w = Number(item.width || 0);
   const h = Number(item.height || 0);
-  drawRectLike(ctx, item, { ...options, editor: true }, fill, stroke);
+  drawRectLike(ctx, item, options, fill, stroke);
   ctx.save();
   ctx.strokeStyle = options.editor ? 'rgba(255,255,255,0.52)' : 'rgba(226,232,240,0.72)';
   ctx.lineWidth = 1.4;
@@ -439,8 +470,8 @@ function drawParkingSpot(ctx, item, options, fill, stroke) {
   ctx.restore();
 }
 
-function drawEntrance(ctx, item, fill, stroke) {
-  drawRectLike(ctx, item, { editor: true }, fill, stroke);
+function drawEntrance(ctx, item, fill, stroke, options = {}) {
+  drawRectLike(ctx, item, options, fill, stroke);
   const x = Number(item.x || 0);
   const y = Number(item.y || 0);
   const w = Number(item.width || 0);
@@ -515,8 +546,8 @@ function drawMarker(ctx, item, fill, stroke) {
   ctx.stroke();
 }
 
-function drawImagePlaceholder(ctx, item, fill, stroke) {
-  drawRectLike(ctx, item, { editor: true }, fill, stroke);
+function drawImagePlaceholder(ctx, item, fill, stroke, options = {}) {
+  drawRectLike(ctx, item, options, fill, stroke);
   const x = Number(item.x || 0);
   const y = Number(item.y || 0);
   const w = Number(item.width || 0);
@@ -548,13 +579,25 @@ function drawLock(ctx, item) {
   ctx.restore();
 }
 
-function drawSelection(ctx, item, multi = false) {
+function drawSelection(ctx, item, multi = false, options = {}) {
   const x = Number(item.x || 0);
   const y = Number(item.y || 0);
   const w = Number(item.width || 0);
   const h = Number(item.height || 0);
   ctx.save();
   applyItemTransform(ctx, item);
+  const simplePublic = options.viewerSelectionStyle === 'simple' && !options.editor;
+  if (simplePublic && !multi) {
+    ctx.strokeStyle = 'rgba(14, 116, 144, 0.92)';
+    ctx.lineWidth = 2.6;
+    ctx.setLineDash([]);
+    ctx.shadowColor = 'rgba(14, 165, 233, 0.28)';
+    ctx.shadowBlur = 14;
+    roundRect(ctx, x - 4, y - 4, w + 8, h + 8, Math.min(14, w / 8, h / 8));
+    ctx.stroke();
+    ctx.restore();
+    return;
+  }
   ctx.strokeStyle = multi ? '#67e8f9' : '#f59e0b';
   ctx.lineWidth = multi ? 1.8 : 2.8;
   ctx.setLineDash(multi ? [5, 5] : []);
@@ -601,18 +644,19 @@ function drawSelectionBounds(ctx, items) {
   ctx.restore();
 }
 
-function drawHover(ctx, item) {
+function drawHover(ctx, item, options = {}) {
   const x = Number(item.x || 0);
   const y = Number(item.y || 0);
   const w = Number(item.width || 0);
   const h = Number(item.height || 0);
   ctx.save();
   applyItemTransform(ctx, item);
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.86)';
-  ctx.lineWidth = 5;
-  ctx.shadowColor = 'rgba(14, 165, 233, 0.42)';
-  ctx.shadowBlur = 16;
-  roundRect(ctx, x - 5, y - 5, w + 10, h + 10, 14);
+  const pub = options.viewerUi === true && !options.editor;
+  ctx.strokeStyle = pub ? 'rgba(14, 165, 233, 0.55)' : 'rgba(255, 255, 255, 0.86)';
+  ctx.lineWidth = pub ? 2.8 : 5;
+  ctx.shadowColor = pub ? 'rgba(14, 165, 233, 0.22)' : 'rgba(14, 165, 233, 0.42)';
+  ctx.shadowBlur = pub ? 12 : 16;
+  roundRect(ctx, x - (pub ? 3 : 5), y - (pub ? 3 : 5), w + (pub ? 6 : 10), h + (pub ? 6 : 10), pub ? 12 : 14);
   ctx.stroke();
   ctx.restore();
 }
@@ -623,11 +667,11 @@ function drawItem(ctx, item, options = {}) {
   ctx.globalAlpha = Number(item.opacity ?? 1);
   applyItemTransform(ctx, item);
   const type = item.type || 'rect';
-  if (type === 'table') drawTable(ctx, item, fill, stroke);
+  if (type === 'table') drawTable(ctx, item, fill, stroke, options);
   else if (type === 'ellipse' || type === 'circle') drawEllipse(ctx, item, fill, stroke);
   else if (type === 'pool') drawPool(ctx, item, fill, stroke);
   else if (type === 'parkingSpot') drawParkingSpot(ctx, item, options, fill, stroke);
-  else if (type === 'entrance') drawEntrance(ctx, item, fill, stroke);
+  else if (type === 'entrance') drawEntrance(ctx, item, fill, stroke, options);
   else if (type === 'polygon') drawPolygon(ctx, item, fill, stroke);
   else if (type === 'line') drawLine(ctx, item, stroke);
   else if (type === 'marker' || type === 'icon') drawMarker(ctx, item, fill, stroke);
@@ -635,7 +679,7 @@ function drawItem(ctx, item, options = {}) {
     ctx.fillStyle = item.fill || stroke;
     ctx.font = `${Number(item.metadata?.fontWeight || 800)} ${Number(item.metadata?.fontSize || 18)}px system-ui, sans-serif`;
     ctx.fillText(String(item.label || 'Texto'), Number(item.x || 0), Number(item.y || 0) + Number(item.height || 24) / 2);
-  } else if (type === 'image' || type === 'background') drawImagePlaceholder(ctx, item, fill, stroke);
+  } else if (type === 'image' || type === 'background') drawImagePlaceholder(ctx, item, fill, stroke, options);
   else drawRectLike(ctx, item, options, fill, stroke);
   if (type !== 'text') drawLabel(ctx, item, options, stroke);
   drawLock(ctx, item);
@@ -672,11 +716,11 @@ export function drawMapDocument(ctx, doc, options = {}) {
   sorted.forEach(({ item }) => drawItem(ctx, item, renderOptions));
   if (!doc.items.length) drawEmptyState(ctx, doc);
   const hovered = options.hoveredId ? doc.items.find((item) => item.id === options.hoveredId) : null;
-  if (hovered && hovered.visible !== false && !selectedIds.has(hovered.id)) drawHover(ctx, hovered);
+  if (hovered && hovered.visible !== false && !selectedIds.has(hovered.id)) drawHover(ctx, hovered, renderOptions);
   if (selectedIds.size) {
     const selected = sorted.filter(({ item }) => selectedIds.has(item.id)).map(({ item }) => item);
     if (selected.length > 1) drawSelectionBounds(ctx, selected);
-    selected.forEach((item) => drawSelection(ctx, item, selectedIds.size > 1));
+    selected.forEach((item) => drawSelection(ctx, item, selectedIds.size > 1, renderOptions));
   }
   if (options.marqueeRect) {
     const r = options.marqueeRect;

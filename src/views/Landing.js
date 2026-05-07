@@ -7,7 +7,6 @@ import {
 } from '../lib/dataLayer.js';
 import { getCurrentUser } from '../lib/authProvider.js';
 import {
-  drawDistribucionCanvas,
   DEFAULT_MAPA_JSON,
   MAP_ITEM_KINDS,
   createMapViewer,
@@ -707,9 +706,14 @@ export default {
                     <div class="text-sm font-bold text-slate-700" id="parking-summary">Cargando spots...</div>
                     <span class="rounded-full bg-emerald-50 px-3 py-1 text-[11px] font-black uppercase tracking-wide text-emerald-700">Solo lectura</span>
                   </div>
-                  <div class="public-parking-map relative h-[360px] overflow-hidden">
-                    <canvas id="landing-parking-canvas" width="800" height="440" class="absolute inset-0 h-full w-full"></canvas>
-                    <div id="landing-parking-map" class="absolute inset-0"></div>
+                  <div class="public-parking-map relative h-[380px] overflow-hidden sm:h-[420px]">
+                    <canvas id="landing-parking-canvas" width="800" height="440" class="absolute inset-0 h-full w-full cursor-grab"></canvas>
+                    <div class="map-floating-toolbar map-floating-toolbar--parking absolute right-3 top-3 z-10">
+                      <button type="button" id="landing-parking-zoom-out" class="map-icon-btn" title="Alejar" aria-label="Alejar mapa">−</button>
+                      <button type="button" id="landing-parking-center" class="map-reset-btn" title="Centrar mapa" aria-label="Centrar mapa">${icon('compass', 'h-3.5 w-3.5')}</button>
+                      <button type="button" id="landing-parking-reset" class="map-reset-btn" title="Resetear zoom" aria-label="Resetear zoom">Reset</button>
+                      <button type="button" id="landing-parking-zoom-in" class="map-icon-btn" title="Acercar" aria-label="Acercar mapa">+</button>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -821,6 +825,7 @@ export default {
         item.metadata?.category ||
         '';
       const typeLabel = getPublicKindLabel(item.kind);
+      const title = String(item.metadata?.publicName || item.label || typeLabel || 'Zona').trim();
       const cta =
         item.kind === 'mesa'
           ? '<a href="/reservar" data-link class="public-map-cta">Ver mesas</a>'
@@ -829,7 +834,7 @@ export default {
         <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p class="text-xs font-black uppercase tracking-wide text-cyan-700">${escapeHtml(typeLabel)}</p>
-            <h3 class="mt-0.5 text-base font-black text-slate-900">${escapeHtml(item.label || 'Zona')}</h3>
+            <h3 class="mt-0.5 text-base font-black text-slate-900">${escapeHtml(title)}</h3>
             <p class="mt-1 text-sm font-semibold leading-6 text-slate-600">${escapeHtml(publicDetail || 'Espacio publicado por el personal del parque.')}</p>
           </div>
           ${cta}
@@ -846,8 +851,9 @@ export default {
       }
       const rect = mapCanvas?.getBoundingClientRect();
       if (!rect) return;
+      const tipTitle = String(item.metadata?.publicName || item.label || getPublicKindLabel(item.kind) || 'Zona').trim();
       mapTooltip.innerHTML = `
-        <strong>${escapeHtml(item.label || 'Zona')}</strong>
+        <strong>${escapeHtml(tipTitle)}</strong>
         <span>${escapeHtml(getPublicKindLabel(item.kind))}</span>
       `;
       mapTooltip.style.left = `${Math.min(rect.width - 190, Math.max(10, pointer.clientX - rect.left + 14))}px`;
@@ -874,6 +880,8 @@ export default {
           view: 'global',
           showItemIds: false,
           showKindBadge: false,
+          viewerUi: true,
+          viewerSelectionStyle: 'simple',
           onHover: setMapTooltip,
           onSelect: (item) => setMapInfo(item)
         });
@@ -885,10 +893,16 @@ export default {
     }
 
     const parkingMapCanvas = document.getElementById('landing-parking-canvas');
-    if (parkingMapCanvas) {
-      const parkingJson = landing.mapaEstacionamientoJson || landing.mapaDistribucionJson;
-      drawDistribucionCanvas(parkingMapCanvas, parkingJson, { showItemIds: false, showKindBadge: false });
-    }
+    let landingParkingViewer = null;
+    const parkingViewerOptions = {
+      view: 'estacionamiento',
+      showItemIds: false,
+      showKindBadge: false,
+      viewerUi: true,
+      viewerSelectionStyle: 'simple',
+      parkingById: {},
+      fitPaddingScale: 0.9
+    };
 
     const mapEditWrap = document.getElementById('landing-mapa-edit-wrap');
     if (mapEditWrap && getCurrentUser()) {
@@ -1071,25 +1085,30 @@ export default {
     }
     bindTicketButtons();
 
-    const parkingMap = document.getElementById('landing-parking-map');
     const parkingSummary = document.getElementById('parking-summary');
-    if (parkingMap && parkingSummary) {
+    if (parkingMapCanvas && parkingSummary) {
+      const parkingJson = landing.mapaEstacionamientoJson || landing.mapaDistribucionJson || DEFAULT_MAPA_JSON;
+      const syncParkingIndex = (spots) => {
+        const next = {};
+        spots.forEach((s) => {
+          if (s?.id) next[s.id] = s;
+        });
+        parkingViewerOptions.parkingById = next;
+        landingParkingViewer?.redraw();
+      };
+      landingParkingViewer = createMapViewer(parkingMapCanvas, parkingJson, parkingViewerOptions);
+      document.getElementById('landing-parking-zoom-in')?.addEventListener('click', () => landingParkingViewer?.zoomIn());
+      document.getElementById('landing-parking-zoom-out')?.addEventListener('click', () => landingParkingViewer?.zoomOut());
+      document.getElementById('landing-parking-reset')?.addEventListener('click', () => landingParkingViewer?.reset());
+      document.getElementById('landing-parking-center')?.addEventListener('click', () => landingParkingViewer?.fit());
       subscribeParkingSpots(
         (spots) => {
           const libres = spots.filter((s) => s.estado === 'libre').length;
           const reservados = spots.filter((s) => s.estado === 'reservado').length;
           const ocupados = spots.filter((s) => s.estado === 'ocupado').length;
-          const mantenimiento = spots.filter((s) => s.estado === 'mantenimiento' || s.estado === 'taller').length;
+          const mantenimiento = spots.filter((s) => s.estado === 'mantenimiento' || s.estado === 'taller' || s.estado === 'sucio').length;
           parkingSummary.textContent = `Totales: ${spots.length} · Libres: ${libres} · Reservados: ${reservados} · Ocupados: ${ocupados} · Mantenimiento: ${mantenimiento}`;
-          parkingMap.innerHTML = spots
-            .map((s) => {
-              const x = Math.max(0, Math.min(95, Number(s.x || 0)));
-              const y = Math.max(0, Math.min(90, Number(s.y || 0)));
-              const state = ['libre', 'reservado', 'ocupado', 'mantenimiento', 'taller'].includes(s.estado) ? s.estado : 'ocupado';
-              const title = `${s.id} · ${s.estado || 'libre'}`;
-              return `<div title="${escapeHtml(title)}" class="public-parking-spot state-${state}" style="left:${x}%; top:${y}%">${escapeHtml(s.id)}</div>`;
-            })
-            .join('');
+          syncParkingIndex(spots);
         },
         (error) => {
           if (error?.code === 'permission-denied') {

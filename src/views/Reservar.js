@@ -258,6 +258,9 @@ export default {
       showItemIds: false,
       showKindBadge: false,
       statusByMapItemId: {},
+      viewerUi: true,
+      viewerSelectionStyle: 'simple',
+      publicTypography: 'mesa',
       onHover: setMapTooltip,
       onSelect: (item) => openMesaDetail(item)
     };
@@ -356,6 +359,8 @@ export default {
         if (!item) return;
         statusByMapItemId[id] = getMesaStatus(item);
       });
+      if (selectedMesaId) mesaViewerOptions.selectedIds = [selectedMesaId];
+      else delete mesaViewerOptions.selectedIds;
       if (!mapJson || parsedEmpty) {
         canvas.classList.add('hidden');
         if (placeholder) {

@@ -1099,6 +1099,44 @@
       rgb(15 23 42);
   }
 
+  .mapa-ws-main {
+    align-items: stretch;
+  }
+
+  .mapa-ws-sidebar-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: rgb(51 65 85 / 0.55) transparent;
+  }
+
+  .mapa-tool-accordion-summary {
+    display: flex;
+    cursor: pointer;
+    align-items: center;
+    justify-content: space-between;
+    border-radius: 0.7rem;
+    padding: 0.55rem 0.65rem;
+    color: rgb(226 232 240);
+    font-size: 0.68rem;
+    font-weight: 900;
+    letter-spacing: 0.04em;
+    list-style: none;
+    text-transform: uppercase;
+    user-select: none;
+  }
+
+  .mapa-tool-accordion summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .mapa-tool-accordion[open] .mapa-tool-accordion-summary {
+    background: rgb(255 255 255 / 0.05);
+    color: white;
+  }
+
+  .mapa-file-card .mapa-command-btn {
+    width: 100%;
+  }
+
   .mapa-command-bar {
     align-items: center;
   }
@@ -1941,5 +1979,9 @@
 
   .exec-dash-act-link:hover {
     text-decoration: underline;
+  }
+
+  .mapa-viewport-outer {
+    min-height: 12rem;
   }
 }
