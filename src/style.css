@@ -1637,4 +1637,309 @@
       order: -1;
     }
   }
+
+  /* Dashboard ejecutivo — Gestión / Resumen */
+  .exec-dash-quick {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.6rem;
+  }
+
+  .exec-quick-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    border-radius: 0.85rem;
+    border: 1px solid rgb(226 232 240);
+    background: white;
+    padding: 0.65rem 1rem;
+    font-size: 0.75rem;
+    font-weight: 900;
+    color: rgb(15 23 42);
+    box-shadow: 0 1px 2px rgb(15 23 42 / 0.06);
+    transition:
+      background 0.15s ease,
+      border-color 0.15s ease,
+      transform 0.12s ease;
+  }
+
+  .exec-quick-btn:hover {
+    border-color: rgb(165 243 252);
+    background: rgb(248 250 252);
+  }
+
+  .exec-quick-btn--primary {
+    border-color: rgb(15 23 42);
+    background: rgb(15 23 42);
+    color: white;
+    box-shadow: 0 10px 28px rgb(15 23 42 / 0.22);
+  }
+
+  .exec-quick-btn--primary:hover {
+    border-color: rgb(30 41 59);
+    background: rgb(30 41 59);
+  }
+
+  .exec-dash-skeleton-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.75rem;
+  }
+
+  @media (min-width: 1024px) {
+    .exec-dash-skeleton-grid {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+  }
+
+  .exec-dash-skel-cell {
+    min-height: 7.5rem;
+    border-radius: 1rem;
+    border: 1px solid rgb(226 232 240);
+    background: rgb(255 255 255 / 0.92);
+    padding: 1rem;
+    animation: exec-dash-pulse 1.25s ease-in-out infinite;
+  }
+
+  .exec-dash-skel-line {
+    display: block;
+    height: 0.55rem;
+    border-radius: 999px;
+    background: rgb(226 232 240);
+  }
+
+  @keyframes exec-dash-pulse {
+    0%,
+    100% {
+      opacity: 1;
+    }
+
+    50% {
+      opacity: 0.68;
+    }
+  }
+
+  .exec-dash-kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.75rem;
+  }
+
+  @media (min-width: 768px) {
+    .exec-dash-kpi-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 1rem;
+    }
+  }
+
+  @media (min-width: 1024px) {
+    .exec-dash-kpi-grid {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+  }
+
+  .exec-dash-card {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    border-radius: 1rem;
+    border: 1px solid rgb(226 232 240);
+    background: rgb(255 255 255 / 0.96);
+    padding: 1rem 1.1rem;
+    box-shadow: 0 10px 36px rgb(15 23 42 / 0.06);
+    min-height: 7.5rem;
+  }
+
+  .exec-dash-card.is-warn {
+    border-color: rgb(253 230 138);
+    background: linear-gradient(145deg, rgb(255 251 235), white);
+  }
+
+  .exec-dash-card.is-danger {
+    border-color: rgb(254 202 202);
+    background: linear-gradient(145deg, rgb(254 242 242), white);
+  }
+
+  .exec-dash-card.is-info {
+    border-color: rgb(186 230 253);
+    background: linear-gradient(145deg, rgb(240 249 255), white);
+  }
+
+  .exec-dash-card-kicker {
+    font-size: 0.625rem;
+    font-weight: 950;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: rgb(100 116 139);
+  }
+
+  .exec-dash-card-value {
+    font-size: 1.55rem;
+    font-weight: 950;
+    letter-spacing: -0.03em;
+    color: rgb(15 23 42);
+    line-height: 1.15;
+  }
+
+  .exec-dash-card-sub {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: rgb(71 85 105);
+    line-height: 1.35;
+  }
+
+  .exec-dash-card-cta {
+    margin-top: auto;
+    padding-top: 0.35rem;
+    font-size: 0.68rem;
+    font-weight: 900;
+    color: rgb(13 148 136);
+  }
+
+  .exec-dash-card-cta:hover {
+    text-decoration: underline;
+  }
+
+  .exec-dash-split {
+    display: grid;
+    gap: 1rem;
+  }
+
+  @media (min-width: 1024px) {
+    .exec-dash-split {
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      align-items: start;
+    }
+  }
+
+  .exec-dash-panel {
+    border-radius: 1.15rem;
+    border: 1px solid rgb(226 232 240);
+    background: rgb(255 255 255 / 0.96);
+    padding: 1.25rem 1.35rem;
+    box-shadow: 0 16px 44px rgb(15 23 42 / 0.06);
+  }
+
+  .exec-dash-panel-title {
+    font-size: 1rem;
+    font-weight: 950;
+    color: rgb(15 23 42);
+  }
+
+  .exec-dash-panel-sub {
+    margin-top: 0.2rem;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: rgb(100 116 139);
+  }
+
+  .exec-dash-alert {
+    border-radius: 0.85rem;
+    padding: 0.85rem 1rem;
+    border: 1px solid rgb(226 232 240);
+    background: rgb(248 250 252);
+  }
+
+  .exec-dash-alert.is-danger {
+    border-color: rgb(254 202 202);
+    background: rgb(254 242 242);
+  }
+
+  .exec-dash-alert.is-warn {
+    border-color: rgb(253 230 138);
+    background: rgb(255 251 235);
+  }
+
+  .exec-dash-alert.is-info {
+    border-color: rgb(186 230 253);
+    background: rgb(240 249 255);
+  }
+
+  .exec-dash-alert-title {
+    font-size: 0.82rem;
+    font-weight: 950;
+    color: rgb(15 23 42);
+  }
+
+  .exec-dash-alert-body {
+    margin-top: 0.25rem;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: rgb(71 85 105);
+    line-height: 1.35;
+  }
+
+  .exec-dash-alert-btn {
+    display: inline-flex;
+    margin-top: 0.55rem;
+    border-radius: 0.65rem;
+    border: 1px solid rgb(203 213 225);
+    background: white;
+    padding: 0.35rem 0.75rem;
+    font-size: 0.68rem;
+    font-weight: 950;
+    color: rgb(15 23 42);
+  }
+
+  .exec-dash-alert-btn:hover {
+    border-color: rgb(165 243 252);
+    background: rgb(236 254 255);
+  }
+
+  .exec-dash-act-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.65rem;
+    border-radius: 0.85rem;
+    border: 1px solid rgb(241 245 249);
+    background: rgb(248 250 252 / 0.85);
+    padding: 0.65rem 0.75rem;
+  }
+
+  .exec-dash-act-icon {
+    flex-shrink: 0;
+    display: grid;
+    place-items: center;
+    width: 2.35rem;
+    height: 2.35rem;
+    border-radius: 0.65rem;
+    background: white;
+    border: 1px solid rgb(226 232 240);
+    color: rgb(13 148 136);
+  }
+
+  .exec-dash-act-title {
+    font-size: 0.8rem;
+    font-weight: 950;
+    color: rgb(15 23 42);
+  }
+
+  .exec-dash-act-body {
+    margin-top: 0.15rem;
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: rgb(71 85 105);
+    line-height: 1.35;
+  }
+
+  .exec-dash-act-meta {
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.25rem;
+    font-size: 0.65rem;
+    font-weight: 700;
+    color: rgb(100 116 139);
+    text-align: right;
+  }
+
+  .exec-dash-act-link {
+    font-weight: 950;
+    color: rgb(13 148 136);
+  }
+
+  .exec-dash-act-link:hover {
+    text-decoration: underline;
+  }
 }

@@ -35,13 +35,9 @@ import {
   deleteTicket,
   deleteMesaReserva,
   listMesaReservasByFecha,
-  getTodaySalesSummary,
-  getTodayTicketsSummary,
-  getTodayMesaReservasSummary,
-  getInventoryAlerts,
-  getActiveDiscountsSummary,
-  getParkingSummary
+  getExecutiveDashboardData
 } from '../lib/dataLayer.js';
+import { listPendingScans } from '../lib/offlineScannerStore.js';
 import {
   createDistribucionEditor,
   DEFAULT_MAPA_JSON,
@@ -86,6 +82,35 @@ function escapeHtml(text) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;');
+}
+
+function relativeTimeEs(iso) {
+  if (!iso) return '';
+  const t = new Date(iso).getTime();
+  if (Number.isNaN(t)) return '';
+  const diff = Date.now() - t;
+  const m = Math.floor(diff / 60000);
+  if (m < 1) return 'Hace un momento';
+  if (m < 60) return `Hace ${m} min`;
+  const h = Math.floor(m / 60);
+  if (h < 48) return `Hace ${h} h`;
+  const d = Math.floor(h / 24);
+  return `Hace ${d} d`;
+}
+
+function fmtMxMoney(n) {
+  return new Intl.NumberFormat('es-MX', {
+    style: 'currency',
+    currency: 'MXN',
+    maximumFractionDigits: 2
+  }).format(Number(n || 0));
+}
+
+function execDashCardClass(tone) {
+  if (tone === 'danger') return 'exec-dash-card is-danger';
+  if (tone === 'warning') return 'exec-dash-card is-warn';
+  if (tone === 'info') return 'exec-dash-card is-info';
+  return 'exec-dash-card';
 }
 
 const defaultLandingForm = () => ({
@@ -239,55 +264,57 @@ const AdminDashboard = {
 
             <div class="flex-grow overflow-y-auto p-6 sm:p-8">
                 <div id="admin-panel-tickets">
-                <h1 class="text-3xl font-bold text-gray-800 mb-2">Dashboard</h1>
-                <p id="admin-rol-hint" class="mb-6 text-sm text-slate-500"></p>
-                <div class="mb-6 rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-600">
-                  <strong>Desglose trabajador:</strong> monitorea tickets y usa <em>Registrar entrada</em> para marcar estado final <code>escaneado</code> en tiempo real.
-                </div>
+                <div id="exec-dash-root" class="exec-dash mb-8">
+                  <header class="exec-dash-header mb-6 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+                    <div class="min-w-0">
+                      <p class="exec-dash-kicker text-[10px] font-black uppercase tracking-[0.2em] text-cyan-700">Operación</p>
+                      <h1 class="mt-1 text-3xl font-black tracking-tight text-slate-900">Resumen ejecutivo</h1>
+                      <p id="exec-dash-date-line" class="mt-1 text-sm font-semibold text-slate-500"></p>
+                      <p id="admin-rol-hint" class="mt-2 text-sm text-slate-500"></p>
+                    </div>
+                    <div class="flex flex-wrap gap-2">
+                      <button type="button" id="exec-dash-refresh" class="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-black text-slate-800 shadow-sm hover:bg-slate-50">
+                        Actualizar métricas
+                      </button>
+                      ${canScan ? `<a href="/escaner" data-link class="rounded-xl bg-slate-900 px-4 py-2 text-xs font-black text-white shadow hover:bg-slate-800">Abrir escáner</a>` : ''}
+                    </div>
+                  </header>
 
-                <div id="admin-exec-kpis" class="grid grid-cols-2 gap-3 mb-4 lg:grid-cols-4" aria-live="polite">
-                  <div class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
-                    <p class="text-[10px] font-black uppercase text-slate-500">Ventas día (pagado)</p>
-                    <p class="mt-1 text-2xl font-black text-slate-900" id="kpi-sales-paid">—</p>
-                    <p class="text-xs font-semibold text-slate-500" id="kpi-sales-sub">—</p>
+                  <div id="exec-dash-worker-strip" class="${canScan && !canAdminPanel ? '' : 'hidden'} mb-6 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-semibold text-amber-950">
+                    Vista compacta para operación en campo: sincroniza pendientes offline cuando recuperes red.
                   </div>
-                  <div class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
-                    <p class="text-[10px] font-black uppercase text-slate-500">Tickets vendidos hoy</p>
-                    <p class="mt-1 text-2xl font-black text-teal-700" id="kpi-sold-today">—</p>
-                    <p class="text-xs font-semibold text-slate-500" id="kpi-sold-sub">—</p>
+
+                  <div id="exec-dash-quick" class="exec-dash-quick mb-6"></div>
+
+                  <div id="exec-dash-skeleton" class="exec-dash-skeleton exec-dash-skeleton-grid" aria-hidden="true">
+                    ${Array.from({ length: 8 })
+                      .map(
+                        () =>
+                          '<div class="exec-dash-skel-cell"><span class="exec-dash-skel-line w-2/3"></span><span class="exec-dash-skel-line w-1/2 mt-3"></span><span class="exec-dash-skel-line w-1/3 mt-6"></span></div>'
+                      )
+                      .join('')}
                   </div>
-                  <div class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
-                    <p class="text-[10px] font-black uppercase text-slate-500">Escaneados hoy</p>
-                    <p class="mt-1 text-2xl font-black text-violet-700" id="kpi-scan-today">—</p>
-                    <p class="text-xs font-semibold text-slate-500" id="kpi-scan-sub">—</p>
-                  </div>
-                  <div class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
-                    <p class="text-[10px] font-black uppercase text-slate-500">Mesas hoy</p>
-                    <p class="mt-1 text-2xl font-black text-amber-700" id="kpi-mesa-today">—</p>
-                    <p class="text-xs font-semibold text-slate-500" id="kpi-mesa-sub">—</p>
-                  </div>
-                  <div class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
-                    <p class="text-[10px] font-black uppercase text-slate-500">Ingreso estimado</p>
-                    <p class="mt-1 text-2xl font-black text-emerald-700" id="kpi-est-revenue">—</p>
-                    <p class="text-xs font-semibold text-slate-500" id="kpi-est-sub">—</p>
-                  </div>
-                  <div class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
-                    <p class="text-[10px] font-black uppercase text-slate-500">Stock bajo</p>
-                    <p class="mt-1 text-2xl font-black text-rose-700" id="kpi-low-stock">—</p>
-                    <p class="text-xs font-semibold text-slate-500" id="kpi-stock-sub">—</p>
-                  </div>
-                  <div class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
-                    <p class="text-[10px] font-black uppercase text-slate-500">Descuentos activos</p>
-                    <p class="mt-1 text-2xl font-black text-cyan-700" id="kpi-discounts">—</p>
-                    <p class="text-xs font-semibold text-slate-500 truncate" id="kpi-discounts-sub">—</p>
-                  </div>
-                  <div class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
-                    <p class="text-[10px] font-black uppercase text-slate-500">Parking libre / total</p>
-                    <p class="mt-1 text-2xl font-black text-slate-900" id="kpi-parking">—</p>
-                    <p class="text-xs font-semibold text-slate-500" id="kpi-parking-sub">—</p>
+
+                  <div id="exec-dash-body" class="exec-dash-body hidden">
+                    <div id="exec-dash-kpis" class="exec-dash-kpi-grid mb-6" aria-live="polite"></div>
+                    <div class="exec-dash-split mb-6">
+                      <section class="exec-dash-panel">
+                        <div class="exec-dash-panel-head">
+                          <h2 class="exec-dash-panel-title">Alertas de operación</h2>
+                          <p class="exec-dash-panel-sub">Prioriza lo que necesita atención hoy</p>
+                        </div>
+                        <div id="exec-dash-alerts" class="exec-dash-alert-list mt-4 space-y-3"></div>
+                      </section>
+                      <section class="exec-dash-panel">
+                        <div class="exec-dash-panel-head">
+                          <h2 class="exec-dash-panel-title">Actividad reciente</h2>
+                          <p class="exec-dash-panel-sub">Últimos movimientos del sistema</p>
+                        </div>
+                        <ul id="exec-dash-activity" class="exec-dash-activity mt-4 space-y-3"></ul>
+                      </section>
+                    </div>
                   </div>
                 </div>
-                <div id="admin-quick-links" class="mb-8 flex flex-wrap gap-2"></div>
 
                 <div id="admin-mesa-reservas-operativas" class="mb-8 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
                   <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
@@ -1250,109 +1277,369 @@ const AdminDashboard = {
     setCollapsed(localStorage.getItem('admin-sidebar-collapsed') === '1');
     collapse?.addEventListener('click', () => setCollapsed(!sidebar?.classList.contains('is-collapsed')));
 
-    if (hint) hint.textContent = `Sesion: ${access.roleLabel}.`;
+    if (hint) hint.textContent = `Sesión: ${access.roleLabel}.`;
 
-    const showMoneyKpis = access.can('finance.view') || access.can('admin.panel') || access.isProgramador === true;
+    const showMoneyKpis =
+      access.can('finance.view') || access.can('admin.panel') || access.isProgramador === true;
+    const showInventoryKpis =
+      access.can('inventory.manage') ||
+      access.can('inventory.adjust') ||
+      access.can('admin.panel') ||
+      access.isProgramador === true;
+    const showDiscountKpis =
+      access.can('admin.panel') ||
+      access.can('finance.view') ||
+      access.isProgramador === true ||
+      access.can('programador.access');
+    const showParkingKpi =
+      access.can('parking.manage') ||
+      access.can('admin.panel') ||
+      access.isProgramador === true ||
+      access.can('programador.access');
+    const canProgramadorTools =
+      access.isProgramador === true || access.can('programador.access');
+    const showLandingQuick =
+      access.can('landing.manage') ||
+      access.can('admin.panel') ||
+      canProgramadorTools;
 
-    const loadExecutiveKpis = async () => {
-      const setTxt = (id, val) => {
-        const el = document.getElementById(id);
-        if (el) el.textContent = val;
-      };
-      try {
-        const [sales, tix, mesas, inv, disc, park] = await Promise.all([
-          getTodaySalesSummary(),
-          getTodayTicketsSummary(),
-          getTodayMesaReservasSummary(),
-          getInventoryAlerts({ lowStockThreshold: 8 }),
-          getActiveDiscountsSummary(),
-          getParkingSummary()
-        ]);
-        if (showMoneyKpis) {
-          setTxt('kpi-sales-paid', `$${Number(sales.totalPaid || 0).toFixed(2)}`);
-          setTxt('kpi-sales-sub', `${sales.paidCount || 0} pagos · ${sales.ticketsCount || 0} tickets hoy`);
-          setTxt('kpi-est-revenue', `$${Number(sales.estimatedRevenue || 0).toFixed(2)}`);
-          setTxt('kpi-est-sub', `Pendiente taquilla ~ $${Number(sales.pendingAmount || 0).toFixed(2)}`);
-        } else {
-          setTxt('kpi-sales-paid', '•••');
-          setTxt('kpi-sales-sub', 'Requiere finance.view o panel admin');
-          setTxt('kpi-est-revenue', '•••');
-          setTxt('kpi-est-sub', '—');
-        }
-        setTxt('kpi-sold-today', String(tix.soldToday ?? '—'));
-        setTxt('kpi-sold-sub', `${tix.validOutstanding ?? 0} vigentes vendidos hoy`);
-        setTxt('kpi-scan-today', String(tix.scannedToday ?? '—'));
-        setTxt('kpi-scan-sub', 'Por fecha de escaneo');
-        setTxt('kpi-mesa-today', String(mesas.total ?? '—'));
-        setTxt('kpi-mesa-sub', `${mesas.apartadas ?? 0} apartadas`);
-        setTxt('kpi-low-stock', String(inv.lowStockCount ?? 0));
-        setTxt(
-          'kpi-stock-sub',
-          inv.samples?.length ? inv.samples.map((s) => s.titulo).slice(0, 2).join(', ') : 'Sin alertas'
-        );
-        setTxt('kpi-discounts', String(disc.activeCount ?? 0));
-        setTxt('kpi-discounts-sub', disc.codes?.length ? disc.codes.slice(0, 3).join(', ') : '—');
-        if (park.ok && park.total > 0) {
-          setTxt('kpi-parking', `${park.libres}/${park.total}`);
-          setTxt('kpi-parking-sub', `${park.ocupados} ocup. · ${park.reservados} res.`);
-        } else {
-          setTxt('kpi-parking', park.total === 0 ? '0' : '—');
-          setTxt('kpi-parking-sub', park.ok ? 'Sin datos de cajones' : 'Sin acceso o vacío');
-        }
-      } catch (e) {
-        console.warn('[admin KPIs]', e);
-        [
-          'kpi-sales-paid',
-          'kpi-sold-today',
-          'kpi-scan-today',
-          'kpi-mesa-today',
-          'kpi-est-revenue',
-          'kpi-low-stock',
-          'kpi-discounts',
-          'kpi-parking'
-        ].forEach((id) => setTxt(id, '—'));
-      }
-    };
-
-    const renderQuickLinks = () => {
-      const ql = document.getElementById('admin-quick-links');
+    const renderExecQuickLinks = () => {
+      const ql = document.getElementById('exec-dash-quick');
       if (!ql) return;
       const links = [];
-      if (access.can('landing.manage') || access.can('admin.panel') || access.isProgramador) {
+      if (access.can('tickets.scan')) {
         links.push({
-          href: '/admin/dashboard?section=sitio',
-          label: 'Editar landing',
-          icon: 'palette'
+          href: '/escaner',
+          label: 'Escanear ticket',
+          icon: 'scan',
+          primary: true
         });
       }
-      if (access.can('packages.manage')) {
-        links.push({ href: '/admin/dashboard?section=tickets', label: 'Crear ticket', icon: 'ticket' });
+      if (showLandingQuick) {
+        links.push({ href: '/admin/dashboard?section=sitio', label: 'Editar landing', icon: 'palette' });
+        links.push({
+          href: '/admin/dashboard?section=sitio&mapfocus=1',
+          label: 'Editar mapa',
+          icon: 'map'
+        });
       }
-      if (access.can('admin.panel')) {
-        links.push({ href: '/admin/dashboard?section=tickets', label: 'Crear descuento', icon: 'sparkles' });
+      if (access.can('packages.manage') || access.can('admin.panel') || canProgramadorTools) {
+        links.push({
+          href: '/admin/dashboard?section=ticket-types',
+          label: 'Catálogo tickets',
+          icon: 'ticket'
+        });
       }
-      if (access.can('inventory.manage')) {
-        links.push({ href: '/admin/dashboard?section=inventario', label: 'Crear producto', icon: 'package' });
+      if (access.can('admin.panel') || access.can('finance.view') || canProgramadorTools) {
+        links.push({
+          href: '/admin/dashboard?section=tickets',
+          label: 'Descuentos',
+          icon: 'sparkles'
+        });
       }
-      if (access.can('tickets.scan')) {
-        links.push({ href: '/escaner', label: 'Scanner', icon: 'scan' });
+      if (access.can('inventory.manage') || access.can('admin.panel') || canProgramadorTools) {
+        links.push({
+          href: '/admin/dashboard?section=inventario',
+          label: 'Inventario',
+          icon: 'package'
+        });
       }
-      if (access.can('landing.manage') || access.can('admin.panel') || access.isProgramador) {
-        links.push({ href: '/admin/dashboard?section=sitio&mapfocus=1', label: 'Editar mapa', icon: 'map' });
+      if (access.can('parking.manage') || access.can('admin.panel') || canProgramadorTools) {
+        links.push({
+          href: '/admin/dashboard?section=parking',
+          label: 'Parking',
+          icon: 'parking'
+        });
       }
-      if (access.can('parking.manage')) {
-        links.push({ href: '/admin/dashboard?section=parking', label: 'Parking', icon: 'parking' });
+      if (access.can('dashboard.manage')) {
+        links.push({
+          href: '/admin/dashboard?section=tickets#admin-mesa-reservas-operativas',
+          label: 'Reservas mesas',
+          icon: 'clock'
+        });
+      }
+      if (access.can('users.permissions') || access.can('roles.manage') || canProgramadorTools) {
+        links.push({ href: '/programador', label: 'Usuarios y roles', icon: 'code' });
       }
       ql.innerHTML = links
-        .map(
-          (l) =>
-            `<a href="${escapeHtml(l.href)}" data-link class="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-black text-slate-800 shadow-sm hover:bg-slate-50">${icon(l.icon, 'h-4 w-4')} ${escapeHtml(l.label)}</a>`
-        )
+        .map((l) => {
+          const cls = l.primary ? 'exec-quick-btn exec-quick-btn--primary' : 'exec-quick-btn';
+          return `<a href="${escapeHtml(l.href)}" data-link class="${cls}">${icon(l.icon, 'h-5 w-5')}<span>${escapeHtml(l.label)}</span></a>`;
+        })
         .join('');
     };
 
-    renderQuickLinks();
-    void loadExecutiveKpis();
+    const loadExecutiveDashboard = async () => {
+      const sk = document.getElementById('exec-dash-skeleton');
+      const body = document.getElementById('exec-dash-body');
+      const dateLine = document.getElementById('exec-dash-date-line');
+      if (dateLine) {
+        dateLine.textContent = `Fecha operativa (MX): ${formatFechaDia()} · Actualizado: —`;
+      }
+      sk?.classList.remove('hidden');
+      body?.classList.add('hidden');
+      try {
+        const pendingRows = await listPendingScans().catch(() => []);
+        const pendingOffline = pendingRows.length;
+        const payload = await getExecutiveDashboardData({
+          includeTechnicalAlerts:
+            access.isProgramador === true || access.can('programador.access')
+        });
+        const {
+          sales,
+          tickets,
+          mesaReservas,
+          parking,
+          inventory,
+          discounts,
+          scanner,
+          landing,
+          ticketTypes,
+          alerts,
+          recentActivity,
+          feeds
+        } = payload;
+
+        if (dateLine) {
+          dateLine.textContent = `Fecha operativa (MX): ${formatFechaDia()} · Actualizado: ${new Date(
+            payload.loadedAt
+          ).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}`;
+        }
+
+        const kpis = document.getElementById('exec-dash-kpis');
+        if (kpis) {
+          const cards = [];
+
+          if (showMoneyKpis) {
+            let sub = `${sales.paidCount || 0} pagos · ${sales.ticketsCount || 0} ventas registradas`;
+            if (sales.compareVsYesterday && sales.hasYesterdaySlice) {
+              const d = Number(sales.compareVsYesterday.deltaPaid || 0);
+              const sign = d >= 0 ? '+' : '';
+              sub += ` · vs ayer ${sign}${fmtMxMoney(d)}`;
+            }
+            cards.push({
+              title: 'Ventas del día (pagado)',
+              value: fmtMxMoney(sales.totalPaid || 0),
+              sub,
+              cta: { label: 'Ver tickets', href: '/admin/dashboard?section=tickets' },
+              tone: 'normal'
+            });
+            cards.push({
+              title: 'Ingreso estimado (hoy)',
+              value: fmtMxMoney(sales.estimatedRevenue || 0),
+              sub: `Pendiente taquilla ${fmtMxMoney(sales.pendingAmount || 0)}`,
+              tone: 'normal'
+            });
+          }
+
+          cards.push({
+            title: 'Tickets vendidos hoy',
+            value: String(tickets.soldToday ?? '—'),
+            sub: `${tickets.validOutstanding ?? 0} pendientes de escanear · ${tickets.cancelledToday ?? 0} cancelados`,
+            cta: canScan ? { label: 'Abrir escáner', href: '/escaner' } : null,
+            tone: Number(tickets.validOutstanding) > 5 ? 'warning' : 'normal'
+          });
+
+          cards.push({
+            title: 'Escaneados hoy',
+            value: String(tickets.scannedToday ?? '—'),
+            sub:
+              Number(tickets.soldToday) > 0
+                ? `de ${tickets.soldToday} vendidos hoy`
+                : 'Sin ventas registradas hoy',
+            cta: canScan ? { label: 'Auditar escaneos', href: '/escaner' } : null,
+            tone: 'info'
+          });
+
+          if (canScan) {
+            cards.push({
+              title: 'Cola offline (este dispositivo)',
+              value: String(pendingOffline),
+              sub: 'Pendientes de sincronizar cuando haya red',
+              tone: pendingOffline > 0 ? 'warning' : 'normal'
+            });
+          }
+
+          cards.push({
+            title: 'Mesas (hoy)',
+            value: String(mesaReservas.total ?? 0),
+            sub: showMoneyKpis
+              ? `${mesaReservas.apartadas ?? 0} apartadas · ingreso pagado ${fmtMxMoney(
+                  mesaReservas.ingresoPagadoEstimado || 0
+                )}`
+              : `${mesaReservas.apartadas ?? 0} apartadas`,
+            cta: {
+              label: 'Ver reservas',
+              href: '/admin/dashboard?section=tickets#admin-mesa-reservas-operativas'
+            },
+            tone: Number(mesaReservas.pagadasPendientes) > 0 ? 'warning' : 'normal'
+          });
+
+          if (showParkingKpi && parking.ok && parking.total > 0) {
+            cards.push({
+              title: 'Parking',
+              value:
+                parking.ocupacionPct != null ? `${parking.ocupacionPct}% ocup.` : `${parking.libres}/${parking.total}`,
+              sub: `${parking.libres} libres · ${parking.ocupados} ocup. · ${parking.reservados} res. · mant. ${(parking.mantenimiento || 0) + (parking.taller || 0)}`,
+              cta: { label: 'Gestionar', href: '/admin/dashboard?section=parking' },
+              tone:
+                parking.ocupacionPct != null && parking.ocupacionPct >= 85 ? 'warning' : 'normal'
+            });
+          }
+
+          if (showInventoryKpis) {
+            cards.push({
+              title: 'Inventario activo',
+              value: String(inventory.activeProductsCount ?? '—'),
+              sub: `${inventory.lowStockCount ?? 0} bajo stock · ${inventory.zeroStockCount ?? 0} sin stock`,
+              cta: { label: 'Ver inventario', href: '/admin/dashboard?section=inventario' },
+              tone:
+                Number(inventory.zeroStockCount) > 0
+                  ? 'danger'
+                  : Number(inventory.lowStockCount) > 0
+                    ? 'warning'
+                    : 'normal'
+            });
+            if (Number(inventory.reservedApproxTotal) > 0) {
+              cards.push({
+                title: 'Stock reservado (aprox.)',
+                value: String(inventory.reservedApproxTotal),
+                sub: 'Unidades comprometidas en catálogo',
+                tone: 'info'
+              });
+            }
+          }
+
+          if (showDiscountKpis) {
+            cards.push({
+              title: 'Descuentos',
+              value: String(discounts.activeUsefulCount ?? 0),
+              sub: `${discounts.exhaustedActiveCount ?? 0} activos sin usos · ${discounts.expiringSoonCount ?? 0} vigencias próximas`,
+              cta: { label: 'Ir a descuentos', href: '/admin/dashboard?section=tickets' },
+              tone: Number(discounts.brokenRulesDiscountCount) > 0 ? 'warning' : 'normal'
+            });
+          }
+
+          if (showLandingQuick) {
+            cards.push({
+              title: 'Sitio público',
+              value: landing.ok ? (landing.abierto ? 'Abierto' : 'Cerrado') : '—',
+              sub: landing.ok
+                ? landing.descripcionOk
+                  ? 'Descripción lista'
+                  : 'Descripción corta o vacía'
+                : 'Sin datos',
+              cta: { label: 'Editar landing', href: '/admin/dashboard?section=sitio' },
+              tone: landing.ok && !landing.descripcionOk ? 'warning' : 'normal'
+            });
+          }
+
+          if (ticketTypes.ok) {
+            cards.push({
+              title: 'Tickets en catálogo',
+              value: String(ticketTypes.activeCount ?? 0),
+              sub: `${ticketTypes.total ?? 0} tipos totales`,
+              cta: { label: 'Editor tickets', href: '/admin/dashboard?section=ticket-types' },
+              tone: Number(ticketTypes.activeCount) === 0 ? 'danger' : 'normal'
+            });
+          }
+
+          cards.push({
+            title: 'Último escaneo',
+            value: scanner.lastScanAt ? relativeTimeEs(scanner.lastScanAt) : '—',
+            sub: feeds?.scansPreview?.length
+              ? `Últimos: ${feeds.scansPreview
+                  .slice(0, 3)
+                  .map((s) => String(s.result || '').slice(0, 14))
+                  .join(', ')}`
+              : 'Sin auditoría reciente visible',
+            cta: canScan ? { label: 'Escáner', href: '/escaner' } : null,
+            tone: 'info'
+          });
+
+          kpis.innerHTML = cards
+            .map((c) => {
+              const ctaHtml = c.cta
+                ? `<a href="${escapeHtml(c.cta.href)}" data-link class="exec-dash-card-cta">${escapeHtml(c.cta.label)} →</a>`
+                : '';
+              return `
+              <div class="${execDashCardClass(c.tone)}">
+                <p class="exec-dash-card-kicker">${escapeHtml(c.title)}</p>
+                <p class="exec-dash-card-value">${escapeHtml(String(c.value))}</p>
+                <p class="exec-dash-card-sub">${escapeHtml(c.sub)}</p>
+                ${ctaHtml}
+              </div>`;
+            })
+            .join('');
+        }
+
+        const alRoot = document.getElementById('exec-dash-alerts');
+        if (alRoot) {
+          if (!alerts.length) {
+            alRoot.innerHTML =
+              '<p class="text-sm font-semibold text-slate-500">Sin alertas críticas. Operación dentro de parámetros.</p>';
+          } else {
+            alRoot.innerHTML = alerts
+              .map((a) => {
+                const btn =
+                  a.actionLabel && a.href
+                    ? `<a href="${escapeHtml(a.href)}" data-link class="exec-dash-alert-btn">${escapeHtml(a.actionLabel)}</a>`
+                    : '';
+                const sev =
+                  a.severity === 'danger'
+                    ? 'exec-dash-alert is-danger'
+                    : a.severity === 'warning'
+                      ? 'exec-dash-alert is-warn'
+                      : 'exec-dash-alert is-info';
+                return `<div class="${sev}"><p class="exec-dash-alert-title">${escapeHtml(a.title)}</p><p class="exec-dash-alert-body">${escapeHtml(a.body)}</p>${btn}</div>`;
+              })
+              .join('');
+          }
+        }
+
+        const actRoot = document.getElementById('exec-dash-activity');
+        if (actRoot) {
+          if (!recentActivity.length) {
+            actRoot.innerHTML =
+              '<li class="text-sm font-semibold text-slate-500">Todavía no hay actividad reciente.</li>';
+          } else {
+            actRoot.innerHTML = recentActivity
+              .map((row) => {
+                const link = row.href
+                  ? `<a href="${escapeHtml(row.href)}" data-link class="exec-dash-act-link">Ver</a>`
+                  : '';
+                return `<li class="exec-dash-act-row">
+                  <div class="exec-dash-act-icon">${icon(row.icon || 'sparkles', 'h-5 w-5')}</div>
+                  <div class="min-w-0 flex-1">
+                    <p class="exec-dash-act-title">${escapeHtml(row.title)}</p>
+                    <p class="exec-dash-act-body">${escapeHtml(row.body)}</p>
+                  </div>
+                  <div class="exec-dash-act-meta">
+                    <span>${escapeHtml(relativeTimeEs(row.at))}</span>
+                    ${link}
+                  </div>
+                </li>`;
+              })
+              .join('');
+          }
+        }
+
+        sk?.classList.add('hidden');
+        body?.classList.remove('hidden');
+      } catch (e) {
+        console.warn('[exec dashboard]', e);
+        sk?.classList.add('hidden');
+        body?.classList.remove('hidden');
+        const kpisErr = document.getElementById('exec-dash-kpis');
+        if (kpisErr)
+          kpisErr.innerHTML =
+            '<div class="exec-dash-card is-danger sm:col-span-2 lg:col-span-4"><p class="exec-dash-card-kicker">Métricas</p><p class="exec-dash-card-value">Parcial</p><p class="exec-dash-card-sub">No se pudieron cargar todas las métricas. Revisa permisos o la conexión.</p></div>';
+      }
+    };
+
+    renderExecQuickLinks();
+    document.getElementById('exec-dash-refresh')?.addEventListener('click', () => void loadExecutiveDashboard());
+    void loadExecutiveDashboard();
 
     const showSection = (name) => {
       if (name === 'sitio' && !panelSitio) return;

@@ -8,7 +8,9 @@ import AdminDashboard from './views/AdminDashboard.js';
 import Escaner from './views/Escaner.js';
 import Politicas from './views/Politicas.js';
 import ProgramadorDashboard from './views/ProgramadorDashboard.js';
-import { getUserAccess, waitForAuthUser } from './lib/accessControl.js';
+import OperacionDashboard from './views/OperacionDashboard.js';
+import { getUserAccess, normalizeRole, waitForAuthUser } from './lib/accessControl.js';
+import { resolvePostLoginPath } from './lib/postLoginRoute.js';
 import { initAppShell, updateAppShell, closeUserMenu } from './lib/layout.js';
 import { setRouteLoading } from './lib/routeLoading.js';
 import { showAlert } from './lib/appDialog.js';
@@ -20,9 +22,11 @@ const routes = {
     '/login': Login,
     '/reservar': Reservar,
     '/checkout': Checkout,
+    '/cliente': ClienteDashboard,
     '/cliente/dashboard': ClienteDashboard,
     '/cliente/configuracion': ClienteDashboard,
     '/cliente/tickets': ClienteDashboard,
+    '/operacion': OperacionDashboard,
     '/admin/dashboard': AdminDashboard,
     '/escaner': Escaner,
     '/politicas': Politicas
@@ -41,16 +45,38 @@ const resolveView = (path) => {
 };
 
 const isProtectedPath = (path) =>
-    path.startsWith('/cliente/') ||
-    ['/admin/dashboard', '/escaner'].includes(path) ||
+    path.startsWith('/cliente') ||
+    ['/admin/dashboard', '/escaner', '/operacion'].includes(path) ||
     path.startsWith('/programador');
 
 const guardPath = async (path, user) => {
-    if (path.startsWith('/cliente/')) return true;
+    if (path.startsWith('/cliente')) return true;
     const access = await getUserAccess(user);
+
+    if (path === '/operacion') {
+        const allowed =
+            access.can('tickets.scan') ||
+            access.can('parking.manage') ||
+            access.can('sales.physical') ||
+            access.can('admin.panel') ||
+            access.can('programador.access');
+        if (allowed) return true;
+        await showAlert('Acceso denegado. Se requiere rol operativo (escaneo, parking o ventas físicas).', {
+            title: 'Sin permiso',
+            variant: 'danger'
+        });
+        return false;
+    }
 
     if (path === '/admin/dashboard') {
         if (access.can('dashboard.manage')) return true;
+        if (normalizeRole(access.role) === 'cliente') {
+            await showAlert('Las cuentas cliente no tienen acceso al panel interno de Gestión.', {
+                title: 'Sin permiso',
+                variant: 'danger'
+            });
+            return false;
+        }
         await showAlert('Acceso denegado. Se requiere permiso de gestion.', {
             title: 'Sin permiso',
             variant: 'danger'
@@ -68,7 +94,7 @@ const guardPath = async (path, user) => {
     }
 
     if (path.startsWith('/programador')) {
-        if (access.isProgramador) return true;
+        if (access.isProgramador || access.can('programador.access')) return true;
         await showAlert('Acceso denegado. Ruta exclusiva para rol programador.', {
             title: 'Sin permiso',
             variant: 'danger'
@@ -109,8 +135,10 @@ const router = async () => {
         if (path === '/login') {
             const activeUser = await waitForAuthUser();
             if (activeUser) {
-                window.history.replaceState(null, '', '/home');
-                path = '/home';
+                const access = await getUserAccess(activeUser);
+                const dest = resolvePostLoginPath(access);
+                window.history.replaceState(null, '', dest);
+                path = dest.split('?')[0];
             }
         }
 
@@ -167,13 +195,24 @@ export const initRouter = () => {
     const shouldRefreshByScope = (scope, path) => {
       if (!scope || scope === 'general') return true;
       if (scope === 'tickets') {
-        return path.startsWith('/cliente/') || path === '/admin/dashboard' || path === '/escaner' || path === '/checkout';
+        return (
+          path.startsWith('/cliente') ||
+          path === '/admin/dashboard' ||
+          path === '/operacion' ||
+          path === '/escaner' ||
+          path === '/checkout'
+        );
       }
       if (scope === 'sales') {
-        return path === '/checkout' || path === '/admin/dashboard' || path.startsWith('/cliente/');
+        return (
+          path === '/checkout' ||
+          path === '/admin/dashboard' ||
+          path === '/operacion' ||
+          path.startsWith('/cliente')
+        );
       }
       if (scope === 'inventory') {
-        return path === '/checkout' || path === '/admin/dashboard';
+        return path === '/checkout' || path === '/admin/dashboard' || path === '/operacion';
       }
       return true;
     };

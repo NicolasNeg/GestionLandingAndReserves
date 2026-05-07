@@ -68,6 +68,14 @@ function renderHeader(access, theme) {
   const loggedLinks = [
     navLink({ href: '/home', label: 'Inicio', iconName: 'home', active: path === '/home' }),
     cartButton,
+    access.can('tickets.scan') || access.can('parking.manage') || access.can('sales.physical')
+      ? navLink({
+          href: '/operacion',
+          label: 'Operacion',
+          iconName: 'waves',
+          active: path === '/operacion'
+        })
+      : '',
     access.can('dashboard.manage')
       ? navLink({ href: '/admin/dashboard?section=tickets', label: 'Gestion', iconName: 'briefcase', active: path === '/admin/dashboard' })
       : '',
@@ -103,9 +111,9 @@ function renderHeader(access, theme) {
               ${icon('chevronDown', 'h-4 w-4')}
             </button>
             <div id="app-user-menu" class="app-user-menu hidden">
-              <a href="/cliente/tickets" data-link class="app-user-menu-item">
+              <a href="/cliente" data-link class="app-user-menu-item">
                 ${icon('settings', 'h-4 w-4')}
-                <span>Mi panel</span>
+                <span>Mi cuenta</span>
               </a>
               <a href="/home#contacto" data-link class="app-user-menu-item">
                 ${icon('info', 'h-4 w-4')}

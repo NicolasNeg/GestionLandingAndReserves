@@ -1,0 +1,24 @@
+-- ============================================================================
+-- OPCIONAL — RPC get_executive_dashboard (métricas ejecutivas en servidor)
+-- ============================================================================
+-- El cliente actualmente arma el resumen con consultas paralelas en
+-- src/lib/supabaseData.js (getExecutiveDashboardData). Solo intenta esta RPC
+-- para detectar despliegues futuros; si la función no existe, no se muestra
+-- error al usuario.
+--
+-- Cuando quieras mover agregaciones aquí:
+--   - Usar SECURITY INVOKER (predeterminado) para respetar RLS del rol.
+--   - Mantener límites razonables y evitar exponer PII innecesaria.
+--   - grant execute on function ... to authenticated;
+--
+-- Ejemplo de firma (sin implementación):
+--
+-- create or replace function public.get_executive_dashboard(p_fecha text default null)
+-- returns jsonb
+-- language sql
+-- stable
+-- security invoker
+-- set search_path = public
+-- as $$
+--   select '{}'::jsonb;
+-- $$;

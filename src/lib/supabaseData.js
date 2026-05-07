@@ -1,5 +1,7 @@
 import { supabase } from '../supabase/client.js';
 import { getCanonicalUserId } from './authCanonical.js';
+import { addCalendarDaysMexico, formatFechaDia } from './fechaDiaMexico.js';
+import { parseDiscountRules } from './discountRules.js';
 
 function requireClient() {
   if (!supabase) throw new Error('Supabase no inicializado');
@@ -584,13 +586,14 @@ export async function deleteTicketType({ id }) {
   return { data: {} };
 }
 
-export async function listRecentTickets() {
+export async function listRecentTickets(opts = {}) {
+  const lim = Math.max(1, Math.min(50, Number(opts.limit ?? 10) || 10));
   const sb = requireClient();
   const { data, error } = await sb
     .from('tickets')
     .select('*')
     .order('fecha_creacion', { ascending: false })
-    .limit(10);
+    .limit(lim);
   if (error) throw error;
   return { data: { tickets: (data || []).map((r) => mapTicketRow(r)) } };
 }
@@ -942,6 +945,28 @@ export async function listMovimientosInventario({ productoId }) {
   return { data: { movimientoInventarios: (data || []).map(mapMovRow) } };
 }
 
+function mapMovRowJoined(r) {
+  const base = mapMovRow(r);
+  let productoTitulo = null;
+  const nested = r.productos;
+  if (nested && typeof nested === 'object' && !Array.isArray(nested)) {
+    productoTitulo = nested.titulo ?? null;
+  }
+  return { ...base, productoTitulo };
+}
+
+export async function listRecentMovimientosForDashboard({ limit = 12 } = {}) {
+  const sb = requireClient();
+  const lim = Math.max(1, Math.min(40, Number(limit) || 12));
+  const { data, error } = await sb
+    .from('movimiento_inventarios')
+    .select('id,tipo,cantidad,nota,fecha_creacion,producto_id,productos(titulo)')
+    .order('fecha_creacion', { ascending: false })
+    .limit(lim);
+  if (error) throw error;
+  return { data: { movimientos: (data || []).map(mapMovRowJoined) } };
+}
+
 export async function listMesaReservasActivasPorFecha({ fechaDia }) {
   const sb = requireClient();
   const { data, error } = await sb
@@ -1044,6 +1069,18 @@ export async function listMesaReservasByFecha({ fechaDia }) {
     .eq('fecha_dia', fechaDia)
     .order('creado_en', { ascending: false })
     .limit(500);
+  if (error) throw error;
+  return { data: { mesaReservas: (data || []).map(mapMesaRow) } };
+}
+
+export async function listRecentMesaReservasAdmin({ limit = 12 } = {}) {
+  const sb = requireClient();
+  const lim = Math.max(1, Math.min(40, Number(limit) || 12));
+  const { data, error } = await sb
+    .from('mesa_reservas')
+    .select('*')
+    .order('creado_en', { ascending: false })
+    .limit(lim);
   if (error) throw error;
   return { data: { mesaReservas: (data || []).map(mapMesaRow) } };
 }
@@ -1159,4 +1196,783 @@ export async function listParkingSpotsRows() {
     .order('id', { ascending: true });
   if (error) throw error;
   return data || [];
+}
+
+// --- Dashboard metrics (RLS-safe: errores → fallback sin romper UI) ---
+
+const KNOWN_DISCOUNT_RULE_TYPES = new Set([
+  'minSubtotal',
+  'minTotalQty',
+  'dateRange',
+  'oncePerUser',
+  'paymentMethod'
+]);
+
+function warnDashboardMetric(tag, err) {
+  console.warn(`[dashboardMetric:${tag}]`, err?.message || err);
+}
+
+function ticketCreatedMexicoDay(row) {
+  if (!row?.fecha_creacion) return null;
+  try {
+    return formatFechaDia(new Date(row.fecha_creacion));
+  } catch {
+    return null;
+  }
+}
+
+function ticketScannedMexicoDay(row) {
+  if (!row?.fecha_escaneo) return null;
+  try {
+    return formatFechaDia(new Date(row.fecha_escaneo));
+  } catch {
+    return null;
+  }
+}
+
+async function fetchTicketsRecentForMetrics(limit = 2500) {
+  const sb = requireClient();
+  const { data, error } = await sb
+    .from('tickets')
+    .select('id,precio_total,estado_pago,estado_ticket,fecha_creacion,fecha_escaneo')
+    .order('fecha_creacion', { ascending: false })
+    .limit(Math.max(50, Math.min(5000, Number(limit) || 2500)));
+  if (error) throw error;
+  return data || [];
+}
+
+function summarizeSalesDay(rows, dayStr) {
+  const dayRows = rows.filter((r) => ticketCreatedMexicoDay(r) === dayStr);
+  const paid = dayRows.filter((r) => r.estado_pago === 'pagado');
+  const totalPaid = paid.reduce((s, r) => s + Number(r.precio_total || 0), 0);
+  const pendingAmount = dayRows
+    .filter((r) => r.estado_pago !== 'pagado')
+    .reduce((s, r) => s + Number(r.precio_total || 0), 0);
+  return {
+    ticketsCount: dayRows.length,
+    paidCount: paid.length,
+    totalPaid,
+    pendingAmount,
+    estimatedRevenue: totalPaid + pendingAmount
+  };
+}
+
+export async function getTodaySalesSummary(opts = {}) {
+  const includeYesterday = opts.includeYesterday === true;
+  const empty = () => ({
+    ok: false,
+    fechaDia: formatFechaDia(),
+    ticketsCount: 0,
+    paidCount: 0,
+    totalPaid: 0,
+    pendingAmount: 0,
+    estimatedRevenue: 0,
+    yesterdayTicketsCount: 0,
+    yesterdayPaidCount: 0,
+    yesterdayTotalPaid: 0,
+    compareVsYesterday: null,
+    hasYesterdaySlice: false
+  });
+  try {
+    const rows = await fetchTicketsRecentForMetrics();
+    const today = formatFechaDia();
+    const t = summarizeSalesDay(rows, today);
+    const yesterdayStr = addCalendarDaysMexico(today, -1);
+    const y = summarizeSalesDay(rows, yesterdayStr);
+    const hasYesterdaySlice = rows.some((r) => ticketCreatedMexicoDay(r) === yesterdayStr);
+    let compareVsYesterday = null;
+    if (includeYesterday && hasYesterdaySlice) {
+      const delta = Number(t.totalPaid || 0) - Number(y.totalPaid || 0);
+      compareVsYesterday = {
+        fechaReferencia: yesterdayStr,
+        deltaPaid: delta,
+        pctPaid:
+          Number(y.totalPaid || 0) > 0
+            ? Math.round(((Number(t.totalPaid || 0) - Number(y.totalPaid || 0)) / Number(y.totalPaid || 0)) * 1000) / 10
+            : null
+      };
+    }
+    return {
+      ok: true,
+      fechaDia: today,
+      ticketsCount: t.ticketsCount,
+      paidCount: t.paidCount,
+      totalPaid: t.totalPaid,
+      pendingAmount: t.pendingAmount,
+      estimatedRevenue: t.estimatedRevenue,
+      yesterdayTicketsCount: y.ticketsCount,
+      yesterdayPaidCount: y.paidCount,
+      yesterdayTotalPaid: y.totalPaid,
+      compareVsYesterday,
+      hasYesterdaySlice
+    };
+  } catch (e) {
+    warnDashboardMetric('getTodaySalesSummary', e);
+    return empty();
+  }
+}
+
+export async function getTodayTicketsSummary() {
+  const empty = () => ({
+    ok: false,
+    fechaDia: formatFechaDia(),
+    soldToday: 0,
+    scannedToday: 0,
+    validOutstanding: 0,
+    cancelledToday: 0
+  });
+  try {
+    const rows = await fetchTicketsRecentForMetrics();
+    const today = formatFechaDia();
+    const soldToday = rows.filter((r) => ticketCreatedMexicoDay(r) === today).length;
+    const scannedToday = rows.filter(
+      (r) => r.estado_ticket === 'escaneado' && ticketScannedMexicoDay(r) === today
+    ).length;
+    const validOutstanding = rows.filter(
+      (r) => ticketCreatedMexicoDay(r) === today && r.estado_ticket === 'valido'
+    ).length;
+    const cancelledToday = rows.filter(
+      (r) => ticketCreatedMexicoDay(r) === today && r.estado_ticket === 'cancelado'
+    ).length;
+    return {
+      ok: true,
+      fechaDia: today,
+      soldToday,
+      scannedToday,
+      validOutstanding,
+      cancelledToday
+    };
+  } catch (e) {
+    warnDashboardMetric('getTodayTicketsSummary', e);
+    return empty();
+  }
+}
+
+export async function getTodayMesaReservasSummary() {
+  const fd = formatFechaDia();
+  const empty = () => ({
+    ok: false,
+    fechaDia: fd,
+    total: 0,
+    apartadas: 0,
+    ocupadasApartadas: 0,
+    pagadasPendientes: 0,
+    totalReservaEstimado: 0,
+    ingresoPagadoEstimado: 0,
+    proximas: []
+  });
+  try {
+    const res = await listMesaReservasByFecha({ fechaDia: fd });
+    const mesas = res.data?.mesaReservas || [];
+    const apartadas = mesas.filter((m) => (m.estado || '') === 'apartada').length;
+    const pagadasPendientes = mesas.filter((m) => (m.estadoPago || '') !== 'pagado').length;
+    const totalReservaEstimado = mesas.reduce((s, m) => s + Math.max(0, Number(m.totalReserva || 0)), 0);
+    const ingresoPagadoEstimado = mesas
+      .filter((m) => (m.estadoPago || '') === 'pagado')
+      .reduce((s, m) => s + Math.max(0, Number(m.totalReserva || 0)), 0);
+    const proximas = mesas
+      .filter((m) => (m.estado || '') === 'apartada')
+      .slice()
+      .sort((a, b) => String(b.creadoEn || '').localeCompare(String(a.creadoEn || '')))
+      .slice(0, 5)
+      .map((m) => ({
+        id: m.id,
+        label: m.mesaLabel || m.mapItemId || 'Mesa',
+        zona: m.mesaZona || '',
+        totalReserva: m.totalReserva != null ? Number(m.totalReserva) : null,
+        estadoPago: m.estadoPago || ''
+      }));
+    return {
+      ok: true,
+      fechaDia: fd,
+      total: mesas.length,
+      apartadas,
+      ocupadasApartadas: apartadas,
+      pagadasPendientes,
+      totalReservaEstimado,
+      ingresoPagadoEstimado,
+      proximas
+    };
+  } catch (e) {
+    warnDashboardMetric('getTodayMesaReservasSummary', e);
+    return empty();
+  }
+}
+
+export async function getInventoryAlerts({ lowStockThreshold = 8 } = {}) {
+  const thr = Math.max(0, Number(lowStockThreshold) || 8);
+  try {
+    const { data: { productos } = { productos: [] } } = await listProductosAdmin();
+    const active = (productos || []).filter((p) => p.activo);
+    const zeroStockCount = active.filter((p) => Number(p.stockActual) <= 0).length;
+    const low = active.filter((p) => Number(p.stockActual) > 0 && Number(p.stockActual) <= thr);
+    const reservedApproxTotal = active.reduce((s, p) => s + Math.max(0, Number(p.reservadoAprox || 0)), 0);
+    return {
+      ok: true,
+      threshold: thr,
+      activeProductsCount: active.length,
+      lowStockCount: low.length,
+      zeroStockCount,
+      reservedApproxTotal,
+      samples: [...active.filter((p) => Number(p.stockActual) <= 0), ...low]
+        .slice(0, 10)
+        .map((p) => ({
+          id: p.id,
+          titulo: p.titulo,
+          stockActual: p.stockActual
+        }))
+    };
+  } catch (e) {
+    warnDashboardMetric('getInventoryAlerts', e);
+    return {
+      ok: false,
+      threshold: thr,
+      activeProductsCount: 0,
+      lowStockCount: 0,
+      zeroStockCount: 0,
+      reservedApproxTotal: 0,
+      samples: []
+    };
+  }
+}
+
+export async function getActiveDiscountsSummary() {
+  try {
+    const { data: { descuentos } = { descuentos: [] } } = await listDescuentosAdmin();
+    const active = (descuentos || []).filter((d) => d.activo && Number(d.usosRestantes) > 0);
+    return {
+      ok: true,
+      activeCount: active.length,
+      codes: active.slice(0, 12).map((d) => d.codigo)
+    };
+  } catch (e) {
+    warnDashboardMetric('getActiveDiscountsSummary', e);
+    return { ok: false, activeCount: 0, codes: [] };
+  }
+}
+
+function analyzeDiscountRowIssues(d) {
+  let broken = false;
+  let expiringSoonRule = false;
+  const today = formatFechaDia();
+  const in7 = addCalendarDaysMexico(today, 7);
+  let rules = [];
+  try {
+    rules = parseDiscountRules(d.reglasJson);
+  } catch {
+    return { broken: true, expiringSoonRule: false };
+  }
+  for (const rule of rules) {
+    if (!rule || typeof rule !== 'object') {
+      broken = true;
+      continue;
+    }
+    const ty = String(rule.type || '');
+    if (!KNOWN_DISCOUNT_RULE_TYPES.has(ty)) broken = true;
+    if (ty === 'dateRange') {
+      const start = String(rule.start || '').slice(0, 10);
+      const end = String(rule.end || '').slice(0, 10);
+      if (start && end && start > end) broken = true;
+      if (end && end >= today && end <= in7) expiringSoonRule = true;
+    }
+  }
+  return { broken, expiringSoonRule };
+}
+
+export async function getDiscountExecutiveSummary() {
+  try {
+    const { data: { descuentos } = { descuentos: [] } } = await listDescuentosAdmin();
+    const list = descuentos || [];
+    let activeUseful = 0;
+    let exhaustedActive = 0;
+    let inactive = 0;
+    let expiringSoonCount = 0;
+    let brokenRulesDiscountCount = 0;
+    for (const d of list) {
+      const ur = Number(d.usosRestantes || 0);
+      if (!d.activo) inactive++;
+      else if (ur <= 0) exhaustedActive++;
+      else activeUseful++;
+      const { broken, expiringSoonRule } = analyzeDiscountRowIssues(d);
+      if (broken) brokenRulesDiscountCount++;
+      if (expiringSoonRule) expiringSoonCount++;
+    }
+    return {
+      ok: true,
+      total: list.length,
+      activeUsefulCount: activeUseful,
+      exhaustedActiveCount: exhaustedActive,
+      inactiveCount: inactive,
+      expiringSoonCount,
+      brokenRulesDiscountCount
+    };
+  } catch (e) {
+    warnDashboardMetric('getDiscountExecutiveSummary', e);
+    return {
+      ok: false,
+      total: 0,
+      activeUsefulCount: 0,
+      exhaustedActiveCount: 0,
+      inactiveCount: 0,
+      expiringSoonCount: 0,
+      brokenRulesDiscountCount: 0
+    };
+  }
+}
+
+export async function getParkingSummary() {
+  try {
+    const rows = await listParkingSpotsRows();
+    const spots = rows || [];
+    const countState = (st) => spots.filter((s) => (s.estado || 'libre') === st).length;
+    const mantenimiento = countState('mantenimiento');
+    const taller = countState('taller');
+    const sucio = countState('sucio');
+    const ocupados = countState('ocupado');
+    const reservados = countState('reservado');
+    const libres = countState('libre');
+    const otros = spots.filter((s) =>
+      ['mantenimiento', 'taller', 'sucio'].includes(String(s.estado || ''))
+    ).length;
+    const total = spots.length;
+    const denom = Math.max(0, total - mantenimiento - taller);
+    const ocupacionPct =
+      denom > 0 ? Math.round(((ocupados + reservados) / denom) * 1000) / 10 : total > 0 ? 0 : null;
+    return {
+      ok: true,
+      total,
+      libres,
+      ocupados,
+      reservados,
+      mantenimiento,
+      taller,
+      sucio,
+      otros,
+      ocupacionPct
+    };
+  } catch (e) {
+    warnDashboardMetric('getParkingSummary', e);
+    return {
+      ok: false,
+      total: 0,
+      libres: 0,
+      ocupados: 0,
+      reservados: 0,
+      mantenimiento: 0,
+      taller: 0,
+      sucio: 0,
+      otros: 0,
+      ocupacionPct: null
+    };
+  }
+}
+
+export async function getScannerSummary() {
+  const empty = () => ({
+    ok: false,
+    fechaDia: formatFechaDia(),
+    scansToday: 0,
+    lastScanAt: null,
+    lastTicketId: null
+  });
+  try {
+    const { data: { scans } = { scans: [] } } = await listRecentTicketScans({ limit: 220 });
+    const today = formatFechaDia();
+    const todayScans = (scans || []).filter((s) => {
+      if (!s.scannedAt) return false;
+      try {
+        return formatFechaDia(new Date(s.scannedAt)) === today;
+      } catch {
+        return false;
+      }
+    });
+    const last = scans?.[0];
+    return {
+      ok: true,
+      fechaDia: today,
+      scansToday: todayScans.length,
+      lastScanAt: last?.scannedAt || null,
+      lastTicketId: last?.ticketId || null
+    };
+  } catch (e) {
+    warnDashboardMetric('getScannerSummary', e);
+    return empty();
+  }
+}
+
+export async function getClienteDashboardData(userId) {
+  const blank = {
+    ok: false,
+    tickets: [],
+    activeTickets: [],
+    mesas: [],
+    upcomingMesa: null,
+    recentTickets: [],
+    upcomingHint: null
+  };
+  if (!userId) return blank;
+  try {
+    const [tRes, mRes] = await Promise.all([
+      listUserTickets({ userId }),
+      listMisMesaReservas({ userId })
+    ]);
+    const tickets = tRes.data?.tickets || [];
+    const mesas = mRes.data?.mesaReservas || [];
+    const activeTickets = tickets.filter((t) => t.estadoTicket === 'valido');
+    const today = formatFechaDia();
+    const upcomingMesa =
+      mesas.find((m) => (m.estado || '') === 'apartada' && String(m.fechaDia || '') >= today) ||
+      null;
+    let upcomingHint = null;
+    if (upcomingMesa?.fechaDia) {
+      upcomingHint = `Mesa ${upcomingMesa.mesaLabel || upcomingMesa.mapItemId || ''} · ${upcomingMesa.fechaDia}`;
+    } else if (activeTickets[0]?.fechaCreacion) {
+      upcomingHint = `Ticket vigente · ${new Date(activeTickets[0].fechaCreacion).toLocaleString()}`;
+    }
+    return {
+      ok: true,
+      tickets,
+      activeTickets,
+      mesas,
+      upcomingMesa,
+      recentTickets: tickets.slice(0, 10),
+      upcomingHint
+    };
+  } catch (e) {
+    warnDashboardMetric('getClienteDashboardData', e);
+    return { ...blank, ok: false };
+  }
+}
+
+export async function getOperacionDashboardData() {
+  const settled = await Promise.allSettled([
+    getTodaySalesSummary(),
+    getTodayTicketsSummary(),
+    getTodayMesaReservasSummary(),
+    getParkingSummary(),
+    getScannerSummary()
+  ]);
+  const val = (i, fb) => (settled[i]?.status === 'fulfilled' ? settled[i].value : fb);
+  return {
+    sales: val(0, { ok: false }),
+    tickets: val(1, { ok: false }),
+    mesas: val(2, { ok: false }),
+    parking: val(3, { ok: false }),
+    scanner: val(4, { ok: false })
+  };
+}
+
+export async function getLandingExecutiveSnapshot() {
+  try {
+    const { data } = await getLandingPage({ id: 'main' });
+    const lp = data?.landingPage;
+    const desc = String(lp?.descripcionParque || '').trim();
+    return {
+      ok: true,
+      abierto: Boolean(lp?.abiertoAhora),
+      descripcionOk: desc.length >= 24
+    };
+  } catch (e) {
+    warnDashboardMetric('getLandingExecutiveSnapshot', e);
+    return { ok: false, abierto: null, descripcionOk: false };
+  }
+}
+
+export async function listTicketTypesExecutiveSafe() {
+  try {
+    const { data } = await listTicketTypesAdmin();
+    const tt = data?.ticketTypes || [];
+    return {
+      ok: true,
+      activeCount: tt.filter((t) => t.activo).length,
+      total: tt.length
+    };
+  } catch (e) {
+    warnDashboardMetric('listTicketTypesExecutiveSafe', e);
+    return { ok: false, activeCount: null, total: 0 };
+  }
+}
+
+function mergeRecentActivityFeeds({ scans, tickets, mesas, movimientos }) {
+  const items = [];
+  for (const s of scans || []) {
+    if (!s?.scannedAt) continue;
+    items.push({
+      at: s.scannedAt,
+      kind: 'scan',
+      icon: 'scan',
+      title: 'Escaneo de entrada',
+      body: `${s.mode === 'offline' ? 'Offline' : 'Online'} · ${String(s.result || '—')}`,
+      href: '/escaner'
+    });
+  }
+  for (const t of tickets || []) {
+    if (!t?.fechaCreacion) continue;
+    items.push({
+      at: t.fechaCreacion,
+      kind: 'ticket',
+      icon: 'ticket',
+      title: 'Ticket registrado',
+      body: `${t.clienteNombre || 'Cliente'} · ${t.estadoTicket || '—'}`,
+      href: '/admin/dashboard?section=tickets'
+    });
+  }
+  for (const m of mesas || []) {
+    if (!m?.creadoEn) continue;
+    items.push({
+      at: m.creadoEn,
+      kind: 'mesa',
+      icon: 'map',
+      title: 'Reserva de mesa',
+      body: `${m.mesaLabel || m.mapItemId || 'Mesa'} · ${m.fechaDia || ''}`,
+      href: '/admin/dashboard?section=tickets#admin-mesa-reservas-operativas'
+    });
+  }
+  for (const mv of movimientos || []) {
+    if (!mv?.fechaCreacion) continue;
+    const prodTit = mv.productoTitulo || 'Producto';
+    items.push({
+      at: mv.fechaCreacion,
+      kind: 'inventory',
+      icon: 'package',
+      title: 'Movimiento de inventario',
+      body: `${mv.tipo || 'mov'} · ${mv.cantidad ?? ''} u · ${prodTit}`,
+      href: '/admin/dashboard?section=inventario'
+    });
+  }
+  items.sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
+  return items.slice(0, 12);
+}
+
+export function buildOperationalAlerts(exec) {
+  const alerts = [];
+  const inv = exec.inventory || {};
+  if (Number(inv.zeroStockCount || 0) > 0) {
+    alerts.push({
+      severity: 'danger',
+      title: 'Sin stock',
+      body: `Hay ${inv.zeroStockCount} producto(s) activos sin existencias.`,
+      actionLabel: 'Ver inventario',
+      href: '/admin/dashboard?section=inventario'
+    });
+  }
+  if (Number(inv.lowStockCount || 0) > 0) {
+    alerts.push({
+      severity: 'warning',
+      title: 'Stock bajo',
+      body: `Hay ${inv.lowStockCount} producto(s) bajo el umbral configurado.`,
+      actionLabel: 'Ver inventario',
+      href: '/admin/dashboard?section=inventario'
+    });
+  }
+  const disc = exec.discounts || {};
+  if (Number(disc.exhaustedActiveCount || 0) > 0) {
+    alerts.push({
+      severity: 'warning',
+      title: 'Cupones agotados',
+      body: `${disc.exhaustedActiveCount} código(s) siguen activos pero sin usos disponibles.`,
+      actionLabel: 'Revisar descuentos',
+      href: '/admin/dashboard?section=tickets'
+    });
+  }
+  if (Number(disc.brokenRulesDiscountCount || 0) > 0) {
+    alerts.push({
+      severity: 'warning',
+      title: 'Reglas de descuento',
+      body: `${disc.brokenRulesDiscountCount} cupón(es) tienen reglas inconsistentes o tipos desconocidos.`,
+      actionLabel: 'Revisar descuentos',
+      href: '/admin/dashboard?section=tickets'
+    });
+  }
+  if (Number(disc.expiringSoonCount || 0) > 0) {
+    alerts.push({
+      severity: 'info',
+      title: 'Cupones por vencer',
+      body: `${disc.expiringSoonCount} regla(s) de vigencia terminan en los próximos 7 días.`,
+      actionLabel: 'Ver descuentos',
+      href: '/admin/dashboard?section=tickets'
+    });
+  }
+  const tix = exec.tickets || {};
+  if (Number(tix.validOutstanding || 0) > 0) {
+    alerts.push({
+      severity: 'info',
+      title: 'Pendientes de escanear',
+      body: `${tix.validOutstanding} entrada(s) vendidas hoy siguen sin escanear.`,
+      actionLabel: 'Abrir escáner',
+      href: '/escaner'
+    });
+  }
+  const mesa = exec.mesaReservas || {};
+  if (Number(mesa.total || 0) > 0) {
+    alerts.push({
+      severity: 'info',
+      title: 'Mesas con movimiento hoy',
+      body: `${mesa.total} reserva(s) registradas para la fecha operativa.`,
+      actionLabel: 'Ver reservas',
+      href: '/admin/dashboard?section=tickets#admin-mesa-reservas-operativas'
+    });
+  }
+  const park = exec.parking || {};
+  if (park.ok && park.total > 0 && park.ocupacionPct != null && park.ocupacionPct >= 85) {
+    alerts.push({
+      severity: 'warning',
+      title: 'Parking casi lleno',
+      body: `Ocupación aproximada ${park.ocupacionPct}% (cajones útiles).`,
+      actionLabel: 'Ver parking',
+      href: '/admin/dashboard?section=parking'
+    });
+  }
+  const land = exec.landing || {};
+  if (land.ok && land.descripcionOk === false) {
+    alerts.push({
+      severity: 'warning',
+      title: 'Landing incompleta',
+      body: 'La descripción del sitio está vacía o es muy corta.',
+      actionLabel: 'Editar sitio',
+      href: '/admin/dashboard?section=sitio'
+    });
+  }
+  const tt = exec.ticketTypes || {};
+  if (tt.ok === true && tt.activeCount === 0) {
+    alerts.push({
+      severity: 'danger',
+      title: 'Sin tickets activos',
+      body: 'No hay tipos de ticket activos para checkout ni landing.',
+      actionLabel: 'Catálogo de tickets',
+      href: '/admin/dashboard?section=ticket-types'
+    });
+  }
+  return alerts;
+}
+
+async function probeExecutiveMetricsRpc() {
+  try {
+    const sb = requireClient();
+    const { error } = await sb.rpc('get_executive_dashboard', { p_fecha: formatFechaDia() });
+    if (!error) return { rpcOk: true, rpcNoise: null };
+    const msg = String(error.message || error.details || '');
+    if (/does not exist|42883|schema cache|function/i.test(msg)) return { rpcOk: false, rpcNoise: null };
+    warnDashboardMetric('getExecutiveDashboard.rpc', error);
+    return { rpcOk: false, rpcNoise: msg.slice(0, 180) };
+  } catch (e) {
+    return { rpcOk: false, rpcNoise: null };
+  }
+}
+
+export async function getExecutiveDashboardData(opts = {}) {
+  const includeTechnicalAlerts = opts.includeTechnicalAlerts === true;
+  const { rpcNoise } = await probeExecutiveMetricsRpc();
+
+  const settled = await Promise.allSettled([
+    getTodaySalesSummary({ includeYesterday: true }),
+    getTodayTicketsSummary(),
+    getTodayMesaReservasSummary(),
+    getParkingSummary(),
+    getInventoryAlerts({ lowStockThreshold: 8 }),
+    getDiscountExecutiveSummary(),
+    getScannerSummary(),
+    listRecentTicketScans({ limit: 40 }),
+    getLandingExecutiveSnapshot(),
+    listTicketTypesExecutiveSafe(),
+    listRecentTickets({ limit: 14 }),
+    listRecentMesaReservasAdmin({ limit: 10 }),
+    listRecentMovimientosForDashboard({ limit: 10 })
+  ]);
+  const val = (i, fb) => (settled[i]?.status === 'fulfilled' ? settled[i].value : fb);
+
+  const sales = val(0, { ok: false });
+  const tickets = val(1, { ok: false });
+  const mesaReservas = val(2, { ok: false });
+  const parking = val(3, { ok: false });
+  const inventory = val(4, { ok: false });
+  const discounts = val(5, { ok: false });
+  const scanner = val(6, { ok: false });
+  const scansRes = val(7, { data: { scans: [] } });
+  const landing = val(8, { ok: false });
+  const ticketTypes = val(9, { ok: false });
+  const ticketsRecentRes = val(10, { data: { tickets: [] } });
+  const mesasRecentRes = val(11, { data: { mesaReservas: [] } });
+  const movRes = val(12, { data: { movimientos: [] } });
+
+  const scans = scansRes?.data?.scans || [];
+  const recentTickets = ticketsRecentRes?.data?.tickets || [];
+  const recentMesas = mesasRecentRes?.data?.mesaReservas || [];
+  const recentMovs = movRes?.data?.movimientos || [];
+
+  const recentActivity = mergeRecentActivityFeeds({
+    scans,
+    tickets: recentTickets,
+    mesas: recentMesas,
+    movimientos: recentMovs
+  });
+
+  let alerts = buildOperationalAlerts({
+    sales,
+    tickets,
+    mesaReservas,
+    parking,
+    inventory,
+    discounts,
+    scanner,
+    landing,
+    ticketTypes
+  });
+
+  if (includeTechnicalAlerts && rpcNoise) {
+    alerts = [
+      ...alerts,
+      {
+        severity: 'info',
+        title: 'RPC de métricas',
+        body: 'La función get_executive_dashboard respondió error; se usan consultas locales. Revisa el patch SQL opcional.',
+        actionLabel: null,
+        href: null
+      }
+    ];
+  }
+
+  return {
+    ok: true,
+    loadedAt: new Date().toISOString(),
+    source: 'client',
+    sales,
+    tickets,
+    mesaReservas,
+    parking,
+    inventory,
+    discounts,
+    scanner,
+    landing,
+    ticketTypes,
+    alerts,
+    recentActivity,
+    feeds: {
+      scansPreview: scans.slice(0, 6)
+    }
+  };
+}
+
+export async function getAdminQuickStats(opts) {
+  const ex = await getExecutiveDashboardData(opts);
+  return {
+    ok: ex.ok,
+    loadedAt: ex.loadedAt,
+    sales: ex.sales,
+    tickets: ex.tickets,
+    mesaReservas: ex.mesaReservas,
+    parking: ex.parking,
+    scanner: ex.scanner,
+    inventory: ex.inventory,
+    discounts: ex.discounts
+  };
+}
+
+export function getOperationalAlerts(executivePayload) {
+  if (!executivePayload) return [];
+  return Array.isArray(executivePayload.alerts) ? executivePayload.alerts : [];
+}
+
+export function getRecentActivity(executivePayload) {
+  return executivePayload?.recentActivity || [];
 }

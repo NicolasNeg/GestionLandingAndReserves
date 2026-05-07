@@ -11,6 +11,8 @@ import {
 } from '../lib/authProvider.js';
 import { mergeUserProfileFromAuth } from '../lib/supabaseData.js';
 import { supabase } from '../supabase/client.js';
+import { getUserAccess } from '../lib/accessControl.js';
+import { resolvePostLoginPath } from '../lib/postLoginRoute.js';
 
 function profilePayloadFromSupabaseUser(su) {
   if (!su) return null;
@@ -362,7 +364,8 @@ const Login = {
           if (data?.session && su) {
             const payload = profilePayloadFromSupabaseUser(su);
             await afterLoginProfileSync(payload);
-            navigateTo('/home');
+            const access = await getUserAccess(payload);
+            navigateTo(resolvePostLoginPath(access));
           } else {
             showSuccess(
               'Te enviamos un correo de confirmación. Revisa tu bandeja antes de iniciar sesión.'
@@ -385,7 +388,8 @@ const Login = {
             );
           }
           await afterLoginProfileSync(payload);
-          navigateTo('/home');
+          const access = await getUserAccess(payload);
+          navigateTo(resolvePostLoginPath(access));
         }
       } catch (error) {
         showError(friendlyAuthMessage(error));

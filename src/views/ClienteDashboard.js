@@ -1,6 +1,8 @@
 import { navigateTo } from '../router.js';
 import { getCurrentUser, onAuthChange, logout, updateCurrentUserProfile } from '../lib/authProvider.js';
-import { listUserTickets, getUserProfile, upsertUser } from '../lib/dataLayer.js';
+import { listUserTickets, getUserProfile, upsertUser, getClienteDashboardData } from '../lib/dataLayer.js';
+import { formatFechaDia } from '../lib/fechaDiaMexico.js';
+import { cartCount } from '../lib/cart.js';
 import QRCode from 'qrcode';
 import { downloadTicketPdf } from '../lib/ticketPdf.js';
 import { showAlert } from '../lib/appDialog.js';
@@ -9,14 +11,28 @@ import { icon } from '../lib/icons.js';
 import { openImageCropModal } from '../lib/imageCropModal.js';
 import { uploadAvatarImage } from '../lib/storageProvider.js';
 
+function escapeHtml(text) {
+  return String(text ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
 function activeSection() {
-  if (window.location.pathname.startsWith('/cliente/configuracion')) return 'configuracion';
-  if (window.location.pathname.startsWith('/cliente/tickets')) return 'tickets';
+  const p = window.location.pathname;
+  if (p === '/cliente' || p === '/cliente/') return 'inicio';
+  if (p.startsWith('/cliente/dashboard')) return 'inicio';
+  if (p.startsWith('/cliente/configuracion')) return 'configuracion';
+  if (p.startsWith('/cliente/tickets')) return 'tickets';
   try {
     const prefs = JSON.parse(localStorage.getItem('cliente-preferences-v1') || '{}');
-    return prefs.defaultSection === 'configuracion' ? 'configuracion' : 'tickets';
+    if (prefs.defaultSection === 'configuracion') return 'configuracion';
+    if (prefs.defaultSection === 'tickets') return 'tickets';
+    return 'inicio';
   } catch {
-    return 'tickets';
+    return 'inicio';
   }
 }
 
@@ -32,8 +48,9 @@ const ClienteDashboard = {
               <p class="text-sm text-slate-500">Navega tus opciones</p>
             </div>
             <nav class="flex flex-col gap-1 p-3">
-              <a href="/cliente/configuracion" data-link class="rounded-xl px-3 py-2 font-semibold ${section === 'configuracion' ? 'bg-teal-100 text-teal-900' : 'text-slate-700 hover:bg-slate-100'}">Ajustes</a>
+              <a href="/cliente" data-link class="rounded-xl px-3 py-2 font-semibold ${section === 'inicio' ? 'bg-teal-100 text-teal-900' : 'text-slate-700 hover:bg-slate-100'}">Inicio</a>
               <a href="/cliente/tickets" data-link class="rounded-xl px-3 py-2 font-semibold ${section === 'tickets' ? 'bg-teal-100 text-teal-900' : 'text-slate-700 hover:bg-slate-100'}">Mis tickets</a>
+              <a href="/cliente/configuracion" data-link class="rounded-xl px-3 py-2 font-semibold ${section === 'configuracion' ? 'bg-teal-100 text-teal-900' : 'text-slate-700 hover:bg-slate-100'}">Ajustes</a>
             </nav>
             <div class="mt-auto border-t border-slate-100 p-3">
               <button id="btn-logout" class="w-full rounded-xl bg-rose-50 px-3 py-2 text-sm font-bold text-rose-700 hover:bg-rose-100">Cerrar sesión</button>
@@ -41,11 +58,53 @@ const ClienteDashboard = {
           </aside>
 
           <main class="min-w-0 flex-1 space-y-4">
-            <div class="lg:hidden flex gap-2 rounded-2xl border border-slate-200 bg-white p-2">
-              <a href="/cliente/configuracion" data-link class="flex-1 rounded-lg px-3 py-2 text-center font-semibold ${section === 'configuracion' ? 'bg-teal-100 text-teal-900' : 'text-slate-700'}">Ajustes</a>
-              <a href="/cliente/tickets" data-link class="flex-1 rounded-lg px-3 py-2 text-center font-semibold ${section === 'tickets' ? 'bg-teal-100 text-teal-900' : 'text-slate-700'}">Mis tickets</a>
-              <button id="btn-logout-mobile" class="rounded-lg bg-rose-50 px-3 py-2 text-sm font-bold text-rose-700">Salir</button>
+            <div class="lg:hidden grid grid-cols-2 gap-2 rounded-2xl border border-slate-200 bg-white p-2 sm:grid-cols-4">
+              <a href="/cliente" data-link class="rounded-lg px-2 py-2 text-center text-xs font-semibold ${section === 'inicio' ? 'bg-teal-100 text-teal-900' : 'text-slate-700'}">Inicio</a>
+              <a href="/cliente/tickets" data-link class="rounded-lg px-2 py-2 text-center text-xs font-semibold ${section === 'tickets' ? 'bg-teal-100 text-teal-900' : 'text-slate-700'}">Tickets</a>
+              <a href="/cliente/configuracion" data-link class="rounded-lg px-2 py-2 text-center text-xs font-semibold ${section === 'configuracion' ? 'bg-teal-100 text-teal-900' : 'text-slate-700'}">Ajustes</a>
+              <button id="btn-logout-mobile" type="button" class="rounded-lg bg-rose-50 px-2 py-2 text-xs font-bold text-rose-700">Salir</button>
             </div>
+
+            <section id="cliente-section-inicio" class="${section === 'inicio' ? '' : 'hidden'} space-y-4">
+              <div class="rounded-2xl border border-teal-100 bg-gradient-to-br from-teal-700 to-cyan-800 p-6 text-white shadow-md">
+                <p class="text-xs font-black uppercase tracking-wide text-teal-100">Tu espacio</p>
+                <h1 class="mt-1 text-2xl font-black leading-tight">Hola, <span id="cliente-home-name">…</span></h1>
+                <p id="cliente-home-upcoming" class="mt-2 text-sm font-semibold text-teal-50">Cargando próxima visita…</p>
+                <div class="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  <a href="/reservar" data-link class="flex items-center justify-center gap-2 rounded-xl bg-white/95 px-4 py-4 text-sm font-black text-teal-900 shadow transition hover:bg-white">
+                    ${icon('map', 'h-5 w-5')} Mapa de mesas
+                  </a>
+                  <a href="/checkout" data-link class="flex items-center justify-center gap-2 rounded-xl bg-white/15 px-4 py-4 text-sm font-black text-white ring-1 ring-white/30 transition hover:bg-white/25">
+                    ${icon('ticket', 'h-5 w-5')} Comprar tickets
+                  </a>
+                  <button type="button" id="cliente-home-cart" class="flex items-center justify-center gap-2 rounded-xl bg-amber-300 px-4 py-4 text-sm font-black text-slate-900 shadow transition hover:bg-amber-200">
+                    ${icon('shoppingCart', 'h-5 w-5')} Ver carrito (<span id="cliente-home-cart-count">0</span>)
+                  </button>
+                </div>
+              </div>
+
+              <div class="grid gap-4 lg:grid-cols-2">
+                <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                  <div class="flex items-center justify-between gap-2">
+                    <h2 class="text-lg font-black text-slate-900">Tickets activos</h2>
+                    <a href="/cliente/tickets" data-link class="text-xs font-black text-teal-700 hover:underline">Ver todos</a>
+                  </div>
+                  <div id="cliente-home-active-tickets" class="mt-3 space-y-2 text-sm text-slate-600">Cargando…</div>
+                </div>
+                <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                  <div class="flex items-center justify-between gap-2">
+                    <h2 class="text-lg font-black text-slate-900">Mis reservas de mesa</h2>
+                    <a href="/reservar" data-link class="text-xs font-black text-teal-700 hover:underline">Reservar</a>
+                  </div>
+                  <div id="cliente-home-mesas" class="mt-3 space-y-2 text-sm text-slate-600">Cargando…</div>
+                </div>
+              </div>
+
+              <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                <h2 class="text-lg font-black text-slate-900">Historial reciente</h2>
+                <div id="cliente-home-history" class="mt-3 divide-y divide-slate-100 text-sm"></div>
+              </div>
+            </section>
 
             <section id="cliente-section-configuracion" class="${section === 'configuracion' ? '' : 'hidden'} rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
               <div class="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
@@ -114,6 +173,7 @@ const ClienteDashboard = {
                       </label>
                       <label class="block text-sm font-black text-slate-700">Vista preferida
                         <select id="pref-default-section" class="mt-1 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-900">
+                          <option value="inicio">Inicio</option>
                           <option value="tickets">Mis tickets</option>
                           <option value="configuracion">Configuración</option>
                         </select>
@@ -123,11 +183,11 @@ const ClienteDashboard = {
                     </div>
                   </section>
 
-                  <section class="rounded-3xl border border-slate-200 bg-white p-5">
+                  <section id="cliente-scanner-card" class="rounded-3xl border border-slate-200 bg-white p-5 hidden">
                     <div class="mb-3 flex items-center gap-3">
                       <div class="grid h-10 w-10 place-items-center rounded-2xl bg-amber-50 text-amber-700">${icon('scan', 'h-5 w-5')}</div>
                       <div>
-                        <p class="text-xs font-black uppercase tracking-wide text-slate-500">Accesos</p>
+                        <p class="text-xs font-black uppercase tracking-wide text-slate-500">Personal</p>
                         <h2 class="font-black text-slate-900">Escáner QR</h2>
                       </div>
                     </div>
@@ -231,13 +291,14 @@ const ClienteDashboard = {
     const readPreferences = () => {
       try {
         const saved = JSON.parse(localStorage.getItem('cliente-preferences-v1') || '{}');
+        const ds = saved.defaultSection;
         preferences = {
           emailCopy: saved.emailCopy !== false,
           compactTickets: Boolean(saved.compactTickets),
-          defaultSection: saved.defaultSection === 'configuracion' ? 'configuracion' : 'tickets'
+          defaultSection: ds === 'configuracion' || ds === 'tickets' || ds === 'inicio' ? ds : 'inicio'
         };
       } catch {
-        preferences = { emailCopy: true, compactTickets: false, defaultSection: 'tickets' };
+        preferences = { emailCopy: true, compactTickets: false, defaultSection: 'inicio' };
       }
       if (prefEmailCopy) prefEmailCopy.checked = preferences.emailCopy;
       if (prefCompactTickets) prefCompactTickets.checked = preferences.compactTickets;
@@ -248,7 +309,12 @@ const ClienteDashboard = {
       preferences = {
         emailCopy: prefEmailCopy?.checked !== false,
         compactTickets: Boolean(prefCompactTickets?.checked),
-        defaultSection: prefDefaultSection?.value === 'configuracion' ? 'configuracion' : 'tickets'
+        defaultSection:
+          prefDefaultSection?.value === 'configuracion'
+            ? 'configuracion'
+            : prefDefaultSection?.value === 'tickets'
+              ? 'tickets'
+              : 'inicio'
       };
       localStorage.setItem('cliente-preferences-v1', JSON.stringify(preferences));
       if (preferencesMsg) {
@@ -294,15 +360,98 @@ const ClienteDashboard = {
 
     const loadAccess = async () => {
       accessSnapshot = await getUserAccess(user);
-      if (!scanStatusText || !btnOpenScanner) return;
+      const scannerCard = document.getElementById('cliente-scanner-card');
       if (accessSnapshot.can('tickets.scan')) {
-        scanStatusText.textContent = 'Tienes permiso de escaneo.';
-        btnOpenScanner.disabled = false;
-        btnOpenScanner.className = 'mt-3 w-full rounded-xl bg-slate-900 px-4 py-3 text-sm font-black text-white transition hover:bg-black';
+        scannerCard?.classList.remove('hidden');
+        if (scanStatusText) scanStatusText.textContent = 'Tienes permiso de escaneo.';
+        if (btnOpenScanner) {
+          btnOpenScanner.disabled = false;
+          btnOpenScanner.className =
+            'mt-3 w-full rounded-xl bg-slate-900 px-4 py-3 text-sm font-black text-white transition hover:bg-black';
+        }
       } else {
-        scanStatusText.textContent = 'Este usuario solo puede ver su QR y resumen.';
-        btnOpenScanner.disabled = true;
-        btnOpenScanner.className = 'mt-3 w-full cursor-not-allowed rounded-xl bg-slate-100 px-4 py-3 text-sm font-black text-slate-400';
+        scannerCard?.classList.add('hidden');
+        if (scanStatusText) scanStatusText.textContent = 'No disponible en cuenta cliente.';
+        if (btnOpenScanner) {
+          btnOpenScanner.disabled = true;
+          btnOpenScanner.className =
+            'mt-3 w-full cursor-not-allowed rounded-xl bg-slate-100 px-4 py-3 text-sm font-black text-slate-400';
+        }
+      }
+    };
+
+    const loadClienteHome = async () => {
+      const nm = document.getElementById('cliente-home-name');
+      const up = document.getElementById('cliente-home-upcoming');
+      const act = document.getElementById('cliente-home-active-tickets');
+      const mes = document.getElementById('cliente-home-mesas');
+      const hist = document.getElementById('cliente-home-history');
+      const cnt = document.getElementById('cliente-home-cart-count');
+      if (!nm || !user) return;
+      nm.textContent = profileSnapshot.nombre || user.displayName || 'Cliente';
+      if (cnt) cnt.textContent = String(cartCount());
+      try {
+        const dash = await getClienteDashboardData(user.uid ?? user.id);
+        if (up) {
+          up.textContent =
+            dash.upcomingHint ||
+            `Sin visitas programadas (${formatFechaDia()}). Explora tickets o mesas.`;
+        }
+        if (act) {
+          const at = dash.activeTickets || [];
+          if (!at.length) act.innerHTML = '<p class="text-slate-500">Sin tickets vigentes.</p>';
+          else {
+            act.innerHTML = at
+              .slice(0, 4)
+              .map(
+                (t) => `
+              <div class="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2">
+                <p class="font-mono text-xs font-bold text-slate-800">#${String(t.id).slice(0, 8)}</p>
+                <p class="text-xs text-slate-600">Total $${Number(t.precioTotal || 0).toFixed(2)} · ${escapeHtml(t.estadoTicket || '')}</p>
+              </div>`
+              )
+              .join('');
+          }
+        }
+        if (mes) {
+          const mr = (dash.mesas || []).filter((m) => (m.estado || '') === 'apartada');
+          if (!mr.length) mes.innerHTML = '<p class="text-slate-500">Sin mesas apartadas.</p>';
+          else {
+            mes.innerHTML = mr
+              .slice(0, 5)
+              .map(
+                (m) => `
+              <div class="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2">
+                <p class="font-bold text-slate-900">${escapeHtml(m.mesaLabel || m.mapItemId || 'Mesa')}</p>
+                <p class="text-xs text-slate-600">${escapeHtml(m.fechaDia || '')} · $${Number(m.totalReserva ?? m.subtotalMesa ?? 0).toFixed(2)}</p>
+              </div>`
+              )
+              .join('');
+          }
+        }
+        if (hist) {
+          const rt = dash.recentTickets || [];
+          if (!rt.length) hist.innerHTML = '<p class="py-3 text-slate-500">Sin compras recientes.</p>';
+          else {
+            hist.innerHTML = rt
+              .slice(0, 6)
+              .map(
+                (t) => `
+              <div class="flex items-center justify-between gap-2 py-3">
+                <div class="min-w-0">
+                  <p class="truncate font-mono text-xs font-bold text-slate-800">#${String(t.id).slice(0, 8)}</p>
+                  <p class="truncate text-xs text-slate-500">${new Date(t.fechaCreacion).toLocaleString()}</p>
+                </div>
+                <span class="text-xs font-black uppercase text-slate-600">${escapeHtml(t.estadoTicket || '')}</span>
+              </div>`
+              )
+              .join('');
+          }
+        }
+      } catch (e) {
+        console.warn('Cliente home:', e);
+        if (act) act.innerHTML = '<p class="text-rose-600 text-xs">No se pudieron cargar datos.</p>';
+        if (mes) mes.innerHTML = '<p class="text-slate-500 text-xs">—</p>';
       }
     };
 
@@ -504,17 +653,30 @@ const ClienteDashboard = {
     btnSavePreferences?.addEventListener('click', writePreferences);
     btnCloseQr?.addEventListener('click', () => modalQr.classList.add('hidden'));
     btnOpenScanner?.addEventListener('click', () => accessSnapshot?.can('tickets.scan') && navigateTo('/escaner'));
+    document.getElementById('cliente-home-cart')?.addEventListener('click', () => {
+      document.querySelector('[data-app-cart-toggle]')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    window.addEventListener('cart:changed', () => {
+      const el = document.getElementById('cliente-home-cart-count');
+      if (el) el.textContent = String(cartCount());
+    });
     btnLogout?.addEventListener('click', runLogout);
     btnLogoutMobile?.addEventListener('click', runLogout);
 
     readPreferences();
     if (user) {
-      Promise.all([loadProfile(), loadAccess()]).then(loadTickets);
+      Promise.all([loadProfile(), loadAccess()]).then(() => {
+        loadTickets();
+        if (activeSection() === 'inicio') void loadClienteHome();
+      });
     } else {
       const unsubscribe = onAuthChange((u) => {
         if (u) {
           user = u;
-          Promise.all([loadProfile(), loadAccess()]).then(loadTickets);
+          Promise.all([loadProfile(), loadAccess()]).then(() => {
+            loadTickets();
+            if (activeSection() === 'inicio') void loadClienteHome();
+          });
         }
         unsubscribe();
       });
