@@ -17,6 +17,9 @@ import { sendTicketEmailBestEffort } from '../lib/ticketEmail.js';
 import { listCartItems, setCartQty, removeFromCart, cartSubtotal, addToCart, clearCart } from '../lib/cart.js';
 import { publishAppUpdate } from '../lib/realtimeSync.js';
 import { applyDiscountToCart } from '../lib/discountRules.js';
+import QRCode from 'qrcode';
+import { saveGuestTicket } from '../lib/guestTicketStore.js';
+import { copyTicketCode, saveTicketQrImage, shareTicketViaWhatsApp } from '../lib/ticketShare.js';
 
 function escapeHtml(text) {
   return String(text ?? '')
@@ -132,13 +135,30 @@ const Checkout = {
             </div>
 
             <div id="purchase-confirm" class="fixed inset-0 z-50 hidden flex items-center justify-center bg-slate-950/70 p-4">
-                <div class="w-full max-w-md rounded-2xl bg-white p-6 text-center shadow-2xl">
-                    <h3 class="text-2xl font-black text-emerald-700">Compra confirmada</h3>
-                    <p id="purchase-confirm-msg" class="mt-2 text-sm font-semibold text-slate-700"></p>
+                <div class="w-full max-w-2xl max-h-[90vh] overflow-auto rounded-2xl bg-white p-6 shadow-2xl">
+                    <h3 class="text-2xl font-black text-emerald-700">Tu ticket fue creado correctamente</h3>
+                    <p id="purchase-confirm-msg" class="mt-2 text-sm font-semibold text-slate-700">Guárdalo o compártelo ahora. También lo enviaremos al correo indicado.</p>
                     <div id="purchase-confirm-status" class="mt-3 space-y-1 text-left min-h-[1rem]"></div>
-                    <div class="mt-5 flex flex-col gap-2">
+
+                    <div class="mt-4 grid gap-4 md:grid-cols-[1.1fr_0.9fr]">
+                        <div id="purchase-ticket-summary" class="rounded-xl border border-slate-200 bg-slate-50 p-4 text-left text-sm text-slate-700"></div>
+                        <div class="rounded-xl border border-slate-200 p-4 text-center">
+                            <p class="text-xs font-black uppercase tracking-wide text-slate-500">QR del ticket</p>
+                            <canvas id="purchase-qr-canvas" class="mx-auto mt-2"></canvas>
+                            <p id="purchase-qr-caption" class="mt-2 text-xs font-mono text-slate-500">---</p>
+                        </div>
+                    </div>
+
+                    <div class="mt-5 grid gap-2 sm:grid-cols-2">
+                        <button type="button" id="purchase-btn-download" class="w-full rounded-xl bg-blue-600 py-3 text-sm font-black text-white hover:bg-blue-700">Descargar PDF</button>
+                        <button type="button" id="purchase-btn-save-qr" class="w-full rounded-xl bg-emerald-600 py-3 text-sm font-black text-white hover:bg-emerald-700">Guardar imagen QR</button>
+                        <button type="button" id="purchase-btn-share-whatsapp" class="w-full rounded-xl bg-green-600 py-3 text-sm font-black text-white hover:bg-green-700">Compartir por WhatsApp</button>
+                        <button type="button" id="purchase-btn-copy-code" class="w-full rounded-xl border border-slate-300 py-3 text-sm font-black text-slate-800 hover:bg-slate-50">Copiar código</button>
+                        <button type="button" id="purchase-btn-resend-email" class="w-full rounded-xl border border-slate-300 py-3 text-sm font-black text-slate-800 hover:bg-slate-50 sm:col-span-2">Reenviar correo</button>
+                    </div>
+
+                    <div class="mt-4 flex flex-col gap-2">
                         <button type="button" id="purchase-btn-my-tickets" class="w-full rounded-xl bg-teal-700 py-3 text-sm font-black text-white hover:bg-teal-800">Ver mis tickets</button>
-                        <button type="button" id="purchase-btn-download" class="w-full rounded-xl bg-blue-600 py-3 text-sm font-black text-white hover:bg-blue-700">Descargar ticket</button>
                         <button type="button" id="purchase-btn-home" class="w-full rounded-xl border border-slate-200 py-3 text-sm font-black text-slate-700 hover:bg-slate-50">Volver al inicio</button>
                     </div>
                 </div>
