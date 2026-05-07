@@ -32,3 +32,17 @@ export async function listAuditEventsForEntity(entityType, entityId, limit = 30)
   return listAuditEventsForEntityData({ entityType, entityId, limit });
 }
 
+export function formatAuditEventHuman(event = {}) {
+  const title = String(event.title || 'Evento');
+  const description = String(event.description || '').trim();
+  const actor = String(event.actor_email || event.actorEmail || '').trim();
+  const when = event.created_at || event.createdAt;
+  return {
+    title,
+    description: description || 'Sin descripción.',
+    actor: actor || 'Sistema',
+    whenLabel: when ? new Date(when).toLocaleString('es-MX') : 'Ahora',
+    severity: String(event.severity || 'info')
+  };
+}
+

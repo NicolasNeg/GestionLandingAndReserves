@@ -123,7 +123,7 @@ for insert
 to authenticated
 with check (
   bucket_id = 'app-uploads'
-  and split_part(name, '/', 1) in ('services', 'landing', 'theme')
+  and split_part(name, '/', 1) in ('services', 'landing', 'theme', 'maps')
   and (
     public.app_has_permission('landing.manage')
     or public.app_has_permission('admin.panel')
@@ -139,7 +139,7 @@ for update
 to authenticated
 using (
   bucket_id = 'app-uploads'
-  and split_part(name, '/', 1) in ('services', 'landing', 'theme')
+  and split_part(name, '/', 1) in ('services', 'landing', 'theme', 'maps')
   and (
     public.app_has_permission('landing.manage')
     or public.app_has_permission('admin.panel')
@@ -149,7 +149,7 @@ using (
 )
 with check (
   bucket_id = 'app-uploads'
-  and split_part(name, '/', 1) in ('services', 'landing', 'theme')
+  and split_part(name, '/', 1) in ('services', 'landing', 'theme', 'maps')
   and (
     public.app_has_permission('landing.manage')
     or public.app_has_permission('admin.panel')
@@ -165,7 +165,7 @@ for delete
 to authenticated
 using (
   bucket_id = 'app-uploads'
-  and split_part(name, '/', 1) in ('services', 'landing', 'theme')
+  and split_part(name, '/', 1) in ('services', 'landing', 'theme', 'maps')
   and (
     public.app_has_permission('landing.manage')
     or public.app_has_permission('admin.panel')

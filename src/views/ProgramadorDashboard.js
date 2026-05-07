@@ -516,7 +516,15 @@ const ProgramadorDashboard = {
           entityId: uid,
           title: 'Usuario actualizado',
           description: `Se cambió rol/permisos del usuario ${uid} a ${role}.`,
-          metadata: { uid, role }
+          metadata: { uid, role, permissions: readChecked('user-permission') }
+        });
+        void logAuditEvent({
+          eventType: 'usuario_permisos_actualizados',
+          entityType: 'user',
+          entityId: uid,
+          title: 'Permisos actualizados',
+          description: `Se actualizaron permisos del usuario ${uid}.`,
+          metadata: { uid, role, permissions: readChecked('user-permission') }
         });
         await publishAppUpdate('users', `Permisos usuario ${uid}`);
         if (msg) msg.textContent = 'Usuario guardado en Postgres.';

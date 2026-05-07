@@ -59,7 +59,7 @@ import { subscribeParkingSpots, upsertParkingSpot, updateParkingSpot, removePark
 import { defaultScheduleConfig, parseScheduleConfig, serializeScheduleConfig, scheduleDays } from '../lib/schedule.js';
 import { publishAppUpdate } from '../lib/realtimeSync.js';
 import { openImageCropModal } from '../lib/imageCropModal.js';
-import { uploadProductImage, uploadServiceImage } from '../lib/storageProvider.js';
+import { uploadMapBackgroundImage, uploadProductImage, uploadServiceImage } from '../lib/storageProvider.js';
 import { isBackendOperationUnavailable } from '../lib/backendErrors.js';
 import { formatFechaDia } from '../lib/fechaDiaMexico.js';
 import {
@@ -302,6 +302,8 @@ const AdminDashboard = {
     const canAdminPanel = access.can('admin.panel');
     const canInventoryView = access.can('inventory.manage') || access.can('inventory.adjust') || access.can('sales.physical');
     const canParking = access.can('parking.manage');
+    const canProgramadorTools =
+      access.isProgramador === true || access.can('programador.access');
     const canBitacora =
       access.can('dashboard.manage') ||
       access.can('admin.panel') ||
@@ -752,6 +754,13 @@ const AdminDashboard = {
                     <p class="mt-1 text-sm text-slate-600">Busca por correo, nombre, folio, ticket ID o teléfono.</p>
                     <div class="mt-4 flex flex-col gap-2 sm:flex-row">
                       <input id="support-query" type="text" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" placeholder="Buscar por correo, nombre, folio, ticket ID o teléfono" />
+                      <select id="support-status-filter" class="rounded-xl border border-slate-300 px-3 py-2 text-sm">
+                        <option value="todos">Todos</option>
+                        <option value="vigentes">Vigentes</option>
+                        <option value="usados">Usados</option>
+                        <option value="pendientes">Pendientes de pago</option>
+                        <option value="cancelados">Cancelados</option>
+                      </select>
                       <button id="support-search-btn" type="button" class="rounded-xl bg-slate-900 px-4 py-2 text-sm font-black text-white">Buscar</button>
                     </div>
                     <p id="support-msg" class="mt-3 text-xs font-semibold text-slate-600"></p>
@@ -1021,6 +1030,7 @@ const AdminDashboard = {
                           <div class="mt-6 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-center">
                             <button type="button" id="mapa-mobile-back" class="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-black text-slate-800 shadow-sm">Volver</button>
                             <a href="/home" data-link class="rounded-xl bg-cyan-600 px-4 py-3 text-sm font-black text-white shadow-md">Abrir sitio</a>
+                            <a href="/home#mapa" data-link class="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-black text-slate-800 shadow-sm">Ver mapa público</a>
                             <a href="/admin/dashboard" data-link class="rounded-xl border border-cyan-200 bg-cyan-50 px-4 py-3 text-sm font-black text-cyan-900">Ir al panel</a>
                           </div>
                         </div>
@@ -1036,7 +1046,7 @@ const AdminDashboard = {
                       </div>
                       <p class="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">Usa <strong>Guardar cambios del sitio</strong> en la cabecera para persistir mapas y textos. El atajo Guardar del lienzo dispara el mismo guardado.</p>
                       <p id="mapa-context-usage" class="rounded-lg border border-cyan-100 bg-cyan-50/80 px-4 py-2 text-xs font-semibold text-cyan-950"></p>
-                      <div class="mapa-editor-shell mapa-ws overflow-hidden rounded-2xl border border-slate-700 bg-gradient-to-b from-slate-900 via-slate-900 to-slate-950 text-slate-100 shadow-xl ring-1 ring-white/10">
+                      <div id="mapa-editor-shell" class="mapa-editor-shell mapa-ws overflow-hidden rounded-2xl border border-slate-700 bg-gradient-to-b from-slate-900 via-slate-900 to-slate-950 text-slate-100 shadow-xl ring-1 ring-white/10">
                           <header class="mapa-editor-topbar border-b border-white/10 px-4 py-3">
                             <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                               <div class="flex min-w-0 flex-1 items-center gap-3">
@@ -1054,6 +1064,7 @@ const AdminDashboard = {
                                   <option value="estacionamiento">Mapa Estacionamiento</option>
                                 </select>
                                 <button type="button" id="mapa-save-shortcut" class="mapa-command-primary" title="Guardar contenido del sitio">${icon('check', 'h-4 w-4')} Guardar</button>
+                                <button type="button" id="mapa-focus-toggle" class="mapa-command-btn" title="Modo enfoque">${icon('eye', 'h-4 w-4')} Modo enfoque</button>
                               </div>
                             </div>
                             <div class="mt-3 flex flex-wrap items-center gap-2 border-t border-white/5 pt-3">
@@ -1113,20 +1124,25 @@ const AdminDashboard = {
                                 </label>
                                 <button type="button" id="mapa-doc-apply" class="rounded-lg border border-cyan-500/40 bg-cyan-500/10 px-4 py-2 text-xs font-black text-cyan-200 hover:bg-cyan-500/20">Aplicar tamaño</button>
                               </div>
-                              <div class="flex flex-col gap-2 border-t border-white/10 bg-black/25 px-4 py-3 text-slate-300 sm:flex-row sm:flex-wrap sm:items-end">
-                                <label class="text-[10px] font-bold uppercase text-slate-500">Tipo fondo
+                              <div class="flex flex-col gap-3 border-t border-white/10 bg-black/25 px-4 py-3 text-slate-300">
+                                <div class="flex items-center justify-between gap-3">
+                                  <div>
+                                    <p class="text-xs font-black uppercase tracking-wide text-cyan-300">Fondo del mapa</p>
+                                    <p class="text-[11px] font-semibold text-slate-400">Usa una imagen aérea, plano o render del parque como guía para dibujar encima.</p>
+                                  </div>
+                                  <button type="button" id="mapa-bg-apply" class="rounded-lg border border-white/15 bg-white/10 px-4 py-2 text-xs font-bold text-white hover:bg-white/15">Aplicar fondo</button>
+                                </div>
+                                <div class="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                                  <label class="text-[10px] font-bold uppercase text-slate-500">Tipo fondo
                                   <select id="mapa-bg-type" class="mt-1 block w-full min-w-[140px] rounded border border-white/10 bg-white/5 px-2 py-1.5 text-sm text-white sm:w-40">
                                     <option value="park">Parque (degradado)</option>
                                     <option value="color">Color plano</option>
-                                    <option value="image">Imagen (URL)</option>
+                                    <option value="image">Imagen</option>
                                     <option value="none">Sin fondo</option>
                                   </select>
                                 </label>
                                 <label class="text-[10px] font-bold uppercase text-slate-500">Color base
                                   <input id="mapa-bg-fill" type="color" class="mt-1 h-9 w-full max-w-[120px] rounded border border-white/10 bg-white/5 p-1 sm:w-28" />
-                                </label>
-                                <label class="min-w-[160px] flex-1 text-[10px] font-bold uppercase text-slate-500">URL imagen
-                                  <input id="mapa-bg-url" type="url" class="mt-1 w-full rounded border border-white/10 bg-white/5 px-2 py-1.5 text-sm text-white" placeholder="https://..." />
                                 </label>
                                 <label class="text-[10px] font-bold uppercase text-slate-500">Ajuste
                                   <select id="mapa-bg-fit" class="mt-1 block w-full rounded border border-white/10 bg-white/5 px-2 py-1.5 text-sm text-white sm:w-32">
@@ -1138,8 +1154,34 @@ const AdminDashboard = {
                                 <label class="text-[10px] font-bold uppercase text-slate-500">Opacidad
                                   <input id="mapa-bg-opacity" type="number" min="0" max="1" step="0.05" value="1" class="mt-1 w-24 rounded border border-white/10 bg-white/5 px-2 py-1.5 text-sm text-white" />
                                 </label>
-                                <label class="flex items-center gap-2 pb-1 text-xs font-semibold text-slate-300"><input id="mapa-bg-visible" type="checkbox" checked /> Mostrar imagen</label>
-                                <button type="button" id="mapa-bg-apply" class="rounded-lg border border-white/15 bg-white/10 px-4 py-2 text-xs font-bold text-white hover:bg-white/15">Aplicar fondo</button>
+                                  <div class="min-w-[170px]">
+                                    <p class="text-[10px] font-bold uppercase text-slate-500">Imagen de fondo</p>
+                                    <input id="mapa-bg-file" type="file" accept="image/jpeg,image/png,image/webp" class="hidden" />
+                                    <div class="mt-1 flex flex-wrap gap-2">
+                                      <button type="button" id="mapa-bg-upload-btn" class="rounded border border-white/15 bg-white/10 px-3 py-1.5 text-xs font-bold text-white hover:bg-white/15">Subir imagen</button>
+                                      <button type="button" id="mapa-bg-replace-btn" class="rounded border border-white/15 bg-white/10 px-3 py-1.5 text-xs font-bold text-white hover:bg-white/15">Reemplazar</button>
+                                      <button type="button" id="mapa-bg-remove-btn" class="rounded border border-rose-400/30 bg-rose-500/10 px-3 py-1.5 text-xs font-bold text-rose-200 hover:bg-rose-500/20">Quitar</button>
+                                    </div>
+                                  </div>
+                                </div>
+                                <div class="flex flex-wrap items-center gap-3">
+                                  <label class="flex items-center gap-2 pb-1 text-xs font-semibold text-slate-300"><input id="mapa-bg-visible" type="checkbox" checked /> Mostrar fondo</label>
+                                  <label class="flex items-center gap-2 pb-1 text-xs font-semibold text-slate-300"><input id="mapa-bg-locked" type="checkbox" checked /> Bloquear fondo</label>
+                                  <span id="mapa-bg-upload-status" class="text-xs font-semibold text-slate-400"></span>
+                                </div>
+                                <div class="flex flex-wrap items-start gap-3">
+                                  <div id="mapa-bg-preview" class="hidden h-16 w-24 overflow-hidden rounded border border-white/10 bg-slate-800">
+                                    <img id="mapa-bg-preview-img" src="" alt="Preview imagen de fondo" class="h-full w-full object-cover" />
+                                  </div>
+                                  <div class="min-w-[180px] text-[11px] text-slate-400">
+                                    <p id="mapa-bg-file-name" class="font-semibold text-slate-300">Sin imagen cargada.</p>
+                                  </div>
+                                  ${
+                                    canProgramadorTools
+                                      ? `<details class="rounded border border-white/10 bg-white/5 px-2 py-1 text-[10px] text-slate-400"><summary class="cursor-pointer font-bold text-slate-300">Datos técnicos</summary><p id="mapa-bg-tech-url" class="mt-1 break-all"></p><p id="mapa-bg-tech-path" class="break-all"></p></details>`
+                                      : ''
+                                  }
+                                </div>
                               </div>
                             </div>
 
@@ -1286,6 +1328,16 @@ const AdminDashboard = {
                                 <div class="mb-2 flex items-center justify-between">
                                   <p class="text-[10px] font-black uppercase tracking-widest text-slate-500">Capas e items</p>
                                   <span id="mapa-layer-count" class="text-[10px] font-bold text-slate-500">0</span>
+                                </div>
+                                <div class="mb-2 grid grid-cols-1 gap-2">
+                                  <input id="mapa-layers-search" type="text" class="rounded border border-white/10 bg-white/5 px-2 py-1.5 text-xs text-white" placeholder="Buscar por nombre..." />
+                                  <select id="mapa-layers-kind-filter" class="rounded border border-white/10 bg-white/5 px-2 py-1.5 text-xs text-white">
+                                    <option value="">Todos los tipos</option>
+                                    <option value="mesa">Mesas</option>
+                                    <option value="parkingSpot">Parking</option>
+                                    <option value="area">Áreas</option>
+                                    <option value="servicio">Servicios</option>
+                                  </select>
                                 </div>
                                 <div id="mapa-layers-list" class="max-h-56 space-y-1 overflow-auto pr-1 text-xs"></div>
                               </div>
@@ -1465,6 +1517,15 @@ const AdminDashboard = {
       access.can('programador.access');
     const canProgramadorTools =
       access.isProgramador === true || access.can('programador.access');
+    const canBitacoraQuick =
+      access.can('dashboard.manage') ||
+      access.can('admin.panel') ||
+      access.can('programador.access') ||
+      access.can('users.permissions');
+    const canSupportQuick =
+      canBitacoraQuick ||
+      access.can('tickets.scan') ||
+      access.can('sales.physical');
     const showLandingQuick =
       access.can('landing.manage') ||
       access.can('admin.panel') ||
@@ -1527,6 +1588,12 @@ const AdminDashboard = {
       }
       if (access.can('users.permissions') || access.can('roles.manage') || canProgramadorTools) {
         links.push({ href: '/programador', label: 'Usuarios y roles', icon: 'code' });
+      }
+      if (canSupportQuick) {
+        links.push({ href: '/admin/dashboard?section=soporte', label: 'Buscar ticket', icon: 'users' });
+      }
+      if (canBitacoraQuick) {
+        links.push({ href: '/admin/dashboard?section=bitacora', label: 'Ver bitácora', icon: 'clock' });
       }
       ql.innerHTML = links
         .map((l) => {
@@ -2077,6 +2144,14 @@ const AdminDashboard = {
         setStatus('Actualizando estado...');
         try {
           await deactivateTicketType({ id: existingId, activo: !row.activo });
+          void logAuditEvent({
+            eventType: 'ticket_type_desactivado',
+            entityType: 'ticket_type',
+            entityId: existingId,
+            title: 'Ticket type desactivado',
+            description: `Se cambió estado de ${row.nombre || existingId} a ${row.activo ? 'inactivo' : 'activo'}.`,
+            metadata: { id: existingId, activeNext: !row.activo }
+          });
           await reload();
           const fresh = ticketTypesCache.find((x) => x.id === existingId);
           if (fresh) fillForm(fresh, 'edit');
@@ -2838,9 +2913,29 @@ const AdminDashboard = {
 
         const renderLayers = () => {
           if (!layersList) return;
-          const items = mapEditor?.getItems?.() || [];
+          const allItems = mapEditor?.getItems?.() || [];
+          const searchText = String(document.getElementById('mapa-layers-search')?.value || '')
+            .trim()
+            .toLowerCase();
+          const kindFilter = String(document.getElementById('mapa-layers-kind-filter')?.value || '')
+            .trim()
+            .toLowerCase();
+          const items = allItems.filter((item) => {
+            const kindValue = String(item.kind || '').toLowerCase();
+            const label = String(item.label || '').toLowerCase();
+            const kindMatch =
+              !kindFilter ||
+              kindValue === kindFilter ||
+              (kindFilter === 'mesa' && (kindValue === 'mesa' || kindValue === 'table')) ||
+              (kindFilter === 'parkingspot' &&
+                (kindValue === 'parkingspot' || kindValue === 'estacionamiento')) ||
+              (kindFilter === 'servicio' && (kindValue === 'servicio' || kindValue === 'servicearea'));
+            if (!kindMatch) return false;
+            if (!searchText) return true;
+            return label.includes(searchText) || kindValue.includes(searchText) || String(item.id || '').toLowerCase().includes(searchText);
+          });
           const selectedIds = new Set((mapEditor?.getSelection?.() || []).map((item) => item.id));
-          if (layerCount) layerCount.textContent = `${items.length}`;
+          if (layerCount) layerCount.textContent = `${items.length}/${allItems.length}`;
           if (!items.length) {
             layersList.innerHTML = '<p class="rounded-lg border border-dashed border-white/10 p-3 text-slate-500">Sin items en esta vista.</p>';
             return;
@@ -2873,6 +2968,8 @@ const AdminDashboard = {
             btn.addEventListener('click', () => mapEditor?.toggleItemVisible?.(btn.getAttribute('data-layer-visible') || ''));
           });
         };
+        document.getElementById('mapa-layers-search')?.addEventListener('input', () => renderLayers());
+        document.getElementById('mapa-layers-kind-filter')?.addEventListener('change', () => renderLayers());
 
         Object.values(fieldIds).forEach((id) => {
           const node = document.getElementById(id);
@@ -2904,6 +3001,14 @@ const AdminDashboard = {
         setClick('mapa-multi-hide', () => mapEditor?.setSelectedVisibility?.(false));
         setClick('mapa-multi-show', () => mapEditor?.setSelectedVisibility?.(true));
         setClick('mapa-save-shortcut', () => document.getElementById('lp-save')?.click());
+        setClick('mapa-focus-toggle', () => {
+          const shell = document.getElementById('mapa-editor-shell');
+          if (!shell) return;
+          const on = !shell.classList.contains('mapa-focus-mode');
+          shell.classList.toggle('mapa-focus-mode', on);
+          const btn = document.getElementById('mapa-focus-toggle');
+          if (btn) btn.innerHTML = `${icon('eye', 'h-4 w-4')} ${on ? 'Salir enfoque' : 'Modo enfoque'}`;
+        });
         setClick('mapa-undo', () => mapEditor?.undo?.());
         setClick('mapa-redo', () => mapEditor?.redo?.());
         document.querySelectorAll('[data-map-mode]').forEach((btn) => {
@@ -2932,6 +3037,7 @@ const AdminDashboard = {
           };
         }
 
+        let bgUploaded = { url: '', path: '', fileName: '' };
         const syncBgFormFromDoc = (d) => {
           const bg = d.background || {};
           const t = String(bg.type || 'park').toLowerCase();
@@ -2939,14 +3045,29 @@ const AdminDashboard = {
           if (typeEl) typeEl.value = ['park', 'color', 'image', 'none'].includes(t) ? t : 'park';
           const fillEl = document.getElementById('mapa-bg-fill');
           if (fillEl) fillEl.value = toColorValue(bg.fill, '#ecfdf5');
-          const urlEl = document.getElementById('mapa-bg-url');
-          if (urlEl) urlEl.value = bg.url || '';
           const fitEl = document.getElementById('mapa-bg-fit');
           if (fitEl) fitEl.value = ['cover', 'contain', 'stretch'].includes(String(bg.fit || '').toLowerCase()) ? String(bg.fit).toLowerCase() : 'cover';
           const opEl = document.getElementById('mapa-bg-opacity');
           if (opEl) opEl.value = String(Math.min(1, Math.max(0, Number(bg.opacity ?? 1))));
           const visEl = document.getElementById('mapa-bg-visible');
           if (visEl) visEl.checked = bg.visible !== false;
+          const lockEl = document.getElementById('mapa-bg-locked');
+          if (lockEl) lockEl.checked = bg.locked !== false;
+          bgUploaded = {
+            url: String(bg.url || ''),
+            path: String(bg.storagePath || ''),
+            fileName: String(bg.fileName || '')
+          };
+          const previewWrap = document.getElementById('mapa-bg-preview');
+          const previewImg = document.getElementById('mapa-bg-preview-img');
+          const fileNameEl = document.getElementById('mapa-bg-file-name');
+          const techUrl = document.getElementById('mapa-bg-tech-url');
+          const techPath = document.getElementById('mapa-bg-tech-path');
+          if (previewWrap) previewWrap.classList.toggle('hidden', !bgUploaded.url);
+          if (previewImg) previewImg.src = bgUploaded.url || '';
+          if (fileNameEl) fileNameEl.textContent = bgUploaded.fileName || (bgUploaded.url ? 'Imagen actual cargada' : 'Sin imagen cargada.');
+          if (techUrl) techUrl.textContent = bgUploaded.url ? `URL: ${bgUploaded.url}` : 'URL: —';
+          if (techPath) techPath.textContent = bgUploaded.path ? `Path: ${bgUploaded.path}` : 'Path: —';
           if (showGridEl) showGridEl.checked = d.grid?.visible !== false;
           if (snapGrid) snapGrid.checked = d.grid?.snap !== false;
         };
@@ -2963,22 +3084,81 @@ const AdminDashboard = {
         }
 
         const bgApplyBtn = document.getElementById('mapa-bg-apply');
+        const bgUploadBtn = document.getElementById('mapa-bg-upload-btn');
+        const bgReplaceBtn = document.getElementById('mapa-bg-replace-btn');
+        const bgRemoveBtn = document.getElementById('mapa-bg-remove-btn');
+        const bgFileInput = document.getElementById('mapa-bg-file');
+        const bgStatusEl = document.getElementById('mapa-bg-upload-status');
+        const setBgStatus = (msg = '', tone = 'muted') => {
+          if (!bgStatusEl) return;
+          bgStatusEl.textContent = msg;
+          bgStatusEl.className =
+            tone === 'ok'
+              ? 'text-xs font-semibold text-emerald-300'
+              : tone === 'err'
+                ? 'text-xs font-semibold text-rose-300'
+                : 'text-xs font-semibold text-slate-400';
+        };
+        const uploadMapBg = async () => {
+          const file = bgFileInput?.files?.[0];
+          if (!file) return;
+          setBgStatus('Subiendo imagen...');
+          try {
+            const upload = await uploadMapBackgroundImage(file, { view: mapContext });
+            bgUploaded = { url: upload.url, path: upload.path, fileName: upload.fileName };
+            const fileNameEl = document.getElementById('mapa-bg-file-name');
+            const previewWrap = document.getElementById('mapa-bg-preview');
+            const previewImg = document.getElementById('mapa-bg-preview-img');
+            const techUrl = document.getElementById('mapa-bg-tech-url');
+            const techPath = document.getElementById('mapa-bg-tech-path');
+            if (fileNameEl)
+              fileNameEl.textContent = `${upload.fileName} · ${(upload.size / 1024 / 1024).toFixed(2)} MB`;
+            if (previewWrap) previewWrap.classList.remove('hidden');
+            if (previewImg) previewImg.src = upload.url;
+            if (techUrl) techUrl.textContent = `URL: ${upload.url}`;
+            if (techPath) techPath.textContent = `Path: ${upload.path}`;
+            setBgStatus('Imagen subida. Pulsa "Aplicar fondo" para usarla.', 'ok');
+          } catch (error) {
+            setBgStatus(error?.message || 'No pudimos subir la imagen. Intenta de nuevo.', 'err');
+          }
+        };
+        if (bgUploadBtn && bgFileInput) bgUploadBtn.onclick = () => bgFileInput.click();
+        if (bgReplaceBtn && bgFileInput) bgReplaceBtn.onclick = () => bgFileInput.click();
+        if (bgFileInput) bgFileInput.onchange = () => void uploadMapBg();
+        if (bgRemoveBtn) {
+          bgRemoveBtn.onclick = () => {
+            bgUploaded = { url: '', path: '', fileName: '' };
+            const fileNameEl = document.getElementById('mapa-bg-file-name');
+            const previewWrap = document.getElementById('mapa-bg-preview');
+            const previewImg = document.getElementById('mapa-bg-preview-img');
+            if (fileNameEl) fileNameEl.textContent = 'Sin imagen cargada.';
+            if (previewWrap) previewWrap.classList.add('hidden');
+            if (previewImg) previewImg.src = '';
+            setBgStatus('Imagen eliminada. Pulsa "Aplicar fondo" para guardar el cambio.');
+          };
+        }
         if (bgApplyBtn) {
           bgApplyBtn.onclick = () => {
             const type = document.getElementById('mapa-bg-type')?.value || 'park';
             const fill = document.getElementById('mapa-bg-fill')?.value || '#ecfdf5';
-            const url = document.getElementById('mapa-bg-url')?.value?.trim() || '';
+            const url = bgUploaded.url || '';
+            const storagePath = bgUploaded.path || '';
             const fit = document.getElementById('mapa-bg-fit')?.value || 'cover';
             const opacity = Math.min(1, Math.max(0, parseFloat(document.getElementById('mapa-bg-opacity')?.value || '1') || 1));
             const visible = document.getElementById('mapa-bg-visible')?.checked !== false;
+            const locked = document.getElementById('mapa-bg-locked')?.checked !== false;
             mapEditor?.updateDocumentBackground?.({
               type,
               fill,
               url,
+              storagePath,
+              fileName: bgUploaded.fileName || '',
               fit,
               opacity,
-              visible
+              visible,
+              locked
             });
+            setBgStatus('Fondo aplicado al mapa actual.', 'ok');
           };
         }
 
@@ -3547,6 +3727,14 @@ const AdminDashboard = {
             entityId: LANDING_PAGE_ID,
             title: 'Landing editada',
             description: 'Se actualizó contenido público de la landing.',
+            metadata: { mapContext, hasMapErrors: mapErrors.length > 0 }
+          });
+          void logAuditEvent({
+            eventType: 'mapa_guardado',
+            entityType: 'mapa',
+            entityId: mapContext || 'parque',
+            title: 'Mapa guardado',
+            description: `Se guardó el mapa de ${mapContext || 'parque'}.`,
             metadata: { mapContext, hasMapErrors: mapErrors.length > 0 }
           });
           await publishAppUpdate('landing', 'Contenido landing actualizado');
@@ -4455,6 +4643,7 @@ const AdminDashboard = {
       if (supportReady) return;
       supportReady = true;
       const queryEl = document.getElementById('support-query');
+      const statusEl = document.getElementById('support-status-filter');
       const btnEl = document.getElementById('support-search-btn');
       const msgEl = document.getElementById('support-msg');
       const listEl = document.getElementById('support-results');
@@ -4516,6 +4705,8 @@ const AdminDashboard = {
             <button type="button" data-support-action="resend" data-ticket-id="${escapeHtml(ticket.id)}" data-ticket-email="${escapeHtml(ticket.clienteEmail || '')}" class="rounded-lg bg-blue-700 px-3 py-1.5 text-xs font-bold text-white">Reenviar correo</button>
             <button type="button" data-support-action="pdf" data-ticket-id="${escapeHtml(ticket.id)}" data-ticket-name="${escapeHtml(ticket.clienteNombre || '')}" data-ticket-email="${escapeHtml(ticket.clienteEmail || '')}" data-ticket-total="${escapeHtml(String(ticket.precioTotal || 0))}" data-ticket-pay="${escapeHtml(ticket.metodoPago || '')}" data-ticket-pay-status="${escapeHtml(ticket.estadoPago || '')}" class="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-bold text-slate-700">Descargar PDF</button>
             <button type="button" data-support-action="copy" data-ticket-id="${escapeHtml(ticket.id)}" class="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-bold text-slate-700">Copiar folio</button>
+            <button type="button" data-support-action="copy-summary" data-ticket-id="${escapeHtml(ticket.id)}" data-ticket-name="${escapeHtml(ticket.clienteNombre || '')}" data-ticket-total="${escapeHtml(String(ticket.precioTotal || 0))}" class="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-bold text-slate-700">Copiar resumen</button>
+            <button type="button" data-support-action="copy-link" data-ticket-id="${escapeHtml(ticket.id)}" class="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-bold text-slate-700">Copiar link</button>
             <button type="button" data-support-action="audit" data-ticket-id="${escapeHtml(ticket.id)}" class="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-bold text-slate-700">Ver bitácora</button>
           </div>
         </article>`;
@@ -4529,6 +4720,20 @@ const AdminDashboard = {
             if (action === 'copy') {
               await copyTicketCode(ticketId);
               setMsg('Folio copiado.', 'ok');
+              return;
+            }
+            if (action === 'copy-link') {
+              const link = `${window.location.origin}/recuperar-ticket`;
+              if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(link);
+              setMsg('Link copiado.', 'ok');
+              return;
+            }
+            if (action === 'copy-summary') {
+              const summary = `Ticket ${String(ticketId).slice(0, 8).toUpperCase()} · ${btn.getAttribute('data-ticket-name') || 'Cliente'} · ${fmtMxMoney(
+                Number(btn.getAttribute('data-ticket-total') || 0)
+              )}`;
+              if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(summary);
+              setMsg('Resumen copiado.', 'ok');
               return;
             }
             if (action === 'pdf') {
@@ -4627,7 +4832,11 @@ const AdminDashboard = {
         setMsg('Buscando...');
         btnEl.disabled = true;
         try {
-          const res = await searchTicketsForSupport({ query: q, limit: 25 });
+          const res = await searchTicketsForSupport({
+            query: q,
+            status: String(statusEl?.value || 'todos'),
+            limit: 25
+          });
           const rows = res?.data?.tickets || [];
           if (!rows.length) {
             listEl.innerHTML = '<p class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-600">No encontramos tickets con ese criterio.</p>';
@@ -4639,7 +4848,9 @@ const AdminDashboard = {
           setMsg(`${rows.length} resultado(s).`, 'ok');
         } catch (e) {
           listEl.innerHTML = '';
-          setMsg(e?.message || 'No se pudo buscar tickets.', 'err');
+          const msg = String(e?.message || '');
+          const forbidden = /permission|forbidden|rls|not allowed|insufficient|42501/i.test(msg);
+          setMsg(forbidden ? 'No tienes permiso para buscar tickets.' : e?.message || 'No se pudo buscar tickets.', 'err');
         } finally {
           btnEl.disabled = false;
         }
@@ -4697,8 +4908,10 @@ const AdminDashboard = {
             })
             .join('');
         } catch (e) {
+          const msg = String(e?.message || '');
+          const forbidden = /permission|forbidden|rls|not allowed|insufficient|42501/i.test(msg);
           listEl.innerHTML = `<p class="rounded-lg border border-rose-200 bg-rose-50 px-3 py-3 text-sm text-rose-700">${escapeHtml(
-            e?.message || 'No se pudo cargar la bitácora.'
+            forbidden ? 'No tienes permiso para ver la bitácora.' : e?.message || 'No se pudo cargar la bitácora.'
           )}</p>`;
         }
       };

@@ -28,6 +28,13 @@ function newUuidForTicket() {
   });
 }
 
+function isMesaReservaRlsError(err) {
+  const code = String(err?.code || '').trim();
+  if (code === '42501') return true;
+  const msg = String(err?.message || err?.details || err?.hint || '');
+  return /row-level security|violates row-level security|permission denied|not allowed/i.test(msg);
+}
+
 function normalizeStoredPermissions(val) {
   if (Array.isArray(val)) return val;
   if (val && typeof val === 'object') {
@@ -770,11 +777,18 @@ export async function listAuditEventsForEntity({ entityType, entityId, limit = 3
   return { data: { events: data || [] } };
 }
 
-export async function searchTicketsForSupport({ query, limit = 25 } = {}) {
+export async function searchTicketsForSupport(queryOrOptions, maybeFilters = {}) {
   const sb = requireClient();
-  const qText = String(query || '').trim();
+  const options =
+    typeof queryOrOptions === 'string'
+      ? { query: queryOrOptions, ...(maybeFilters || {}) }
+      : queryOrOptions && typeof queryOrOptions === 'object'
+        ? queryOrOptions
+        : {};
+  const qText = String(options.query || '').trim();
   if (!qText) return { data: { tickets: [] } };
-  const lim = Math.max(1, Math.min(50, Number(limit || 25)));
+  const lim = Math.max(1, Math.min(50, Number(options.limit || 25)));
+  const statusFilter = String(options.status || '').trim().toLowerCase();
   const exact = await sb.from('tickets').select('*').eq('id', qText).limit(1);
   let rows = exact.data || [];
   if (!rows.length) {
@@ -798,6 +812,17 @@ export async function searchTicketsForSupport({ query, limit = 25 } = {}) {
     rows = lookup.data || [];
   } else if (exact.error) {
     throw exact.error;
+  }
+  if (statusFilter && statusFilter !== 'todos') {
+    rows = rows.filter((r) => {
+      const ticketStatus = String(r.estado_ticket || '').toLowerCase();
+      const payStatus = String(r.estado_pago || '').toLowerCase();
+      if (statusFilter === 'vigentes') return ticketStatus === 'valido';
+      if (statusFilter === 'usados') return ticketStatus === 'escaneado' || ticketStatus === 'usado';
+      if (statusFilter === 'pendientes') return payStatus !== 'pagado';
+      if (statusFilter === 'cancelados') return ticketStatus === 'cancelado';
+      return true;
+    });
   }
   return { data: { tickets: rows.map((r) => mapTicketRow(r)) } };
 }
@@ -1215,13 +1240,20 @@ export async function checkMesaReservaLibre({ fechaDia, mapItemId }) {
 
 export async function listMisMesaReservas({ userId }) {
   const sb = requireClient();
+  const uid = getCanonicalUserId() || String(userId || '').trim();
+  if (!uid) return { data: { mesaReservas: [] } };
   const { data, error } = await sb
     .from('mesa_reservas')
     .select('*')
-    .eq('user_id', userId)
+    .eq('user_id', uid)
     .order('creado_en', { ascending: false })
     .limit(80);
-  if (error) throw error;
+  if (error) {
+    if (isMesaReservaRlsError(error)) {
+      throw new Error('No tienes permiso para consultar tus reservas de mesa. Inicia sesión y vuelve a intentar.');
+    }
+    throw error;
+  }
   return { data: { mesaReservas: (data || []).map(mapMesaRow) } };
 }
 
@@ -1229,14 +1261,21 @@ export async function createMesaReserva({ fechaDia, mapItemId }) {
   const sb = requireClient();
   const uid = getCanonicalUserId();
   if (!uid) throw new Error('Debes iniciar sesion para reservar mesa');
+  const id = newUuidForTicket();
   const { error } = await sb.from('mesa_reservas').insert({
+    id,
     fecha_dia: fechaDia,
     map_item_id: mapItemId,
     estado: 'apartada',
     user_id: uid
   });
-  if (error) throw error;
-  return { data: {} };
+  if (error) {
+    if (isMesaReservaRlsError(error)) {
+      throw new Error('No tienes permiso para reservar esta mesa. Inicia sesión o revisa tu cuenta.');
+    }
+    throw error;
+  }
+  return { data: { mesaReserva_insert: { id } } };
 }
 
 export async function createMesaReservaMonetizable(vars) {
@@ -1268,15 +1307,31 @@ export async function createMesaReservaMonetizable(vars) {
     .eq('user_id', uid)
     .eq('estado', 'apartada')
     .maybeSingle();
-  if (findErr) throw findErr;
-  if (prior?.id) {
-    const { data, error } = await sb.from('mesa_reservas').update(row).eq('id', prior.id).select('id').single();
-    if (error) throw error;
-    return { data: { mesaReserva_insert: { id: data.id } } };
+  if (findErr) {
+    if (isMesaReservaRlsError(findErr)) {
+      throw new Error('No tienes permiso para reservar esta mesa. Inicia sesión o revisa tu cuenta.');
+    }
+    throw findErr;
   }
-  const { data, error } = await sb.from('mesa_reservas').insert(row).select('id').single();
-  if (error) throw error;
-  return { data: { mesaReserva_insert: { id: data.id } } };
+  if (prior?.id) {
+    const { error } = await sb.from('mesa_reservas').update(row).eq('id', prior.id);
+    if (error) {
+      if (isMesaReservaRlsError(error)) {
+        throw new Error('No tienes permiso para reservar esta mesa. Inicia sesión o revisa tu cuenta.');
+      }
+      throw error;
+    }
+    return { data: { mesaReserva_insert: { id: prior.id } } };
+  }
+  const id = newUuidForTicket();
+  const { error } = await sb.from('mesa_reservas').insert({ ...row, id });
+  if (error) {
+    if (isMesaReservaRlsError(error)) {
+      throw new Error('No tienes permiso para reservar esta mesa. Inicia sesión o revisa tu cuenta.');
+    }
+    throw error;
+  }
+  return { data: { mesaReserva_insert: { id } } };
 }
 
 export async function listMesaReservasByFecha({ fechaDia }) {
@@ -1287,7 +1342,12 @@ export async function listMesaReservasByFecha({ fechaDia }) {
     .eq('fecha_dia', fechaDia)
     .order('creado_en', { ascending: false })
     .limit(500);
-  if (error) throw error;
+  if (error) {
+    if (isMesaReservaRlsError(error)) {
+      throw new Error('No tienes permiso para consultar reservas de mesa para esta fecha.');
+    }
+    throw error;
+  }
   return { data: { mesaReservas: (data || []).map(mapMesaRow) } };
 }
 

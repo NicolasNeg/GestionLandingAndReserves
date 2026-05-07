@@ -27,6 +27,7 @@ import {
 import { formatFechaDia, isValidFechaDia } from '../lib/fechaDiaMexico.js';
 import { sweepExpiredMesaReservas } from '../lib/mesaLifecycle.js';
 import { getBackendErrorMessage, isBackendOperationUnavailable, isPermissionError } from '../lib/backendErrors.js';
+import { logAuditEvent } from '../lib/auditLog.js';
 
 const LANDING_PAGE_ID = 'main';
 
@@ -516,6 +517,15 @@ export default {
             if (!id) return;
             try {
               await cancelarMesaReserva({ id });
+              void logAuditEvent({
+                eventType: 'reserva_cancelada',
+                entityType: 'mesa_reserva',
+                entityId: id,
+                severity: 'warning',
+                title: 'Reserva cancelada',
+                description: 'Se canceló una reserva de mesa desde el panel de reservas.',
+                metadata: { fechaDia: currentFecha, mapItemId: mapItemId || null }
+              });
               if (mapItemId) await clearMesaReservaLive(currentFecha, mapItemId);
               await showAlert('Apartado cancelado.', { title: 'Listo', variant: 'success' });
               await loadApartadasBase();
@@ -672,7 +682,7 @@ export default {
     async function reserveMesa(item) {
       const user = getCurrentUser();
       if (!user) {
-        await showAlert('Inicia sesión para apartar una mesa.', { title: 'Cuenta', variant: 'warning' });
+        await showAlert('Inicia sesión para reservar esta mesa.', { title: 'Cuenta', variant: 'warning' });
         navigateTo('/login');
         return;
       }
@@ -789,6 +799,21 @@ export default {
           notasCliente: ''
         });
         const newId = insertRes?.data?.mesaReserva_insert?.id;
+        void logAuditEvent({
+          eventType: 'reserva_creada',
+          entityType: 'mesa_reserva',
+          entityId: newId || null,
+          severity: 'info',
+          title: 'Reserva de mesa creada',
+          description: `${meta.name || item.id} fue apartada para ${currentFecha}.`,
+          metadata: {
+            fechaDia: currentFecha,
+            mapItemId: item.id,
+            mesaLabel: meta.name || item.id,
+            metodoPago,
+            totalReserva
+          }
+        });
         if (metodoPago === 'checkout_later' && newId) {
           try {
             addToCart({
@@ -845,9 +870,14 @@ export default {
         } catch {
           // noop
         }
-        const msg = isBackendUnavailable(e)
-          ? 'Revisa Supabase (schema, tablas mesas/reservas, RLS) o la consola.'
-          : e?.message || 'No se pudo apartar.';
+        const rawMsg = String(e?.message || '');
+        const isMesaRls =
+          /row-level security|violates row-level security|42501|permiso para reservar esta mesa/i.test(rawMsg);
+        const msg = isMesaRls
+          ? 'No tienes permiso para reservar esta mesa. Inicia sesión o revisa tu cuenta.'
+          : isBackendUnavailable(e)
+            ? 'Revisa Supabase (schema, tablas mesas/reservas, RLS) o la consola.'
+            : e?.message || 'No se pudo apartar.';
         await showAlert(msg, { title: 'Error', variant: 'danger' });
       }
     }

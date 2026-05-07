@@ -48,6 +48,14 @@ using (
   or public.app_has_permission('users.permissions')
 );
 
+drop policy if exists "audit_events_select_own_scan" on public.audit_events;
+create policy "audit_events_select_own_scan" on public.audit_events
+for select to authenticated
+using (
+  public.app_has_permission('tickets.scan')
+  and actor_user_id = auth.uid()::text
+);
+
 notify pgrst, 'reload schema';
 
 commit;

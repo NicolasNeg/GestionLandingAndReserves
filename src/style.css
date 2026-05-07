@@ -1598,6 +1598,21 @@
     background:
       radial-gradient(circle at top left, rgb(34 211 238 / 0.16), transparent 32%),
       rgb(15 23 42);
+    position: sticky;
+    top: 0;
+    z-index: 35;
+  }
+
+  .mapa-editor-shell.mapa-focus-mode {
+    position: fixed;
+    inset: 0.6rem;
+    z-index: 120;
+    border-color: rgb(34 211 238 / 0.45);
+    box-shadow: 0 30px 80px rgb(2 6 23 / 0.78);
+  }
+
+  .mapa-editor-shell.mapa-focus-mode .mapa-ws-main {
+    min-height: calc(100vh - 9rem);
   }
 
   .mapa-ws-main {

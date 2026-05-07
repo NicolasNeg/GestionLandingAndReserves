@@ -19,6 +19,10 @@ export function uploadAvatarImage(file, uid) {
   return stSupabase.uploadAvatarImage(file, uid);
 }
 
+export function uploadMapBackgroundImage(file, options) {
+  return stSupabase.uploadMapBackgroundImage(file, options);
+}
+
 export function deleteImage(path) {
   return stSupabase.deleteImage(path);
 }
