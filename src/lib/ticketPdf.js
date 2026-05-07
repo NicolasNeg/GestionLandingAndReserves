@@ -19,6 +19,21 @@ function methodLabel(metodoPago) {
  *   estadoPago: string,
  * }} opts
  */
+/**
+ * Igual que {@link downloadTicketPdf} pero con tope de tiempo para no bloquear la UI indefinidamente.
+ * @param {Parameters<typeof downloadTicketPdf>[0]} opts
+ * @param {{ timeoutMs?: number }} [cfg]
+ */
+export async function downloadTicketPdfBestEffort(opts, cfg = {}) {
+  const timeoutMs = cfg.timeoutMs ?? 45000;
+  return Promise.race([
+    downloadTicketPdf(opts),
+    new Promise((_, rej) =>
+      setTimeout(() => rej(Object.assign(new Error('pdf_timeout'), { code: 'PDF_TIMEOUT' })), timeoutMs)
+    )
+  ]);
+}
+
 export async function downloadTicketPdf(opts) {
   const {
     ticketId,

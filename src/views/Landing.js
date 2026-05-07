@@ -145,12 +145,30 @@ function renderMapLegend() {
   const publicKinds = ['area', 'mesa', 'estacionamiento', 'alberca', 'palapa', 'servicio', 'entrada', 'limitacion'];
   return MAP_ITEM_KINDS.filter((kind) => publicKinds.includes(kind.value)).map(
     (kind) => `
-      <span class="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-black text-slate-700">
-        <span class="h-3 w-3 rounded-sm border" style="background:${escapeHtml(kind.fill)}; border-color:${escapeHtml(kind.stroke)}"></span>
+      <span class="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-black text-slate-700 shadow-sm">
+        <span class="h-3 w-3 shrink-0 rounded-sm border border-slate-300/80" style="background:${escapeHtml(kind.fill)}; border-color:${escapeHtml(kind.stroke)}"></span>
         ${escapeHtml(kind.label)}
       </span>
     `
   ).join('');
+}
+
+function renderParkingLegend() {
+  const items = [
+    { label: 'Libre', fill: 'rgba(34,197,94,0.35)', stroke: '#15803d' },
+    { label: 'Reservado', fill: 'rgba(245,158,11,0.28)', stroke: '#b45309' },
+    { label: 'Ocupado', fill: 'rgba(239,68,68,0.26)', stroke: '#b91c1c' },
+    { label: 'Mantenimiento', fill: 'rgba(100,116,139,0.28)', stroke: '#475569' }
+  ];
+  return items
+    .map(
+      (it) => `
+      <span class="inline-flex items-center gap-2 rounded-full border border-slate-600/50 bg-slate-900/55 px-2.5 py-1 text-[11px] font-black text-slate-100 backdrop-blur-sm">
+        <span class="h-2.5 w-2.5 shrink-0 rounded-sm border border-white/20" style="background:${it.fill}; border-color:${it.stroke}"></span>
+        ${escapeHtml(it.label)}
+      </span>`
+    )
+    .join('');
 }
 
 function getPublicKindLabel(kindValue) {
@@ -634,7 +652,7 @@ export default {
                     <div class="absolute left-3 top-3 z-10 hidden rounded-full border border-white/25 bg-slate-950/70 px-3 py-1.5 text-xs font-black uppercase tracking-wide text-white shadow-lg backdrop-blur sm:block">
                       ${icon('map', 'h-3.5 w-3.5 inline-block')} Arrastra para explorar
                     </div>
-                    <div class="map-floating-toolbar absolute right-3 top-3 z-10">
+                    <div class="map-floating-toolbar absolute bottom-3 right-3 top-auto z-10 sm:bottom-auto sm:right-3 sm:top-3">
                       <button type="button" id="landing-map-zoom-out" class="map-icon-btn" title="Alejar" aria-label="Alejar mapa">−</button>
                       <button type="button" id="landing-map-center" class="map-reset-btn" title="Centrar mapa" aria-label="Centrar mapa">${icon('compass', 'h-3.5 w-3.5')}</button>
                       <button type="button" id="landing-map-reset" class="map-reset-btn" title="Resetear zoom y posición" aria-label="Resetear zoom y posición">Reset</button>
@@ -647,7 +665,7 @@ export default {
                       <p class="mt-1 text-sm font-semibold text-slate-600">Toca una zona del mapa para ver su descripcion publica.</p>
                     </div>
                   </div>
-                  <div id="landing-map-info-mobile" class="public-map-info sm:hidden"></div>
+                  <div id="landing-map-info-mobile" class="public-map-info public-map-info--mobile sm:hidden"></div>
                 </div>
               </div>
             </section>
@@ -706,9 +724,10 @@ export default {
                     <div class="text-sm font-bold text-slate-700" id="parking-summary">Cargando spots...</div>
                     <span class="rounded-full bg-emerald-50 px-3 py-1 text-[11px] font-black uppercase tracking-wide text-emerald-700">Solo lectura</span>
                   </div>
+                  <div class="mb-2 flex flex-wrap gap-2">${renderParkingLegend()}</div>
                   <div class="public-parking-map relative h-[380px] overflow-hidden sm:h-[420px]">
                     <canvas id="landing-parking-canvas" width="800" height="440" class="absolute inset-0 h-full w-full cursor-grab"></canvas>
-                    <div class="map-floating-toolbar map-floating-toolbar--parking absolute right-3 top-3 z-10">
+                    <div class="map-floating-toolbar map-floating-toolbar--parking absolute bottom-3 right-3 top-auto z-10 sm:bottom-auto sm:right-3 sm:top-3">
                       <button type="button" id="landing-parking-zoom-out" class="map-icon-btn" title="Alejar" aria-label="Alejar mapa">−</button>
                       <button type="button" id="landing-parking-center" class="map-reset-btn" title="Centrar mapa" aria-label="Centrar mapa">${icon('compass', 'h-3.5 w-3.5')}</button>
                       <button type="button" id="landing-parking-reset" class="map-reset-btn" title="Resetear zoom" aria-label="Resetear zoom">Reset</button>

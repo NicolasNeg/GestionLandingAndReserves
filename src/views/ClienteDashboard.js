@@ -4,7 +4,7 @@ import { listUserTickets, getUserProfile, upsertUser, getClienteDashboardData } 
 import { formatFechaDia } from '../lib/fechaDiaMexico.js';
 import { cartCount } from '../lib/cart.js';
 import QRCode from 'qrcode';
-import { downloadTicketPdf } from '../lib/ticketPdf.js';
+import { downloadTicketPdfBestEffort } from '../lib/ticketPdf.js';
 import { showAlert } from '../lib/appDialog.js';
 import { getUserAccess } from '../lib/accessControl.js';
 import { icon } from '../lib/icons.js';
@@ -201,9 +201,9 @@ const ClienteDashboard = {
             <section id="cliente-section-tickets" class="${section === 'tickets' ? '' : 'hidden'} space-y-4">
               <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
                 <h1 class="text-2xl font-black text-slate-900">Mis tickets</h1>
-                <p class="mt-1 text-sm text-slate-500">Consulta estado, QR y descarga de tus entradas.</p>
+                <p class="mt-1 text-sm text-slate-500">Consulta tus entradas, descarga tu PDF o muestra el QR en la entrada.</p>
                 <div id="tickets-role-breakdown" class="mt-3 rounded-xl border border-slate-100 bg-slate-50 p-3 text-sm text-slate-600">
-                  Desglose de tickets cargando...
+                  Resumen cargando…
                 </div>
               </div>
               <div id="tickets-container" class="space-y-4">
@@ -466,14 +466,29 @@ const ClienteDashboard = {
           </div>`;
         return;
       }
-      const canScan = accessSnapshot?.can('tickets.scan');
       let html = '';
       ticketById.clear();
       tickets.forEach((ticket) => {
         ticketById.set(ticket.id, ticket);
-        const isValido = ticket.estadoTicket === 'valido';
-        const statusText = isValido ? 'Vigente' : ticket.estadoTicket === 'escaneado' ? 'Usado' : 'No válido';
-        const statusBg = isValido ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-700';
+        const pagado = ticket.estadoPago === 'pagado';
+        const escaneado = ticket.estadoTicket === 'escaneado';
+        const vigenteTicket = ticket.estadoTicket === 'valido';
+
+        let statusText = escaneado ? 'Usado' : vigenteTicket ? 'Vigente' : 'No válido';
+        if (vigenteTicket && !pagado && !escaneado) statusText = 'Pendiente de pago';
+
+        const statusBg = escaneado
+          ? 'bg-slate-100 text-slate-700'
+          : vigenteTicket && pagado
+            ? 'bg-emerald-100 text-emerald-800'
+            : vigenteTicket && !pagado
+              ? 'bg-amber-100 text-amber-900'
+              : 'bg-slate-100 text-slate-700';
+
+        const leftBorderClass =
+          vigenteTicket && pagado ? 'border-blue-500' : vigenteTicket && !pagado ? 'border-amber-400' : 'border-gray-300';
+
+        const showQr = vigenteTicket && pagado;
         const basicResume = preferences.compactTickets
           ? `
           <p><span class="font-medium">Estado:</span> ${statusText}</p>
@@ -484,38 +499,74 @@ const ClienteDashboard = {
           <p><span class="font-medium">Total:</span> $${ticket.precioTotal.toFixed(2)} MXN</p>
           <p><span class="font-medium">Fecha:</span> ${new Date(ticket.fechaCreacion).toLocaleString()}</p>
         `;
-        const staffExtra = canScan
+
+        const meta = ticket.metadata || {};
+        const rawIncludeItems = Array.isArray(meta.items)
+          ? meta.items
+          : Array.isArray(meta.cartItems)
+            ? meta.cartItems
+            : Array.isArray(meta.lineItems)
+              ? meta.lineItems
+              : Array.isArray(meta.lines)
+                ? meta.lines
+                : [];
+        const includeItems = rawIncludeItems.slice(0, 4);
+        const includeHtml = includeItems.length
           ? `
-            <p><span class="font-medium">Pago:</span> ${ticket.estadoPago}</p>
-            <p><span class="font-medium">Método:</span> ${ticket.metodoPago || 'online'}</p>
-            <p><span class="font-medium">Escaneado:</span> ${ticket.fechaEscaneo ? new Date(ticket.fechaEscaneo).toLocaleString() : 'No'}</p>
-          `
+              <div class="mt-2 border-t border-teal-50 pt-2">
+                <p class="text-xs font-black uppercase tracking-wide text-teal-700">Incluye</p>
+                <ul class="mt-2 space-y-1">
+                  ${includeItems
+                    .map((it) => {
+                      const qty = Number(it.qty ?? it.quantity ?? 1) || 1;
+                      const label = it.label || it.name || it.title || it.titulo || 'Ítem';
+                      const desc = it.description || it.incluye || it.note || '';
+                      const line = `${qty > 1 ? `${qty} × ` : ''}${escapeHtml(label)}`;
+                      return `<li class="text-sm text-gray-700">${line}${desc ? `<div class="text-xs text-slate-500">${escapeHtml(desc)}</div>` : ''}</li>`;
+                    })
+                    .join('')}
+                </ul>
+              </div>
+            `
           : '';
+
+        const detailsBlock = `
+          <details class="mt-2 text-sm text-gray-600">
+            <summary class="cursor-pointer font-bold text-teal-700 outline-none">Ver detalles</summary>
+            <div class="mt-2 space-y-1 border-l-2 border-teal-100 pl-3">
+              <p><span class="font-medium">Pago:</span> ${escapeHtml(ticket.estadoPago)}</p>
+              <p><span class="font-medium">Método:</span> ${escapeHtml(ticket.metodoPago || 'online')}</p>
+              <p><span class="font-medium">Escaneado:</span> ${ticket.fechaEscaneo ? new Date(ticket.fechaEscaneo).toLocaleString() : 'No'}</p>
+              ${includeHtml}
+            </div>
+          </details>`;
+
         html += `
-          <div class="bg-white rounded-xl shadow-sm border-l-4 ${isValido ? 'border-blue-500' : 'border-gray-300'} p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div>
+          <div class="bg-white rounded-xl shadow-sm border-l-4 ${leftBorderClass} p-5 flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+            <div class="min-w-0 flex-1">
               <div class="flex items-center gap-3 mb-1 flex-wrap">
                 <h3 class="text-lg font-bold text-gray-800">Ticket #${ticket.id.substring(0, 8)}</h3>
                 <span class="${statusBg} text-xs font-bold px-2 py-0.5 rounded">${statusText}</span>
               </div>
-              <div class="space-y-1 text-sm text-gray-600">${basicResume}${staffExtra}</div>
+              <div class="space-y-1 text-sm text-gray-600">${basicResume}${detailsBlock}</div>
             </div>
-            <div class="flex flex-col gap-2 min-w-[140px]">
+            <div class="flex flex-col gap-2 min-w-[140px] shrink-0">
+              ${showQr ? `<button type="button" class="btn-show-qr w-full bg-gray-900 text-white px-4 py-2 rounded-lg font-bold text-sm hover:bg-black" data-id="${ticket.id}">Ver QR</button>` : ''}
               <button type="button" class="btn-download-pdf w-full bg-blue-600 text-white px-4 py-2 rounded-lg font-bold text-sm hover:bg-blue-700" data-id="${ticket.id}">Descargar PDF</button>
-              ${isValido ? `<button type="button" class="btn-show-qr w-full bg-gray-900 text-white px-4 py-2 rounded-lg font-bold text-sm hover:bg-black" data-id="${ticket.id}">Ver QR</button>` : ''}
-              ${canScan ? `<button type="button" class="btn-go-scan w-full bg-amber-500 text-white px-4 py-2 rounded-lg font-bold text-sm hover:bg-amber-600" data-id="${ticket.id}">Escanear ingreso</button>` : ''}
             </div>
           </div>`;
       });
       ticketsContainer.innerHTML = html;
       if (ticketsRoleBreakdown) {
-        const vigentes = tickets.filter((t) => t.estadoTicket === 'valido').length;
+        const vigentes = tickets.filter((t) => t.estadoTicket === 'valido' && t.estadoPago === 'pagado').length;
         const usados = tickets.filter((t) => t.estadoTicket === 'escaneado').length;
         const pendientes = tickets.filter((t) => t.estadoPago !== 'pagado').length;
         ticketsRoleBreakdown.innerHTML = `
-          <strong>Usuario:</strong> Vigentes: ${vigentes} · Usados: ${usados} · Pendientes de pago: ${pendientes}.
-          ${canScan ? '<br/><strong>Trabajador:</strong> también puedes abrir escáner y registrar entrada.' : ''}
-        `;
+          <div class="grid gap-1 font-semibold text-slate-700 sm:grid-cols-3">
+            <p>Vigentes: ${vigentes}</p>
+            <p>Usados: ${usados}</p>
+            <p>Pendientes de pago: ${pendientes}</p>
+          </div>`;
       }
     };
 
@@ -539,7 +590,7 @@ const ClienteDashboard = {
             if (!t) return;
             btn.disabled = true;
             try {
-              await downloadTicketPdf({
+              await downloadTicketPdfBestEffort({
                 ticketId: t.id,
                 clienteNombre: t.clienteNombre,
                 clienteEmail: t.clienteEmail || user.email || '',
@@ -549,14 +600,14 @@ const ClienteDashboard = {
                 estadoPago: t.estadoPago
               });
             } catch {
-              await showAlert('No se pudo generar el PDF. Intenta de nuevo.', { title: 'Error', variant: 'danger' });
+              await showAlert(
+                'No pudimos generar el PDF ahora. Intenta descargarlo desde Mis tickets.',
+                { title: 'PDF', variant: 'warning' }
+              );
             } finally {
               btn.disabled = false;
             }
           });
-        });
-        document.querySelectorAll('.btn-go-scan').forEach((btn) => {
-          btn.addEventListener('click', (e) => navigateTo(`/escaner?ticket=${encodeURIComponent(e.currentTarget.dataset.id)}`));
         });
       } catch (error) {
         console.error('Error al cargar tickets:', error);

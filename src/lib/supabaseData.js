@@ -796,7 +796,8 @@ export async function createAnonymousTicket(variables) {
     metodo_pago: variables.metodoPago,
     estado_pago: variables.estadoPago,
     estado_ticket: 'valido',
-    precio_total: variables.precioTotal
+    precio_total: variables.precioTotal,
+    metadata: variables.metadata && typeof variables.metadata === 'object' ? variables.metadata : {}
   });
   if (error) throw error;
   return { data: { ticket_insert: { id } } };
@@ -815,7 +816,8 @@ export async function createUserTicket(variables) {
     metodo_pago: variables.metodoPago,
     estado_pago: variables.estadoPago,
     estado_ticket: 'valido',
-    precio_total: variables.precioTotal
+    precio_total: variables.precioTotal,
+    metadata: variables.metadata && typeof variables.metadata === 'object' ? variables.metadata : {}
   });
   if (error) throw error;
   return { data: { ticket_insert: { id } } };

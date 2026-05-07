@@ -88,6 +88,7 @@ function metadataCartItems(meta) {
       else if (typeRaw.includes('paquete') || typeRaw.includes('package')) type = 'paquete';
       else if (typeRaw.includes('servicio') || typeRaw.includes('service')) type = 'servicio';
       else if (typeRaw.includes('mesa') || typeRaw.includes('table')) type = 'mesa';
+      else if (typeRaw.includes('extra')) type = 'extra';
       const price = row.price != null ? Number(row.price) : row.unitPrice != null ? Number(row.unitPrice) : null;
       items.push({
         type,
@@ -152,7 +153,12 @@ export function normalizeTicketForScanDisplay(ticketRaw, opts = {}) {
   const mesas = opts.mesaReservas || [];
 
   const fromMeta = metadataCartItems(meta);
-  const fromMesa = mesaRowsToItems(mesas);
+  let fromMesa = mesaRowsToItems(mesas);
+  // Si el checkout ya guardó una línea de mesa en metadata, evitamos duplicar la parte "mesa"
+  // pero mantenemos extras calculados desde mesa_reservas.
+  if (fromMeta.some((x) => x.type === 'mesa')) {
+    fromMesa = fromMesa.filter((x) => x.type !== 'mesa');
+  }
   const merged = [...fromMeta];
   for (const row of fromMesa) {
     if (!merged.some((x) => x.label === row.label && x.type === row.type)) merged.push(row);

@@ -766,6 +766,8 @@ export function drawMapCanvasViewport(canvas, doc, viewport, options = {}) {
   canvas.height = Math.floor(cssHeight * dpr);
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
+  ctx.imageSmoothingEnabled = true;
+  if ('imageSmoothingQuality' in ctx) ctx.imageSmoothingQuality = 'high';
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, cssWidth, cssHeight);
   ctx.save();

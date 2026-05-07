@@ -202,7 +202,7 @@ export default {
             <div id="reservar-canvas-wrap" class="relative h-[430px] overflow-hidden sm:h-[560px]">
               <canvas id="reservar-canvas" width="1000" height="620" class="absolute inset-0 h-full w-full cursor-pointer"></canvas>
               <div id="reservar-map-tooltip" class="map-tooltip hidden"></div>
-              <div class="map-floating-toolbar absolute right-3 top-3 z-10">
+              <div class="map-floating-toolbar absolute bottom-3 right-3 top-auto z-10 sm:bottom-auto sm:right-3 sm:top-3">
                 <button type="button" id="reservar-map-zoom-out" class="map-icon-btn" aria-label="Alejar mapa de mesas">−</button>
                 <button type="button" id="reservar-map-center" class="map-reset-btn" aria-label="Centrar mapa">${icon('compass', 'h-3.5 w-3.5')}</button>
                 <button type="button" id="reservar-map-reset" class="map-reset-btn" aria-label="Resetear mapa de mesas">Reset</button>
@@ -544,6 +544,8 @@ export default {
       if (!isValidFechaDia(v)) return;
       currentFecha = v;
       selectedMesaId = '';
+      delete mesaViewerOptions.selectedIds;
+      mesaViewer?.clearSelection?.();
       setMsg('');
       setPanelOpen(false);
       if (detailEl) detailEl.innerHTML = 'Toca una mesa libre para revisar detalles y confirmar.';
@@ -796,7 +798,16 @@ export default {
               name: `Mesa · ${meta.name} · ${currentFecha}`,
               price: totalReserva,
               qty: 1,
-              meta: { mesaReservaId: newId, fechaDia: currentFecha, mapItemId: item.id }
+              meta: {
+                mesaReservaId: newId,
+                fechaDia: currentFecha,
+                mapItemId: item.id,
+                mesaLabel: meta.name || item.id,
+                mesaZona: meta.zone || '',
+                extrasSelected,
+                subtotalMesa,
+                totalReserva
+              }
             });
           } catch (cartErr) {
             console.warn('Carrito mesa_reserva:', cartErr);

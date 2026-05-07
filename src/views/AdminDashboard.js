@@ -115,7 +115,7 @@ const MAP_EDITOR_TOOL_GROUPS = [
 
 function renderMapEditorToolAccordions() {
   const byValue = new Map(MAP_ITEM_KINDS.map((k) => [k.value, k]));
-  return MAP_EDITOR_TOOL_GROUPS.map((group) => {
+  return MAP_EDITOR_TOOL_GROUPS.map((group, gi) => {
     const buttons = group.values
       .map((v) => {
         const kind = byValue.get(v);
@@ -123,7 +123,8 @@ function renderMapEditorToolAccordions() {
         return `<button type="button" class="mapa-tool-btn inline-flex w-full items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-2.5 py-2 text-left text-[11px] font-bold text-slate-200 hover:bg-white/10" data-map-tool="${kind.value}" title="${escapeHtml(kind.label)}"><span class="h-2 w-2 shrink-0 rounded-full" style="background:${kind.stroke}"></span><span class="min-w-0 truncate">${escapeHtml(kind.label)}</span></button>`;
       })
       .join('');
-    return `<details class="mapa-tool-accordion border-b border-white/5 pb-2 last:border-0 open"><summary class="mapa-tool-accordion-summary">${escapeHtml(group.title)}</summary><div class="mapa-tool-grid mt-2 grid grid-cols-1 gap-1">${buttons}</div></details>`;
+    const openAttr = gi === 0 ? ' open' : '';
+    return `<details class="mapa-tool-accordion border-b border-white/5 pb-2 last:border-0"${openAttr}><summary class="mapa-tool-accordion-summary">${escapeHtml(group.title)}</summary><div class="mapa-tool-grid mt-2 grid grid-cols-1 gap-1">${buttons}</div></details>`;
   }).join('');
 }
 
@@ -949,7 +950,7 @@ const AdminDashboard = {
                     </div>
 
                     <div id="sitio-tab-mapa" class="sitio-tab-panel hidden space-y-3">
-                      <div id="mapa-editor-mobile-block" class="lg:hidden rounded-2xl border border-slate-200 bg-gradient-to-b from-slate-50 to-white p-8 text-center shadow-lg">
+                      <div id="mapa-editor-mobile-block" class="relative z-[8] isolate lg:hidden min-h-[320px] rounded-2xl border border-slate-200 bg-gradient-to-b from-slate-50 to-white p-8 text-center shadow-lg">
                         <div class="mx-auto max-w-md">
                           <span class="inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-100 text-amber-700">${icon('map', 'h-8 w-8')}</span>
                           <h2 class="mt-4 text-xl font-black text-slate-900">Vista bloqueada</h2>

@@ -219,6 +219,13 @@ export function createMapViewer(canvas, jsonOrDoc, options = {}) {
       fit();
       draw();
     },
+    /** Limpia selección interna (ej. cambio de fecha en reservas sin volver a crear el viewer). */
+    clearSelection: () => {
+      selectedId = '';
+      hoveredId = '';
+      canvas.style.cursor = 'grab';
+      draw();
+    },
     setJson: (nextJson, nextOptions = {}) => {
       doc = typeof nextJson === 'string' ? parseMapDocument(nextJson, { ...options, ...nextOptions }) : nextJson;
       hoveredId = '';

@@ -12,11 +12,10 @@ import {
 } from '../lib/dataLayer.js';
 import { navigateTo } from '../router.js';
 import { showAlert } from '../lib/appDialog.js';
-import { downloadTicketPdf } from '../lib/ticketPdf.js';
-import { sendTicketEmailCopy } from '../lib/sendTicketEmail.js';
+import { downloadTicketPdfBestEffort } from '../lib/ticketPdf.js';
+import { sendTicketEmailBestEffort } from '../lib/ticketEmail.js';
 import { listCartItems, setCartQty, removeFromCart, cartSubtotal, addToCart, clearCart } from '../lib/cart.js';
 import { publishAppUpdate } from '../lib/realtimeSync.js';
-import { getUserAccess } from '../lib/accessControl.js';
 import { applyDiscountToCart } from '../lib/discountRules.js';
 
 function escapeHtml(text) {
@@ -106,8 +105,9 @@ const Checkout = {
             </div>
 
             <button id="btn-pay" class="w-full bg-blue-600 text-white font-bold py-4 rounded-xl text-xl hover:bg-blue-700 shadow-lg transition">Confirmar Reserva</button>
-            <div id="loading-msg" class="hidden text-center text-blue-600 mt-4 font-bold flex justify-center items-center gap-2">
-                <i class="fas fa-spinner fa-spin"></i> Procesando reserva y generando ticket...
+            <div id="loading-msg" class="hidden text-center text-blue-600 mt-4 font-bold flex justify-center items-center gap-2 flex-wrap">
+                <i class="fas fa-spinner fa-spin"></i>
+                <span id="checkout-step-msg">Creando ticket…</span>
             </div>
 
             <!-- Modal Post Compra Anónima -->
@@ -116,25 +116,31 @@ const Checkout = {
                     <div class="w-20 h-20 bg-green-100 text-green-500 rounded-full flex items-center justify-center text-4xl mx-auto mb-6">
                         <i class="fas fa-check"></i>
                     </div>
-                    <h2 class="text-2xl font-black text-gray-800 mb-2">¡Reserva completada!</h2>
-                    <p class="text-gray-600 mb-2">Tu PDF con el código QR se descargó automáticamente. Si está configurado el envío, también recibirás una copia por correo.</p>
-                    <p class="text-gray-500 text-sm mb-6">Si no ves el correo, entra a <strong>Mis tickets</strong> (tras registrarte) para ver el QR o volver a descargar el PDF.</p>
-                    
-                    <div class="bg-blue-50 border border-blue-100 rounded-xl p-4 mb-6 text-left">
-                        <h3 class="font-bold text-blue-800 mb-1"><i class="fas fa-star text-yellow-500 mr-1"></i> Crea tu cuenta</h3>
-                        <p class="text-sm text-blue-700">Regístrate para guardar tus tickets y obtener descuentos en tu próxima visita.</p>
+                    <h2 class="text-2xl font-black text-gray-800 mb-2">¡Compra confirmada!</h2>
+                    <p id="modal-invite-lead" class="text-gray-700 mb-2 font-semibold">Tu ticket fue creado correctamente.</p>
+                    <div id="modal-invite-status" class="text-left text-xs text-slate-600 space-y-1 mb-4 min-h-[1rem]"></div>
+
+                    <div class="bg-blue-50 border border-blue-100 rounded-xl p-4 mb-4 text-left">
+                        <h3 class="font-bold text-blue-800 mb-1"><i class="fas fa-star text-yellow-500 mr-1"></i> Guarda tus tickets</h3>
+                        <p class="text-sm text-blue-700">Inicia sesión para guardar tus tickets en tu cuenta y verlos en <strong>Mis tickets</strong>.</p>
                     </div>
 
-                    <button id="btn-go-register" class="w-full bg-blue-600 text-white font-bold py-3 rounded-xl hover:bg-blue-700 mb-3 transition shadow-lg">Registrarme ahora</button>
+                    <button type="button" id="btn-download-invite-ticket" class="w-full bg-blue-600 text-white font-bold py-3 rounded-xl hover:bg-blue-700 mb-3 transition shadow-lg">Descargar ticket (PDF)</button>
+                    <button id="btn-go-register" class="w-full bg-slate-900 text-white font-bold py-3 rounded-xl hover:bg-black mb-3 transition shadow-lg">Iniciar sesión — Mis tickets</button>
                     <button id="btn-close-invite" class="w-full text-gray-500 font-bold py-3 hover:bg-gray-100 rounded-xl transition">Cerrar</button>
                 </div>
             </div>
 
-            <div id="purchase-confirm" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-950/70 p-4">
+            <div id="purchase-confirm" class="fixed inset-0 z-50 hidden flex items-center justify-center bg-slate-950/70 p-4">
                 <div class="w-full max-w-md rounded-2xl bg-white p-6 text-center shadow-2xl">
                     <h3 class="text-2xl font-black text-emerald-700">Compra confirmada</h3>
-                    <p id="purchase-confirm-msg" class="mt-2 text-sm font-semibold text-slate-600">Redirigiendo a inicio en 3s...</p>
-                    <p class="mt-3 text-xs text-slate-500">Si no llega el correo, podrás descargar el PDF desde Mis tickets.</p>
+                    <p id="purchase-confirm-msg" class="mt-2 text-sm font-semibold text-slate-700"></p>
+                    <div id="purchase-confirm-status" class="mt-3 space-y-1 text-left min-h-[1rem]"></div>
+                    <div class="mt-5 flex flex-col gap-2">
+                        <button type="button" id="purchase-btn-my-tickets" class="w-full rounded-xl bg-teal-700 py-3 text-sm font-black text-white hover:bg-teal-800">Ver mis tickets</button>
+                        <button type="button" id="purchase-btn-download" class="w-full rounded-xl bg-blue-600 py-3 text-sm font-black text-white hover:bg-blue-700">Descargar ticket</button>
+                        <button type="button" id="purchase-btn-home" class="w-full rounded-xl border border-slate-200 py-3 text-sm font-black text-slate-700 hover:bg-slate-50">Volver al inicio</button>
+                    </div>
                 </div>
             </div>
 
@@ -159,13 +165,148 @@ const Checkout = {
         const modalInvite = document.getElementById('modal-invite');
         const purchaseConfirm = document.getElementById('purchase-confirm');
         const purchaseConfirmMsg = document.getElementById('purchase-confirm-msg');
+        const purchaseConfirmStatus = document.getElementById('purchase-confirm-status');
+        const modalInviteStatus = document.getElementById('modal-invite-status');
+        const checkoutStepMsg = document.getElementById('checkout-step-msg');
         const roleBreakdown = document.getElementById('checkout-role-breakdown');
+
+        let checkoutInFlight = false;
+        let lastCheckoutPdfOpts = null;
 
         let selectedPayment = 'online';
         let cartItems = listCartItems();
         let appliedDiscount = null;
         let discountAmount = 0;
         let effectiveTotal = cartSubtotal();
+
+        const normalizeCartItemType = (t) => {
+            const raw = String(t || '').toLowerCase();
+            if (raw.includes('ticket')) return 'ticket';
+            if (raw.includes('paquete') || raw.includes('package')) return 'paquete';
+            if (raw.includes('producto') || raw.includes('product')) return 'producto';
+            if (raw.includes('mesa_reserva') || raw.includes('mesa') || raw.includes('table')) return 'mesa_reserva';
+            if (raw.includes('servicio') || raw.includes('service')) return 'servicio';
+            return raw || 'item';
+        };
+
+        const safeJsonParse = (v) => {
+            try {
+                if (typeof v === 'string') return JSON.parse(v);
+                return v;
+            } catch {
+                return null;
+            }
+        };
+
+        // Mapa local para enriquecer el snapshot con campos del catálogo de ticket.
+        // Se completa en renderTicketTypes cuando se carga la lista.
+        let ticketTypesById = new Map();
+
+        const buildTicketMetadataSnapshot = ({ cartSnapshot, descuentoSnapshot, paymentSnapshot, totalsSnapshot, createdAtIso }) => {
+            const items = [];
+            for (const item of cartSnapshot || []) {
+                const normType = normalizeCartItemType(item.type);
+                const qty = Math.max(1, Number(item.qty || 1) || 1);
+                const price = Number(item.price || 0) || 0;
+                const subtotal = qty * price;
+                const baseMeta = item.meta && typeof item.meta === 'object' && !Array.isArray(item.meta) ? item.meta : {};
+
+                let label = item.name || 'Item';
+                let name = item.name || 'Item';
+                let description = '';
+                let incluye = '';
+
+                const out = {
+                    id: item.id ?? null,
+                    type: normType,
+                    name,
+                    label,
+                    description,
+                    incluye,
+                    qty,
+                    price,
+                    subtotal,
+                    ticketTypeId: null,
+                    productId: null,
+                    packageId: null,
+                    mesaReservaId: null,
+                    metadata: baseMeta
+                };
+
+                if (normType === 'ticket') {
+                    out.ticketTypeId = item.id ?? null;
+                    const tt = ticketTypesById.get(item.id);
+                    if (tt) {
+                        out.label = tt.nombre || item.name || out.label;
+                        out.name = tt.nombre || item.name || out.name;
+                        out.incluye = tt.incluye || '';
+                        out.description = tt.descripcion || tt.incluye || '';
+                        out.metadata = { ...baseMeta, ticketTypeCategoria: tt.categoria, ticketTypeEspecial: tt.especial };
+                    }
+                }
+
+                if (normType === 'producto') {
+                    out.productId = item.id ?? null;
+                    out.label = item.name || out.label;
+                }
+
+                if (normType === 'paquete') {
+                    out.packageId = item.id ?? null;
+                    out.label = item.name || out.label;
+                }
+
+                if (normType === 'mesa_reserva') {
+                    const mesaReservaId = baseMeta.mesaReservaId || item.id || null;
+                    out.mesaReservaId = mesaReservaId;
+                    const fechaDia = baseMeta.fechaDia || null;
+                    const mapItemId = baseMeta.mapItemId || null;
+                    // Reservar guarda el label en el nombre del item (p.ej. "Mesa · VIP 3 · 2026-05-07").
+                    const m = String(item.name || '').match(/Mesa\\s*·\\s*(.+?)\\s*·/i);
+                    const mesaLabel = baseMeta.mesaLabel || (m ? m[1] : null) || item.name;
+                    out.label = mesaLabel;
+                    out.description = 'Reserva de mesa';
+                    out.incluye = '';
+                    out.metadata = { ...baseMeta, mesaReservaId, fechaDia, mapItemId };
+
+                    // Si vienen extras seleccionados en el carrito, los agregamos como líneas "extra".
+                    const extrasSelectedArr = Array.isArray(baseMeta.extrasSelected) ? baseMeta.extrasSelected : [];
+                    for (const ex of extrasSelectedArr) {
+                        if (!ex) continue;
+                        const exPrice = Number(ex.price || 0) || 0;
+                        const exQty = Math.max(1, Number(ex.qty || ex.cantidad || 1) || 1);
+                        const exSubtotal = exPrice * exQty;
+                        items.push({
+                            id: ex.id ?? null,
+                            type: 'extra',
+                            name: ex.label || ex.nombre || 'Extra',
+                            label: ex.label || ex.nombre || 'Extra',
+                            description: ex.description || ex.descripcion || '',
+                            incluye: '',
+                            qty: exQty,
+                            price: exPrice,
+                            subtotal: exSubtotal,
+                            ticketTypeId: null,
+                            productId: null,
+                            packageId: null,
+                            mesaReservaId: mesaReservaId,
+                            metadata: { ...ex, mesaReservaId }
+                        });
+                    }
+                }
+
+                // Sin guardar secretos: el snapshot usa solo datos del catálogo y del carrito.
+                items.push(out);
+            }
+
+            return {
+                source: 'checkout',
+                createdAt: createdAtIso,
+                discount: descuentoSnapshot || null,
+                payment: paymentSnapshot,
+                totals: totalsSnapshot,
+                items
+            };
+        };
 
         const fmt = (n) => `$${Number(n || 0).toFixed(2)} MXN`;
         const setDiscountStatus = (msg, tone = 'neutral') => {
@@ -238,6 +379,7 @@ const Checkout = {
                     ticketTypesWrap.innerHTML = '<p class="text-xs text-slate-500">No hay tickets publicados por el momento.</p>';
                     return;
                 }
+                ticketTypesById = new Map((rows || []).map((t) => [t.id, t]));
                 ticketTypesWrap.innerHTML = rows.map((t) => `
                   <article class="rounded-lg border border-slate-200 bg-slate-50 p-3">
                     <div class="flex items-start justify-between gap-2">
@@ -350,21 +492,16 @@ const Checkout = {
                 } catch (e) {
                     inputEmail.value = user.email || '';
                 }
-                try {
-                    const access = await getUserAccess(user);
-                    if (roleBreakdown) {
-                        if (access.can('tickets.scan')) {
-                            roleBreakdown.innerHTML = '<strong>Vista trabajador:</strong> este checkout permite compra y después registrar entrada desde escáner/admin en tiempo real.';
-                        } else {
-                            roleBreakdown.innerHTML = '<strong>Vista usuario:</strong> tus tickets se generan al pagar y su estado se sincroniza en vivo cuando el trabajador registra entrada.';
-                        }
-                    }
-                } catch {}
+                if (roleBreakdown) {
+                    roleBreakdown.innerHTML =
+                        '<p class="text-slate-700">Tus compras quedan guardadas en tu cuenta y aparecen en <strong>Mis tickets</strong>. Podremos enviarte una copia por correo cuando la opción esté disponible.</p>';
+                }
             } else {
                 authNotice.classList.remove('hidden');
                 document.getElementById('btn-goto-login').addEventListener('click', () => navigateTo('/login'));
                 if (roleBreakdown) {
-                    roleBreakdown.innerHTML = '<strong>Vista invitado:</strong> puedes comprar ticket, y su estado de entrada se actualiza en tiempo real en el sistema.';
+                    roleBreakdown.innerHTML =
+                        '<p class="text-slate-700"><strong>Invitado:</strong> puedes completar la compra ahora. <strong>Inicia sesión</strong> para guardar tus tickets en tu cuenta y recuperarlos después en <strong>Mis tickets</strong>.</p>';
                 }
             }
         };
@@ -394,6 +531,118 @@ const Checkout = {
             });
         });
 
+        const appendConfirmLine = (text, variant = 'muted') => {
+            if (!purchaseConfirmStatus) return;
+            const p = document.createElement('p');
+            if (variant === 'warn') p.className = 'text-xs font-semibold text-amber-800';
+            else if (variant === 'ok') p.className = 'text-xs font-semibold text-emerald-800';
+            else p.className = 'text-xs font-semibold text-slate-600';
+            p.textContent = text;
+            purchaseConfirmStatus.appendChild(p);
+        };
+
+        const appendInviteLine = (text, variant = 'muted') => {
+            if (!modalInviteStatus) return;
+            const p = document.createElement('p');
+            if (variant === 'warn') p.className = 'text-xs font-semibold text-amber-800';
+            else if (variant === 'ok') p.className = 'text-xs font-semibold text-emerald-800';
+            else p.className = 'text-xs font-semibold text-slate-600';
+            p.textContent = text;
+            modalInviteStatus.appendChild(p);
+        };
+
+        const runCheckoutSecondaryFlow = async ({
+            ticketId,
+            name,
+            email,
+            selectedPayment,
+            estadoPago,
+            isAuthed,
+            cartSnapshot,
+            discountSnapshot
+        }) => {
+            const line = isAuthed ? appendConfirmLine : appendInviteLine;
+
+            if (discountSnapshot?.id) {
+                try {
+                    const next = Math.max(0, Number(discountSnapshot.usosRestantes || 0) - 1);
+                    await consumeDescuento({ id: discountSnapshot.id, usosRestantesNext: next });
+                    appliedDiscount = null;
+                    discountAmount = 0;
+                    if (discountCodeInput) discountCodeInput.value = '';
+                    discountRemoveBtn?.classList.add('hidden');
+                    syncTotals();
+                } catch (discErr) {
+                    console.warn('No se pudo consumir descuento post-compra:', discErr);
+                    line(
+                        'No pudimos registrar el uso del cupón ahora; tu ticket sigue siendo válido.',
+                        'warn'
+                    );
+                }
+            }
+
+            try {
+                await publishAppUpdate('tickets', `created:${ticketId}`);
+                await publishAppUpdate('sales', `checkout:${ticketId}`);
+            } catch (rtErr) {
+                console.warn('Realtime publish no disponible para este usuario:', rtErr);
+            }
+
+            if (isAuthed && cartSnapshot?.length) {
+                try {
+                    const productsInCart = cartSnapshot.filter((x) => x.type === 'producto' && x.id);
+                    if (productsInCart.length) {
+                        const invRes = await listProductosAdmin();
+                        const map = new Map((invRes.data?.productos || []).map((p) => [p.id, p]));
+                        for (const item of productsInCart) {
+                            const p = map.get(item.id);
+                            if (!p) continue;
+                            const qty = Number(item.qty || 0);
+                            if (qty <= 0) continue;
+                            await updateProductoStock({
+                                id: p.id,
+                                stockActual: p.stockActual,
+                                reservadoAprox: Math.max(0, (p.reservadoAprox || 0) + qty)
+                            });
+                            await createMovimientoInventario({
+                                productoId: p.id,
+                                tipo: 'reserva_aprox',
+                                cantidad: qty,
+                                nota: `Reservado desde checkout ticket ${ticketId}`
+                            });
+                        }
+                        await publishAppUpdate('inventory', 'Reservas aproximadas actualizadas desde checkout');
+                    }
+                } catch (invErr) {
+                    console.warn('No se pudo registrar reservado aprox de productos:', invErr);
+                }
+            }
+
+            line('Enviando copia por correo…', 'muted');
+
+            let emailResult = { sent: false };
+            try {
+                emailResult = await sendTicketEmailBestEffort(
+                    { ticketId, toEmail: email, clienteNombre: name },
+                    { timeoutMs: 10000 }
+                );
+            } catch (mailErr) {
+                console.warn(mailErr);
+                emailResult = { sent: false };
+            }
+
+            if (emailResult.sent) {
+                line('Enviamos una copia a tu correo.', 'ok');
+            } else {
+                line(
+                    'No pudimos enviar el correo ahora, pero tu ticket ya está disponible en Mis tickets.',
+                    'warn'
+                );
+            }
+
+            line('Listo. También puedes verlo en Mis tickets.', 'muted');
+        };
+
         document.getElementById('btn-go-register').addEventListener('click', () => {
             modalInvite.classList.add('hidden');
             navigateTo('/login');
@@ -402,9 +651,42 @@ const Checkout = {
             modalInvite.classList.add('hidden');
         });
 
+        document.getElementById('purchase-btn-my-tickets')?.addEventListener('click', () => {
+            purchaseConfirm?.classList.add('hidden');
+            navigateTo('/cliente/tickets');
+        });
+        document.getElementById('purchase-btn-home')?.addEventListener('click', () => {
+            purchaseConfirm?.classList.add('hidden');
+            navigateTo('/home');
+        });
+        document.getElementById('purchase-btn-download')?.addEventListener('click', async () => {
+            if (!lastCheckoutPdfOpts) return;
+            try {
+                await downloadTicketPdfBestEffort(lastCheckoutPdfOpts);
+            } catch {
+                await showAlert(
+                    'No pudimos generar el PDF ahora. Intenta descargarlo desde Mis tickets.',
+                    { title: 'PDF', variant: 'warning' }
+                );
+            }
+        });
+        document.getElementById('btn-download-invite-ticket')?.addEventListener('click', async () => {
+            if (!lastCheckoutPdfOpts) return;
+            try {
+                await downloadTicketPdfBestEffort(lastCheckoutPdfOpts);
+            } catch {
+                await showAlert(
+                    'No pudimos generar el PDF ahora. Intenta de nuevo más tarde o inicia sesión y descárgalo desde Mis tickets.',
+                    { title: 'PDF', variant: 'warning' }
+                );
+            }
+        });
+
         btnPay.addEventListener('click', async () => {
-            const name = inputName.value;
-            const email = inputEmail.value;
+            if (checkoutInFlight) return;
+
+            const name = (inputName.value || '').trim();
+            const email = (inputEmail.value || '').trim();
 
             if (!name || !email) {
                 await showAlert('Por favor ingresa tu nombre y correo para continuar.', {
@@ -414,27 +696,79 @@ const Checkout = {
                 return;
             }
 
+            cartItems = listCartItems();
+            if (!cartItems.length) {
+                await showAlert('Agrega al menos un item al carrito antes de pagar.', {
+                    title: 'Carrito vacío',
+                    variant: 'warning'
+                });
+                return;
+            }
+
+            const loadingEl = document.getElementById('loading-msg');
+            checkoutInFlight = true;
             btnPay.disabled = true;
             btnPay.classList.add('opacity-50');
-            document.getElementById('loading-msg').classList.remove('hidden');
+
+            const setStep = (t) => {
+                if (checkoutStepMsg) checkoutStepMsg.textContent = t;
+            };
 
             try {
-                cartItems = listCartItems();
-                if (!cartItems.length) {
-                    await showAlert('Agrega al menos un item al carrito antes de pagar.', { title: 'Carrito vacío', variant: 'warning' });
-                    return;
-                }
-                const subtotalCarrito = cartItems.reduce((acc, item) => acc + Number(item.price || 0) * Number(item.qty || 0), 0);
+                setStep('Creando ticket…');
+                loadingEl.classList.remove('hidden');
+
+                const subtotalCarrito = cartItems.reduce(
+                    (acc, item) => acc + Number(item.price || 0) * Number(item.qty || 0),
+                    0
+                );
                 const totalCarrito = Math.max(0, Number(effectiveTotal || subtotalCarrito));
+
+                const createdAtIso = new Date().toISOString();
+
+                const discountSnapshot =
+                    appliedDiscount?.id
+                        ? {
+                            code: appliedDiscount.codigo,
+                            label: appliedDiscount.codigo,
+                            type: appliedDiscount.tipo,
+                            value: Number(appliedDiscount.descuento || 0),
+                            amount: Number(discountAmount || 0),
+                            rulesApplied: safeJsonParse(appliedDiscount.reglasJson || [])
+                        }
+                        : null;
+
+                const paymentSnapshot = {
+                    method: selectedPayment,
+                    status: selectedPayment === 'online' ? 'pagado' : 'pendiente'
+                };
+
+                const totalsSnapshot = {
+                    subtotal: Number(subtotalCarrito || 0),
+                    discountAmount: Number(discountAmount || 0),
+                    total: Number(totalCarrito || 0)
+                };
+
+                const metadataSnapshot = buildTicketMetadataSnapshot({
+                    cartSnapshot: cartItems,
+                    descuentoSnapshot: discountSnapshot,
+                    paymentSnapshot,
+                    totalsSnapshot,
+                    createdAtIso
+                });
+
                 const variables = {
                     clienteNombre: name,
                     clienteEmail: email,
                     metodoPago: selectedPayment,
                     estadoPago: selectedPayment === 'online' ? 'pagado' : 'pendiente',
-                    precioTotal: totalCarrito
+                    precioTotal: totalCarrito,
+                    metadata: metadataSnapshot
                 };
 
                 const isAuthed = getCurrentUser() != null;
+                const cartSnapshot = [...cartItems];
+                const discountSnapshotRaw = appliedDiscount ? { ...appliedDiscount } : null;
 
                 let ticketId;
                 if (isAuthed) {
@@ -444,89 +778,48 @@ const Checkout = {
                     const res = await createAnonymousTicket(variables);
                     ticketId = res.data.ticket_insert.id;
                 }
-                if (appliedDiscount?.id) {
-                    try {
-                        const next = Math.max(0, Number(appliedDiscount.usosRestantes || 0) - 1);
-                        await consumeDescuento({ id: appliedDiscount.id, usosRestantesNext: next });
-                    } catch (discErr) {
-                        console.warn('No se pudo consumir descuento post-compra:', discErr);
-                    }
-                }
-                try {
-                    await publishAppUpdate('tickets', `created:${ticketId}`);
-                    await publishAppUpdate('sales', `checkout:${ticketId}`);
-                } catch (rtErr) {
-                    // En compras anónimas no siempre hay permiso de escritura en appRealtime.
-                    // La compra/ticket no debe fallar por este canal auxiliar de sincronización.
-                    console.warn('Realtime publish no disponible para este usuario:', rtErr);
-                }
+
+                clearCart();
+                syncTotals();
+
+                setStep('Ticket creado correctamente.');
 
                 const estadoPago = variables.estadoPago;
-
-                const emailResult = await sendTicketEmailCopy({
-                    toEmail: email,
+                lastCheckoutPdfOpts = {
                     ticketId,
-                    clienteNombre: name
-                });
+                    clienteNombre: name,
+                    clienteEmail: email,
+                    fechaCreacion: new Date(),
+                    precioTotal: totalCarrito,
+                    metodoPago: selectedPayment,
+                    estadoPago
+                };
 
-                let downloadedPdf = false;
-                if (!emailResult.sent) {
-                    await downloadTicketPdf({
-                        ticketId,
-                        clienteNombre: name,
-                        clienteEmail: email,
-                        fechaCreacion: new Date(),
-                        precioTotal: totalCarrito,
-                        metodoPago: selectedPayment,
-                        estadoPago
-                    });
-                    downloadedPdf = true;
-                }
+                loadingEl.classList.add('hidden');
 
                 if (isAuthed) {
-                    try {
-                        const productsInCart = cartItems.filter((x) => x.type === 'producto' && x.id);
-                        if (productsInCart.length) {
-                            const invRes = await listProductosAdmin();
-                            const map = new Map((invRes.data?.productos || []).map((p) => [p.id, p]));
-                            for (const item of productsInCart) {
-                                const p = map.get(item.id);
-                                if (!p) continue;
-                                const qty = Number(item.qty || 0);
-                                if (qty <= 0) continue;
-                                await updateProductoStock({
-                                    id: p.id,
-                                    stockActual: p.stockActual,
-                                    reservadoAprox: Math.max(0, (p.reservadoAprox || 0) + qty)
-                                });
-                                await createMovimientoInventario({
-                                    productoId: p.id,
-                                    tipo: 'reserva_aprox',
-                                    cantidad: qty,
-                                    nota: `Reservado desde checkout ticket ${ticketId}`
-                                });
-                            }
-                            await publishAppUpdate('inventory', 'Reservas aproximadas actualizadas desde checkout');
-                        }
-                    } catch (invErr) {
-                        console.warn('No se pudo registrar reservado aprox de productos:', invErr);
+                    if (purchaseConfirmMsg) {
+                        purchaseConfirmMsg.textContent = 'Tu ticket fue creado correctamente.';
                     }
-                }
-
-                const msg = emailResult.sent
-                    ? 'Ticket enviado al correo. También disponible en Mis tickets.'
-                    : downloadedPdf
-                        ? 'No se pudo enviar correo; descargamos el PDF como respaldo. Disponible también en Mis tickets.'
-                        : 'Ticket generado. Revisar Mis tickets.';
-                if (isAuthed) {
-                    clearCart();
-                    if (purchaseConfirmMsg) purchaseConfirmMsg.textContent = `${msg} Redirigiendo a inicio en 3s...`;
+                    if (purchaseConfirmStatus) purchaseConfirmStatus.innerHTML = '';
                     purchaseConfirm?.classList.remove('hidden');
-                    setTimeout(() => navigateTo('/home'), 3000);
                 } else {
-                    clearCart();
+                    if (modalInviteStatus) modalInviteStatus.innerHTML = '';
+                    const lead = document.getElementById('modal-invite-lead');
+                    if (lead) lead.textContent = 'Tu ticket fue creado correctamente.';
                     modalInvite.classList.remove('hidden');
                 }
+
+                void runCheckoutSecondaryFlow({
+                    ticketId,
+                    name,
+                    email,
+                    selectedPayment,
+                    estadoPago,
+                    isAuthed,
+                    cartSnapshot,
+                    discountSnapshot: discountSnapshotRaw
+                });
             } catch (error) {
                 console.error('Error procesando pago: ', error);
                 const code = error?.code ?? error?.status;
@@ -538,16 +831,29 @@ const Checkout = {
                     msg.includes('permission denied') ||
                     msg.includes('new row violates row-level security') ||
                     msg.includes('RLS');
+                const isNetwork =
+                    error?.name === 'TypeError' ||
+                    /failed to fetch|network error|load failed|networkerror/i.test(msg);
                 await showAlert(
                     rlsLike
                         ? 'No se pudo crear el ticket por permisos de base de datos. Revisa las políticas RLS de tickets.'
-                        : 'Hubo un error al procesar tu reserva. Asegúrate de tener conexión y vuelve a intentarlo.',
+                        : (msg.toLowerCase().includes('tickets') &&
+                          msg.toLowerCase().includes('metadata') &&
+                          (msg.toLowerCase().includes('does not exist') ||
+                            msg.toLowerCase().includes('undefined column') ||
+                            msg.toLowerCase().includes('column'))
+                          )
+                          ? 'La columna `tickets.metadata` no está desplegada. Ejecuta `supabase/patch_tickets_metadata.sql`.'
+                          : isNetwork
+                            ? 'No pudimos completar la compra. Revisa tu conexión e inténtalo de nuevo.'
+                            : 'Hubo un error al procesar tu reserva. Asegúrate de tener conexión y vuelve a intentarlo.',
                     { title: 'Error', variant: 'danger' }
                 );
             } finally {
+                checkoutInFlight = false;
                 btnPay.disabled = false;
                 btnPay.classList.remove('opacity-50');
-                document.getElementById('loading-msg').classList.add('hidden');
+                loadingEl?.classList.add('hidden');
             }
         });
     }
