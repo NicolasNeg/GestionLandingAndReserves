@@ -8,6 +8,26 @@ function requireClient() {
   return supabase;
 }
 
+/** Solo intentar RPC get_executive_dashboard si está explícitamente activado (evita 404 en producción). */
+const USE_EXECUTIVE_DASHBOARD_RPC = import.meta.env.VITE_USE_EXECUTIVE_DASHBOARD_RPC === 'true';
+
+let warnedExecutiveRpcMissing = false;
+let warnedTicketScansMissing = false;
+
+function isTicketScansRelationMissing(err) {
+  const m = String(err?.message || err?.details || err?.hint || '');
+  return /ticket_scans|schema cache|Could not find the table|does not exist|relation/i.test(m);
+}
+
+function newUuidForTicket() {
+  if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
+
 function normalizeStoredPermissions(val) {
   if (Array.isArray(val)) return val;
   if (val && typeof val === 'object') {
@@ -717,47 +737,54 @@ export async function listRecentTicketScans({ limit = 50 } = {}) {
     .select('*')
     .order('scanned_at', { ascending: false })
     .limit(Math.max(1, Math.min(200, Number(limit || 50))));
-  if (error) throw error;
+  if (error) {
+    if (isTicketScansRelationMissing(error)) {
+      if (!warnedTicketScansMissing) {
+        console.warn(
+          '[ticket_scans] Tabla no encontrada o fuera del schema cache. Ejecuta supabase/patch_scan_ticket_rpc.sql en el SQL Editor de Supabase.'
+        );
+        warnedTicketScansMissing = true;
+      }
+      return { data: { scans: [] } };
+    }
+    throw error;
+  }
   return { data: { scans: (data || []).map(mapTicketScanRow) } };
 }
 
 export async function createAnonymousTicket(variables) {
   const sb = requireClient();
-  const { data, error } = await sb
-    .from('tickets')
-    .insert({
-      cliente_nombre: variables.clienteNombre,
-      cliente_email: variables.clienteEmail,
-      metodo_pago: variables.metodoPago,
-      estado_pago: variables.estadoPago,
-      estado_ticket: 'valido',
-      precio_total: variables.precioTotal
-    })
-    .select('id')
-    .single();
+  const id = newUuidForTicket();
+  const { error } = await sb.from('tickets').insert({
+    id,
+    cliente_nombre: variables.clienteNombre,
+    cliente_email: variables.clienteEmail,
+    metodo_pago: variables.metodoPago,
+    estado_pago: variables.estadoPago,
+    estado_ticket: 'valido',
+    precio_total: variables.precioTotal
+  });
   if (error) throw error;
-  return { data: { ticket_insert: { id: data.id } } };
+  return { data: { ticket_insert: { id } } };
 }
 
 export async function createUserTicket(variables) {
   const sb = requireClient();
   const uid = getCanonicalUserId();
   if (!uid) throw new Error('Sesion requerida para ticket de usuario');
-  const { data, error } = await sb
-    .from('tickets')
-    .insert({
-      user_id: uid,
-      cliente_nombre: variables.clienteNombre,
-      cliente_email: variables.clienteEmail,
-      metodo_pago: variables.metodoPago,
-      estado_pago: variables.estadoPago,
-      estado_ticket: 'valido',
-      precio_total: variables.precioTotal
-    })
-    .select('id')
-    .single();
+  const id = newUuidForTicket();
+  const { error } = await sb.from('tickets').insert({
+    id,
+    user_id: uid,
+    cliente_nombre: variables.clienteNombre,
+    cliente_email: variables.clienteEmail,
+    metodo_pago: variables.metodoPago,
+    estado_pago: variables.estadoPago,
+    estado_ticket: 'valido',
+    precio_total: variables.precioTotal
+  });
   if (error) throw error;
-  return { data: { ticket_insert: { id: data.id } } };
+  return { data: { ticket_insert: { id } } };
 }
 
 export async function listUserTickets({ userId }) {
@@ -1595,6 +1622,15 @@ export async function getScannerSummary() {
       lastTicketId: last?.ticketId || null
     };
   } catch (e) {
+    if (isTicketScansRelationMissing(e)) {
+      if (!warnedTicketScansMissing) {
+        console.warn(
+          '[ticket_scans] Tabla no disponible; resumen de escáner en cero. Ejecuta supabase/patch_scan_ticket_rpc.sql.'
+        );
+        warnedTicketScansMissing = true;
+      }
+      return empty();
+    }
     warnDashboardMetric('getScannerSummary', e);
     return empty();
   }
@@ -1847,12 +1883,23 @@ export function buildOperationalAlerts(exec) {
 }
 
 async function probeExecutiveMetricsRpc() {
+  if (!USE_EXECUTIVE_DASHBOARD_RPC) {
+    return { rpcOk: false, rpcNoise: null };
+  }
   try {
     const sb = requireClient();
     const { error } = await sb.rpc('get_executive_dashboard', { p_fecha: formatFechaDia() });
     if (!error) return { rpcOk: true, rpcNoise: null };
     const msg = String(error.message || error.details || '');
-    if (/does not exist|42883|schema cache|function/i.test(msg)) return { rpcOk: false, rpcNoise: null };
+    if (/does not exist|42883|PGRST202|404|schema cache|function/i.test(msg)) {
+      if (!warnedExecutiveRpcMissing) {
+        console.warn(
+          '[executive] RPC get_executive_dashboard no desplegada; usando métricas locales. Desactiva VITE_USE_EXECUTIVE_DASHBOARD_RPC o aplica patch_executive_metrics.sql.'
+        );
+        warnedExecutiveRpcMissing = true;
+      }
+      return { rpcOk: false, rpcNoise: null };
+    }
     warnDashboardMetric('getExecutiveDashboard.rpc', error);
     return { rpcOk: false, rpcNoise: msg.slice(0, 180) };
   } catch (e) {

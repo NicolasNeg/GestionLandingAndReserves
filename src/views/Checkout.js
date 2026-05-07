@@ -529,8 +529,19 @@ const Checkout = {
                 }
             } catch (error) {
                 console.error('Error procesando pago: ', error);
+                const code = error?.code ?? error?.status;
+                const msg = String(error?.message || '');
+                const rlsLike =
+                    code === '42501' ||
+                    code === 'PGRST301' ||
+                    code === 403 ||
+                    msg.includes('permission denied') ||
+                    msg.includes('new row violates row-level security') ||
+                    msg.includes('RLS');
                 await showAlert(
-                    'Hubo un error al procesar tu reserva. Asegúrate de tener conexión y vuelve a intentarlo.',
+                    rlsLike
+                        ? 'No se pudo crear el ticket por permisos de base de datos. Revisa las políticas RLS de tickets.'
+                        : 'Hubo un error al procesar tu reserva. Asegúrate de tener conexión y vuelve a intentarlo.',
                     { title: 'Error', variant: 'danger' }
                 );
             } finally {

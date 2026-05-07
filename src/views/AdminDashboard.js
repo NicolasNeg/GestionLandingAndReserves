@@ -49,7 +49,7 @@ import {
 import { MAP_QUICK_PRESETS } from '../lib/mapEngine/mapPresets.js';
 import { getUserAccess } from '../lib/accessControl.js';
 import { icon } from '../lib/icons.js';
-import { showAlert } from '../lib/appDialog.js';
+import { showAlert, showConfirm } from '../lib/appDialog.js';
 import { subscribeParkingSpots, upsertParkingSpot, updateParkingSpot, removeParkingSpot } from '../lib/parkingRealtime.js';
 import { defaultScheduleConfig, parseScheduleConfig, serializeScheduleConfig, scheduleDays } from '../lib/schedule.js';
 import { publishAppUpdate } from '../lib/realtimeSync.js';
@@ -71,6 +71,24 @@ import {
 } from '../lib/discountRulesAdmin.js';
 import heroImageUrl from '../assets/hero.png';
 import { splitBotonesJson, mergeBotonesJson } from '../lib/landingBotonesHero.js';
+import {
+  buildFullBackupPayload,
+  clearAllMapDrafts,
+  clearMapDraftLocal,
+  detectImportShape,
+  downloadJsonFile,
+  extractFullBackupStrings,
+  loadMapDraftLocal,
+  MAP_VIEW_KEYS,
+  mapContextToViewKey,
+  normalizeImportSingleDoc,
+  saveLastSavedLocal,
+  saveMapDraftLocal,
+  suggestFilenameForView,
+  suggestFilenameFullBackup,
+  tryParseJsonFile,
+  validateMapDocumentForSave
+} from '../lib/mapEngine/mapBackup.js';
 
 const LANDING_PAGE_ID = 'main';
 const TICKET_CONFIG_ID = 'precios_base';
@@ -82,6 +100,58 @@ function escapeHtml(text) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;');
+}
+
+const MAP_EDITOR_TOOL_GROUPS = [
+  { title: 'Basicos', values: ['text', 'marker', 'image'] },
+  { title: 'Formas', values: ['rect', 'circle', 'ellipse', 'polygon', 'line'] },
+  {
+    title: 'Elementos del parque',
+    values: ['area', 'alberca', 'pool', 'palapa', 'servicio', 'serviceArea', 'entrada', 'entrance', 'limitacion', 'blockedZone']
+  },
+  { title: 'Mesas', values: ['mesa', 'table'] },
+  { title: 'Parking', values: ['estacionamiento', 'parkingSpot'] }
+];
+
+function renderMapEditorToolAccordions() {
+  const byValue = new Map(MAP_ITEM_KINDS.map((k) => [k.value, k]));
+  return MAP_EDITOR_TOOL_GROUPS.map((group) => {
+    const buttons = group.values
+      .map((v) => {
+        const kind = byValue.get(v);
+        if (!kind) return '';
+        return `<button type="button" class="mapa-tool-btn inline-flex w-full items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-2.5 py-2 text-left text-[11px] font-bold text-slate-200 hover:bg-white/10" data-map-tool="${kind.value}" title="${escapeHtml(kind.label)}"><span class="h-2 w-2 shrink-0 rounded-full" style="background:${kind.stroke}"></span><span class="min-w-0 truncate">${escapeHtml(kind.label)}</span></button>`;
+      })
+      .join('');
+    return `<details class="mapa-tool-accordion border-b border-white/5 pb-2 last:border-0 open"><summary class="mapa-tool-accordion-summary">${escapeHtml(group.title)}</summary><div class="mapa-tool-grid mt-2 grid grid-cols-1 gap-1">${buttons}</div></details>`;
+  }).join('');
+}
+
+function renderMapEditorPresetsSection() {
+  return `<details class="mapa-tool-accordion border-b border-white/5 pb-2 open"><summary class="mapa-tool-accordion-summary">Plantillas / presets</summary><div class="mt-2 flex flex-col gap-1.5">
+      <button type="button" id="mapa-preset-row" class="mapa-command-btn justify-start text-left" title="Tres piezas en fila del tipo activo">Fila x3</button>
+      <button type="button" id="mapa-preset-wide" class="mapa-command-btn justify-start text-left" title="Rectangulo ancho">Bloque ancho</button>
+      <button type="button" id="mapa-preset-global-kit" class="mapa-command-btn justify-start text-left" title="Alberca, palapas, servicios, entrada">Kit global</button>
+      <button type="button" id="mapa-preset-mesas-grid" class="mapa-command-btn justify-start text-left" title="Bloque 4x4 mesas">Mesas 4x4</button>
+      <button type="button" id="mapa-preset-mesas-row" class="mapa-command-btn justify-start text-left" title="Fila de mesas">Fila mesas</button>
+      <button type="button" id="mapa-preset-mesas-vip" class="mapa-command-btn justify-start text-left" title="Zona VIP">VIP</button>
+      <button type="button" id="mapa-preset-parking-row" class="mapa-command-btn justify-start text-left" title="Fila de cajones">Fila parking</button>
+      <button type="button" id="mapa-preset-parking-block" class="mapa-command-btn justify-start text-left" title="Bloque de cajones">Bloque parking</button>
+      <button type="button" id="mapa-preset-parking-yard" class="mapa-command-btn justify-start text-left" title="Patios y taller">Taller/patio</button>
+      <button type="button" id="mapa-add-quick" class="mapa-command-primary justify-center">+ Pieza rapida</button>
+    </div></details>`;
+}
+
+function renderMapEditorFileSection() {
+  return `<div class="mapa-file-card mt-3 rounded-xl border border-white/10 bg-black/25 p-3">
+    <p class="text-[10px] font-black uppercase tracking-widest text-slate-500">Archivo</p>
+    <div class="mt-2 flex flex-col gap-1.5">
+      <button type="button" id="mapa-export-view" class="mapa-command-btn justify-start text-left" title="Descargar solo esta vista en JSON">${icon('package', 'h-4 w-4')} Exportar vista</button>
+      <button type="button" id="mapa-export-all" class="mapa-command-btn justify-start text-left" title="Descargar los tres mapas">${icon('package', 'h-4 w-4')} Exportar todo</button>
+      <button type="button" id="mapa-import-btn" class="mapa-command-btn justify-start text-left" title="Importar JSON">${icon('cursor', 'h-4 w-4')} Importar JSON</button>
+      <input type="file" id="mapa-import-file" accept=".json,application/json" class="hidden" aria-hidden="true" />
+    </div>
+  </div>`;
 }
 
 function relativeTimeEs(iso) {
@@ -879,69 +949,95 @@ const AdminDashboard = {
                     </div>
 
                     <div id="sitio-tab-mapa" class="sitio-tab-panel hidden space-y-3">
+                      <div id="mapa-editor-mobile-block" class="lg:hidden rounded-2xl border border-slate-200 bg-gradient-to-b from-slate-50 to-white p-8 text-center shadow-lg">
+                        <div class="mx-auto max-w-md">
+                          <span class="inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-100 text-amber-700">${icon('map', 'h-8 w-8')}</span>
+                          <h2 class="mt-4 text-xl font-black text-slate-900">Vista bloqueada</h2>
+                          <p class="mt-3 text-sm font-semibold leading-relaxed text-slate-600">Este editor de mapas solo se puede usar desde computadora para evitar errores de edición.</p>
+                          <div class="mt-6 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-center">
+                            <button type="button" id="mapa-mobile-back" class="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-black text-slate-800 shadow-sm">Volver</button>
+                            <a href="/home" data-link class="rounded-xl bg-cyan-600 px-4 py-3 text-sm font-black text-white shadow-md">Abrir sitio</a>
+                            <a href="/admin/dashboard" data-link class="rounded-xl border border-cyan-200 bg-cyan-50 px-4 py-3 text-sm font-black text-cyan-900">Ir al panel</a>
+                          </div>
+                        </div>
+                      </div>
+                      <div id="mapa-editor-desktop" class="hidden space-y-3 lg:block">
+                      <div id="mapa-draft-banner" class="hidden rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950 shadow-sm">
+                        <p class="font-black">Encontramos un borrador local sin guardar.</p>
+                        <p id="mapa-draft-banner-detail" class="mt-1 text-xs font-semibold text-amber-900/90"></p>
+                        <div class="mt-3 flex flex-wrap gap-2">
+                          <button type="button" id="mapa-draft-restore" class="rounded-lg bg-amber-700 px-4 py-2 text-xs font-black text-white hover:bg-amber-800">Restaurar borrador</button>
+                          <button type="button" id="mapa-draft-discard" class="rounded-lg border border-amber-400 bg-white px-4 py-2 text-xs font-black text-amber-900 hover:bg-amber-100">Descartar borrador</button>
+                        </div>
+                      </div>
                       <p class="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">Usa <strong>Guardar cambios del sitio</strong> en la cabecera para persistir mapas y textos. El atajo Guardar del lienzo dispara el mismo guardado.</p>
-                      <div class="mapa-editor-shell overflow-hidden rounded-2xl border border-slate-700 bg-gradient-to-b from-slate-900 via-slate-900 to-slate-950 text-slate-100 shadow-xl ring-1 ring-white/10">
-                          <header class="mapa-editor-topbar flex flex-wrap items-center gap-3 border-b border-white/10 px-4 py-3">
-                            <div class="flex min-w-0 flex-1 items-start gap-3">
-                              <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-cyan-500/15 text-cyan-400">${icon('map', 'h-6 w-6')}</span>
-                              <div class="min-w-0">
-                                <h2 class="text-base font-black tracking-tight text-white">Editor del mapa del parque</h2>
-                                <p class="text-xs text-slate-400">Un motor, tres vistas. Dibuja, selecciona, arrastra y ajusta sin salir del panel.</p>
+                      <p id="mapa-context-usage" class="rounded-lg border border-cyan-100 bg-cyan-50/80 px-4 py-2 text-xs font-semibold text-cyan-950"></p>
+                      <div class="mapa-editor-shell mapa-ws overflow-hidden rounded-2xl border border-slate-700 bg-gradient-to-b from-slate-900 via-slate-900 to-slate-950 text-slate-100 shadow-xl ring-1 ring-white/10">
+                          <header class="mapa-editor-topbar border-b border-white/10 px-4 py-3">
+                            <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                              <div class="flex min-w-0 flex-1 items-center gap-3">
+                                <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-cyan-500/15 text-cyan-400">${icon('map', 'h-6 w-6')}</span>
+                                <div class="min-w-0">
+                                  <h2 class="text-base font-black tracking-tight text-white">Editor del mapa del parque</h2>
+                                  <p class="text-xs text-slate-400">Un lienzo por vista: global, mesas y estacionamiento.</p>
+                                </div>
+                              </div>
+                              <div class="flex flex-wrap items-center gap-2">
+                                <label class="sr-only" for="map-context-select">Vista del mapa</label>
+                                <select id="map-context-select" class="rounded-lg border border-cyan-400/30 bg-cyan-500/10 px-3 py-2 text-xs font-black text-cyan-100">
+                                  <option value="parque">Mapa Global</option>
+                                  <option value="mesas">Mapa Mesas</option>
+                                  <option value="estacionamiento">Mapa Estacionamiento</option>
+                                </select>
+                                <button type="button" id="mapa-save-shortcut" class="mapa-command-primary" title="Guardar contenido del sitio">${icon('check', 'h-4 w-4')} Guardar</button>
                               </div>
                             </div>
-                            <div class="mapa-command-bar flex flex-wrap gap-2">
-                              <label class="sr-only" for="map-context-select">Vista del mapa</label>
-                              <select id="map-context-select" class="rounded-lg border border-cyan-400/30 bg-cyan-500/10 px-3 py-2 text-xs font-black text-cyan-100">
-                                <option value="parque">Mapa Global</option>
-                                <option value="mesas">Mapa Mesas</option>
-                                <option value="estacionamiento">Mapa Estacionamiento</option>
-                              </select>
-                              <button type="button" id="mapa-save-shortcut" class="mapa-command-primary" title="Guardar contenido del sitio">${icon('check', 'h-4 w-4')} Guardar</button>
+                            <div class="mt-3 flex flex-wrap items-center gap-2 border-t border-white/5 pt-3">
+                              <span class="hidden text-[10px] font-black uppercase text-slate-500 sm:inline">Herramienta</span>
                               <button type="button" data-map-mode="select" class="mapa-mode-btn mapa-command-btn is-active" title="Seleccionar">${icon('cursor', 'h-4 w-4')} Seleccionar</button>
                               <button type="button" data-map-mode="pan" class="mapa-mode-btn mapa-command-btn" title="Mano / pan">${icon('move', 'h-4 w-4')} Mano</button>
+                              <span class="mx-0.5 hidden h-5 w-px bg-white/10 sm:block" aria-hidden="true"></span>
                               <button type="button" id="mapa-undo" class="mapa-command-btn" title="Deshacer">${icon('undo', 'h-4 w-4')} Undo</button>
                               <button type="button" id="mapa-redo" class="mapa-command-btn" title="Rehacer">${icon('redo', 'h-4 w-4')} Redo</button>
+                              <span class="mx-0.5 hidden h-5 w-px bg-white/10 lg:block" aria-hidden="true"></span>
+                              <button type="button" id="mapa-preview-canvas" class="mapa-command-btn" title="Vista previa solo lectura. Pulsa Esc para salir.">${icon('eye', 'h-4 w-4')} Preview</button>
+                              <a id="mapa-preview-link" href="/home#mapa" data-link class="mapa-command-btn" title="Abrir vista publica">${icon('home', 'h-4 w-4')} Abrir sitio</a>
                               <label class="mapa-command-btn cursor-pointer select-none"><input id="mapa-show-grid" type="checkbox" class="mr-1 align-middle" checked /> Grid</label>
-                              <button type="button" id="mapa-preview-canvas" class="mapa-command-btn" title="Vista previa solo lectura en el lienzo">${icon('eye', 'h-4 w-4')} Preview lienzo</button>
-                              <a id="mapa-preview-link" href="/home#mapa" data-link class="mapa-command-btn" title="Abrir vista publica en otra pestaña">${icon('home', 'h-4 w-4')} Abrir sitio</a>
                             </div>
                           </header>
 
-                          <div class="mapa-tool-strip flex flex-wrap gap-2 border-b border-white/5 bg-black/25 px-4 py-2">
-                            ${MAP_ITEM_KINDS.map(
-                              (kind) => `
-                              <button type="button" class="mapa-tool-btn inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-2.5 py-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-300 hover:bg-white/10"
-                                data-map-tool="${kind.value}" title="${escapeHtml(kind.label)}">
-                                <span class="h-2 w-2 shrink-0 rounded-full" style="background:${kind.stroke}"></span>
-                                ${kind.label}
-                              </button>`
-                            ).join('')}
-                            <span class="grow"></span>
-                            <button type="button" id="mapa-preset-row" class="mapa-command-btn" title="Tres piezas en fila del tipo activo">Fila x3</button>
-                            <button type="button" id="mapa-preset-wide" class="mapa-command-btn" title="Rectangulo ancho">Bloque ancho</button>
-                            <button type="button" id="mapa-preset-global-kit" class="mapa-command-btn" title="Alberca, palapas, servicios, entrada">Kit global</button>
-                            <button type="button" id="mapa-preset-mesas-grid" class="mapa-command-btn" title="Bloque 4x4 mesas">Mesas 4x4</button>
-                            <button type="button" id="mapa-preset-mesas-row" class="mapa-command-btn" title="Fila de mesas">Fila mesas</button>
-                            <button type="button" id="mapa-preset-mesas-vip" class="mapa-command-btn" title="Zona VIP">VIP</button>
-                            <button type="button" id="mapa-preset-parking-row" class="mapa-command-btn" title="Fila de cajones">Fila parking</button>
-                            <button type="button" id="mapa-preset-parking-block" class="mapa-command-btn" title="Bloque de cajones">Bloque parking</button>
-                            <button type="button" id="mapa-preset-parking-yard" class="mapa-command-btn" title="Patios y taller">Taller/patio</button>
-                            <button type="button" id="mapa-add-quick" class="mapa-command-primary">+ Pieza rapida</button>
-                          </div>
-
                           <p id="mapa-draw-hint" class="hidden border-b border-amber-500/20 bg-amber-500/10 px-4 py-2 text-center text-[11px] font-semibold text-amber-200">Modo dibujo activo: arrastra sobre el lienzo para crear el rectangulo.</p>
 
-                          <div class="grid gap-0 lg:grid-cols-[minmax(0,1fr)_300px]">
-                            <div class="relative border-b border-white/10 lg:border-b-0 lg:border-r">
+                          <div class="mapa-ws-main grid min-h-[min(520px,78vh)] grid-cols-1 lg:grid-cols-[minmax(200px,228px)_minmax(0,1fr)_minmax(260px,300px)]">
+                            <aside class="mapa-ws-sidebar flex max-h-[min(78vh,760px)] flex-col overflow-hidden border-b border-white/10 bg-black/25 lg:max-h-none lg:border-b-0 lg:border-r lg:border-white/10">
+                              <div class="border-b border-white/5 px-3 py-2">
+                                <p class="text-[10px] font-black uppercase tracking-widest text-slate-500">Herramientas</p>
+                                <p class="text-[11px] font-semibold text-slate-400">Insertar piezas y plantillas</p>
+                              </div>
+                              <div class="mapa-ws-sidebar-scroll flex-1 space-y-1 overflow-y-auto px-2 py-3">
+                                ${renderMapEditorToolAccordions()}
+                                ${renderMapEditorPresetsSection()}
+                                ${renderMapEditorFileSection()}
+                              </div>
+                            </aside>
+                            <div class="relative min-w-0 border-b border-white/10 lg:border-b-0 lg:border-r lg:border-white/10">
                               <div class="mapa-zoom-bar absolute right-3 top-3 z-20 flex items-center gap-1 rounded-lg border border-white/10 bg-slate-950/90 px-1 py-1 text-slate-200 shadow-lg backdrop-blur">
                                 <button type="button" id="mapa-zoom-out" class="h-8 w-8 rounded-md text-lg font-bold hover:bg-white/10" title="Alejar">−</button>
                                 <span id="mapa-zoom-label" class="min-w-[3rem] text-center text-[11px] font-bold text-slate-400">100%</span>
                                 <button type="button" id="mapa-zoom-in" class="h-8 w-8 rounded-md text-lg font-bold hover:bg-white/10" title="Acercar">+</button>
                                 <button type="button" id="mapa-zoom-reset" class="rounded-md px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-slate-500 hover:bg-white/10" title="Zoom 100%">1:1</button>
                               </div>
-                              <div id="mapa-viewport-outer" class="mapa-viewport-outer max-h-[min(70vh,680px)] overflow-auto bg-slate-950/80 p-4">
+                              <div id="mapa-viewport-outer" class="mapa-viewport-outer relative max-h-[min(70vh,680px)] overflow-auto bg-slate-950/80 p-4">
                                 <div id="mapa-viewport-inner" class="inline-block origin-top-left transition-transform duration-150">
                                   <canvas id="admin-mapa-canvas" width="800" height="440" class="block rounded-lg shadow-2xl ring-1 ring-white/10"></canvas>
+                                </div>
+                                <div id="mapa-empty-overlay" class="pointer-events-none absolute inset-0 z-[25] hidden flex-col items-center justify-center gap-3 rounded-lg bg-slate-950/88 p-5 text-center">
+                                  <p id="mapa-empty-title" class="pointer-events-auto text-sm font-black text-white">Aún no hay elementos en esta vista.</p>
+                                  <p id="mapa-empty-hint" class="pointer-events-auto max-w-sm text-xs font-semibold text-slate-300"></p>
+                                  <div class="pointer-events-auto flex flex-wrap justify-center gap-2">
+                                    <button type="button" id="mapa-empty-preset" class="rounded-lg bg-cyan-600 px-4 py-2 text-xs font-black text-white hover:bg-cyan-500">Agregar plantilla</button>
+                                    <button type="button" id="mapa-empty-import" class="rounded-lg border border-white/20 bg-white/10 px-4 py-2 text-xs font-black text-white hover:bg-white/15">Importar JSON</button>
+                                  </div>
                                 </div>
                               </div>
                               <div class="flex flex-wrap items-end gap-3 border-t border-white/10 bg-black/20 px-4 py-3 text-slate-300">
@@ -1028,8 +1124,13 @@ const AdminDashboard = {
                                   <label class="text-[10px] font-bold uppercase text-slate-500">Y<input id="mapa-item-y" type="number" class="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 text-sm text-white" /></label>
                                   <label class="text-[10px] font-bold uppercase text-slate-500">Ancho<input id="mapa-item-width" type="number" min="20" class="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 text-sm text-white" /></label>
                                   <label class="text-[10px] font-bold uppercase text-slate-500">Alto<input id="mapa-item-height" type="number" min="20" class="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 text-sm text-white" /></label>
-                                  <label class="text-[10px] font-bold uppercase text-slate-500">Rotacion<input id="mapa-item-rotation" type="number" step="1" class="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 text-sm text-white" /></label>
-                                  <label class="text-[10px] font-bold uppercase text-slate-500">Opacidad<input id="mapa-item-opacity" type="number" min="0.05" max="1" step="0.05" class="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 text-sm text-white" /></label>
+                                  <label class="text-[10px] font-bold uppercase text-slate-500 sm:col-span-2">Rotacion<input id="mapa-item-rotation" type="number" step="1" class="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 text-sm text-white" /></label>
+                                </div>
+                                </section>
+                                <section class="mapa-inspector-section">
+                                  <p class="mapa-inspector-section-title">Apariencia</p>
+                                <div class="grid grid-cols-2 gap-2">
+                                  <label class="text-[10px] font-bold uppercase text-slate-500 sm:col-span-2">Opacidad<input id="mapa-item-opacity" type="number" min="0.05" max="1" step="0.05" class="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 text-sm text-white" /></label>
                                   <label class="text-[10px] font-bold uppercase text-slate-500">Relleno<input id="mapa-item-fill" type="color" class="mt-1 h-9 w-full rounded-lg border border-white/10 bg-white/5 p-1" /></label>
                                   <label class="text-[10px] font-bold uppercase text-slate-500">Borde<input id="mapa-item-stroke" type="color" class="mt-1 h-9 w-full rounded-lg border border-white/10 bg-white/5 p-1" /></label>
                                 </div>
@@ -1127,14 +1228,14 @@ const AdminDashboard = {
                             </aside>
                           </div>
 
-                          <footer class="flex flex-wrap items-center gap-2 border-t border-white/10 bg-black/30 px-4 py-3">
-                            <span class="text-[10px] font-bold uppercase tracking-wide text-slate-500">Estado</span>
-                            <span class="rounded-full bg-white/5 px-2 py-1 text-[10px] font-semibold text-slate-400">Ctrl/Cmd+Z deshace</span>
-                            <span class="rounded-full bg-white/5 px-2 py-1 text-[10px] font-semibold text-slate-400">Shift + click suma seleccion</span>
-                            <span class="rounded-full bg-white/5 px-2 py-1 text-[10px] font-semibold text-slate-400">Ctrl/Cmd+D duplica</span>
-                            ${MAP_ITEM_KINDS.map((kind) => `<span class="inline-flex items-center gap-1 rounded-full bg-white/5 px-2 py-1 text-[10px] font-semibold text-slate-400"><i style="background:${kind.stroke}" class="h-2 w-2 rounded-full"></i>${kind.label}</span>`).join('')}
+                          <footer class="mapa-ws-footer flex flex-wrap items-center gap-2 border-t border-white/10 bg-black/30 px-4 py-2.5">
+                            <span class="text-[10px] font-bold uppercase tracking-wide text-slate-500">Atajos</span>
+                            <span class="rounded-full bg-white/5 px-2 py-1 text-[10px] font-semibold text-slate-400">Ctrl+Z / Ctrl+Shift+Z</span>
+                            <span class="rounded-full bg-white/5 px-2 py-1 text-[10px] font-semibold text-slate-400">Shift+clic multiseleccion</span>
+                            <span class="rounded-full bg-white/5 px-2 py-1 text-[10px] font-semibold text-slate-400">Ctrl+D duplicar</span>
                           </footer>
                         </div>
+                      </div>
                     </div>
 
                     <div id="sitio-tab-extras" class="sitio-tab-panel hidden space-y-6">
@@ -2322,6 +2423,17 @@ const AdminDashboard = {
       });
 
       let mapContext = 'parque';
+      let mapDraftTimer = null;
+      const scheduleMapPersistDraft = (jsonStr) => {
+        window.clearTimeout(mapDraftTimer);
+        mapDraftTimer = window.setTimeout(() => {
+          saveMapDraftLocal(mapContextToViewKey(mapContext), jsonStr);
+        }, 420);
+      };
+      const handleMapEditorChange = (jsonStr) => {
+        scheduleMapPersistDraft(jsonStr);
+        bumpLandingUi();
+      };
       const getMapByContext = () =>
         mapContext === 'mesas'
           ? (landing.mapaMesasJson || landing.mapaDistribucionJson)
@@ -2334,6 +2446,71 @@ const AdminDashboard = {
           : mapContext === 'estacionamiento'
             ? 'estacionamiento'
             : 'global';
+      const updateMapContextUsageHint = () => {
+        const el = document.getElementById('mapa-context-usage');
+        if (!el) return;
+        if (mapContext === 'mesas') {
+          el.textContent =
+            'Este mapa se usa en /reservar (reserva de mesas). Si no hay piezas, la app puede usar el mapa global como respaldo.';
+        } else if (mapContext === 'estacionamiento') {
+          el.textContent =
+            'Este mapa alimenta la vista de estacionamiento y el panel operativo de parking.';
+        } else {
+          el.textContent =
+            'Este mapa es el plano público del parque en /home (#mapa).';
+        }
+      };
+      const updateMapEmptyOverlay = (docLike) => {
+        const overlay = document.getElementById('mapa-empty-overlay');
+        const title = document.getElementById('mapa-empty-title');
+        const hint = document.getElementById('mapa-empty-hint');
+        if (!overlay) return;
+        const items = docLike?.items || [];
+        const empty = items.length === 0;
+        overlay.classList.toggle('hidden', !empty);
+        overlay.classList.toggle('flex', empty);
+        overlay.classList.toggle('pointer-events-none', !empty);
+        overlay.classList.toggle('pointer-events-auto', empty);
+        if (title && hint) {
+          if (mapContext === 'mesas') {
+            title.textContent = 'Aún no hay mapa de mesas.';
+            hint.textContent =
+              'Agrega un bloque de mesas con la herramienta Mesa o importa un JSON. Las mesas reservables necesitan ID estable.';
+          } else if (mapContext === 'estacionamiento') {
+            title.textContent = 'Aún no hay mapa de estacionamiento.';
+            hint.textContent =
+              'Agrega cajones con la herramienta Estacionamiento o importa JSON. Configura código en cada cajón.';
+          } else {
+            title.textContent = 'Aún no hay mapa global.';
+            hint.textContent =
+              'El visitante verá este lienzo vacío en la landing hasta que agregues piezas o una plantilla.';
+          }
+        }
+      };
+      const checkMapDraftBanner = () => {
+        const banner = document.getElementById('mapa-draft-banner');
+        const detail = document.getElementById('mapa-draft-banner-detail');
+        if (!banner) return;
+        const vk = mapContextToViewKey(mapContext);
+        const draft = loadMapDraftLocal(vk);
+        const current = getMapByContext();
+        if (draft?.json && String(draft.json).trim() && draft.json !== current) {
+          banner.classList.remove('hidden');
+          if (detail) {
+            const when = draft.ts ? new Date(draft.ts).toLocaleString('es-MX') : '';
+            detail.textContent = `Borrador local (${vk}) · ${when || 'sin fecha'}. No está publicado hasta Guardar.`;
+          }
+        } else {
+          banner.classList.add('hidden');
+        }
+      };
+      const syncCurrentMapJsonToLanding = () => {
+        if (!mapEditor) return;
+        const j = mapEditor.getJson();
+        if (mapContext === 'parque') landing.mapaDistribucionJson = j;
+        if (mapContext === 'mesas') landing.mapaMesasJson = j;
+        if (mapContext === 'estacionamiento') landing.mapaEstacionamientoJson = j;
+      };
       const parsedMapDims = parseDistribucionJson(getMapByContext());
       setVal('mapa-doc-w', parsedMapDims.w);
       setVal('mapa-doc-h', parsedMapDims.h);
@@ -2750,8 +2927,10 @@ const AdminDashboard = {
         mapEditor?.onDocumentChange?.((d) => {
           syncBgFormFromDoc(d);
           renderLayers();
+          updateMapEmptyOverlay(d);
         });
         syncBgFormFromDoc(mapEditor?.getDocument?.() || {});
+        updateMapEmptyOverlay(mapEditor?.getDocument?.() || {});
         if (previewCanvasBtn && !mapEditor?.getPreviewMode?.()) {
           previewCanvasBtn.innerHTML = `${icon('eye', 'h-4 w-4')} Preview lienzo`;
           previewCanvasBtn.classList.remove('ring-2', 'ring-cyan-400/80');
@@ -2760,11 +2939,196 @@ const AdminDashboard = {
         fillFields(null);
       };
 
+      let mapImportExportWired = false;
+      const wireMapImportExportAndDraft = () => {
+        if (mapImportExportWired) return;
+        mapImportExportWired = true;
+
+        document.getElementById('mapa-export-view')?.addEventListener('click', () => {
+          syncCurrentMapJsonToLanding();
+          const vk = mapContextToViewKey(mapContext);
+          const json = mapEditor?.getJson() || getMapByContext();
+          downloadJsonFile(suggestFilenameForView(vk), json);
+        });
+
+        document.getElementById('mapa-export-all')?.addEventListener('click', () => {
+          syncCurrentMapJsonToLanding();
+          const payload = buildFullBackupPayload(landing);
+          downloadJsonFile(suggestFilenameFullBackup(), payload);
+        });
+
+        document.getElementById('mapa-import-btn')?.addEventListener('click', () => {
+          document.getElementById('mapa-import-file')?.click();
+        });
+
+        document.getElementById('mapa-empty-import')?.addEventListener('click', () => {
+          document.getElementById('mapa-import-file')?.click();
+        });
+
+        document.getElementById('mapa-empty-preset')?.addEventListener('click', () => {
+          if (mapContext === 'mesas') document.getElementById('mapa-preset-mesas-grid')?.click();
+          else if (mapContext === 'estacionamiento') document.getElementById('mapa-preset-parking-row')?.click();
+          else document.getElementById('mapa-preset-global-kit')?.click();
+        });
+
+        const applyImportedJson = (jsonStr, viewKeyForParser) => {
+          if (!mapEditor) return;
+          const parsed = tryParseJsonFile(jsonStr);
+          if (!parsed.ok) {
+            void showAlert(parsed.error, { title: 'Importar mapa', variant: 'danger' });
+            return;
+          }
+          const kind = detectImportShape(parsed.value);
+          if (kind.kind === 'unknown') {
+            void showAlert(kind.reason || 'No se reconoce el archivo.', { title: 'Importar mapa', variant: 'danger' });
+            return;
+          }
+          if (kind.kind === 'single') {
+            let normalized;
+            try {
+              normalized = normalizeImportSingleDoc(kind.payload, viewKeyForParser);
+            } catch (e) {
+              void showAlert(e?.message || 'No se pudo validar el mapa.', { title: 'Importar mapa', variant: 'danger' });
+              return;
+            }
+            void (async () => {
+              const ok = await showConfirm(
+                'Se reemplazará el mapa de la vista actual. No se guarda en el servidor hasta que pulses Guardar cambios del sitio.',
+                { title: 'Confirmar importación', variant: 'warning', confirmText: 'Reemplazar', cancelText: 'Cancelar' }
+              );
+              if (!ok) return;
+              saveLastSavedLocal(mapContextToViewKey(mapContext), mapEditor.getJson());
+              mapEditor.setJson(normalized);
+              syncCurrentMapJsonToLanding();
+              bumpLandingUi();
+              void showAlert('Mapa importado. Revisa y presiona Guardar para publicar.', {
+                title: 'Importación lista',
+                variant: 'success'
+              });
+            })();
+            return;
+          }
+          if (kind.kind === 'full') {
+            const parts = extractFullBackupStrings(kind.payload);
+            void (async () => {
+              const all = await showConfirm('¿Importar los tres mapas (global, mesas y estacionamiento) del archivo?', {
+                title: 'Backup completo',
+                variant: 'warning',
+                confirmText: 'Importar todo',
+                cancelText: 'Elegir por partes'
+              });
+              if (all) {
+                if (!parts.global || !parts.mesas || !parts.estacionamiento) {
+                  void showAlert('El backup no incluye las tres secciones completas.', { title: 'Archivo incompleto', variant: 'warning' });
+                  return;
+                }
+                const ok = await showConfirm('Se sobrescribirán los tres mapas en memoria (local). Confirma.', {
+                  title: 'Confirmar',
+                  variant: 'danger',
+                  confirmText: 'Sí, reemplazar todo',
+                  cancelText: 'Cancelar'
+                });
+                if (!ok) return;
+                saveLastSavedLocal(MAP_VIEW_KEYS.global, landing.mapaDistribucionJson);
+                saveLastSavedLocal(MAP_VIEW_KEYS.mesas, landing.mapaMesasJson);
+                saveLastSavedLocal(MAP_VIEW_KEYS.estacionamiento, landing.mapaEstacionamientoJson);
+                landing.mapaDistribucionJson = parts.global;
+                landing.mapaMesasJson = parts.mesas;
+                landing.mapaEstacionamientoJson = parts.estacionamiento;
+                const next = getMapByContext();
+                mapEditor?.destroy?.();
+                const canvasEl = document.getElementById('admin-mapa-canvas');
+                if (canvasEl) {
+                  mapEditor = createDistribucionEditor(canvasEl, next, handleMapEditorChange, { view: mapViewForContext() });
+                  wireMapEditorUi();
+                }
+                bumpLandingUi();
+                checkMapDraftBanner();
+                void showAlert('Mapas importados desde backup. Revisa y presiona Guardar para publicar.', {
+                  title: 'Listo',
+                  variant: 'success'
+                });
+                return;
+              }
+              const g = await showConfirm('¿Importar mapa global desde el archivo?', {
+                title: 'Sección global',
+                confirmText: 'Sí',
+                cancelText: 'No'
+              });
+              if (g && parts.global) landing.mapaDistribucionJson = parts.global;
+              const m = await showConfirm('¿Importar mapa de mesas desde el archivo?', {
+                title: 'Sección mesas',
+                confirmText: 'Sí',
+                cancelText: 'No'
+              });
+              if (m && parts.mesas) landing.mapaMesasJson = parts.mesas;
+              const e = await showConfirm('¿Importar mapa de estacionamiento desde el archivo?', {
+                title: 'Sección estacionamiento',
+                confirmText: 'Sí',
+                cancelText: 'No'
+              });
+              if (e && parts.estacionamiento) landing.mapaEstacionamientoJson = parts.estacionamiento;
+              if (g || m || e) {
+                const next = getMapByContext();
+                mapEditor?.destroy?.();
+                const canvasEl = document.getElementById('admin-mapa-canvas');
+                if (canvasEl) {
+                  mapEditor = createDistribucionEditor(canvasEl, next, handleMapEditorChange, { view: mapViewForContext() });
+                  wireMapEditorUi();
+                }
+                bumpLandingUi();
+                checkMapDraftBanner();
+                void showAlert('Mapa importado. Revisa y presiona Guardar para publicar.', { title: 'Listo', variant: 'success' });
+              }
+            })();
+          }
+        };
+
+        document.getElementById('mapa-import-file')?.addEventListener('change', (ev) => {
+          const file = ev.target.files?.[0];
+          ev.target.value = '';
+          if (!file) return;
+          const reader = new FileReader();
+          reader.onload = () => {
+            const text = String(reader.result || '');
+            applyImportedJson(text, mapContextToViewKey(mapContext));
+          };
+          reader.onerror = () => {
+            void showAlert('No se pudo leer el archivo.', { title: 'Error', variant: 'danger' });
+          };
+          reader.readAsText(file, 'UTF-8');
+        });
+
+        document.getElementById('mapa-draft-restore')?.addEventListener('click', () => {
+          const vk = mapContextToViewKey(mapContext);
+          const draft = loadMapDraftLocal(vk);
+          if (!draft?.json) return;
+          mapEditor?.setJson(draft.json);
+          syncCurrentMapJsonToLanding();
+          bumpLandingUi();
+          checkMapDraftBanner();
+          void showAlert('Borrador aplicado al lienzo. Pulsa Guardar para publicar.', { title: 'Borrador', variant: 'info' });
+        });
+
+        document.getElementById('mapa-draft-discard')?.addEventListener('click', () => {
+          clearMapDraftLocal(mapContextToViewKey(mapContext));
+          checkMapDraftBanner();
+        });
+
+        document.getElementById('mapa-mobile-back')?.addEventListener('click', () => {
+          if (window.history.length > 1) window.history.back();
+          else window.location.assign('/admin/dashboard');
+        });
+      };
+
       const canvas = document.getElementById('admin-mapa-canvas');
       if (canvas) {
         if (mapEditor) mapEditor.destroy();
-        mapEditor = createDistribucionEditor(canvas, getMapByContext(), () => {}, { view: mapViewForContext() });
+        mapEditor = createDistribucionEditor(canvas, getMapByContext(), handleMapEditorChange, { view: mapViewForContext() });
         wireMapEditorUi();
+        wireMapImportExportAndDraft();
+        updateMapContextUsageHint();
+        checkMapDraftBanner();
       }
 
       const mapContextSelect = document.getElementById('map-context-select');
@@ -2780,12 +3144,14 @@ const AdminDashboard = {
         mapEditor?.destroy();
         const canvas = document.getElementById('admin-mapa-canvas');
         if (canvas) {
-          mapEditor = createDistribucionEditor(canvas, nextJson, () => {}, { view: mapViewForContext() });
+          mapEditor = createDistribucionEditor(canvas, nextJson, handleMapEditorChange, { view: mapViewForContext() });
           wireMapEditorUi();
           const dims = parseDistribucionJson(nextJson);
           setVal('mapa-doc-w', dims.w);
           setVal('mapa-doc-h', dims.h);
         }
+        updateMapContextUsageHint();
+        checkMapDraftBanner();
       });
 
       document.getElementById('btn-add-wa')?.addEventListener('click', () => {
@@ -3020,6 +3386,33 @@ const AdminDashboard = {
         if (mapContext === 'parque') landing.mapaDistribucionJson = editedMapJson;
         if (mapContext === 'mesas') landing.mapaMesasJson = editedMapJson;
         if (mapContext === 'estacionamiento') landing.mapaEstacionamientoJson = editedMapJson;
+
+        const vP = validateMapDocumentForSave(landing.mapaDistribucionJson || DEFAULT_MAPA_JSON, 'parque');
+        const vM = validateMapDocumentForSave(
+          landing.mapaMesasJson || landing.mapaDistribucionJson || DEFAULT_MAPA_JSON,
+          'mesas'
+        );
+        const vE = validateMapDocumentForSave(
+          landing.mapaEstacionamientoJson || landing.mapaDistribucionJson || DEFAULT_MAPA_JSON,
+          'estacionamiento'
+        );
+        const mapErrors = [...new Set([...vP.errors, ...vM.errors, ...vE.errors])];
+        const mapWarnings = [...new Set([...vP.warnings, ...vM.warnings, ...vE.warnings])];
+        if (mapErrors.length) {
+          await showAlert(mapErrors.slice(0, 14).join('\n'), {
+            title: 'Corrige el mapa antes de guardar',
+            variant: 'danger'
+          });
+          return;
+        }
+        if (mapWarnings.length) {
+          const proceed = await showConfirm(
+            `${mapWarnings.slice(0, 18).join('\n')}\n\n¿Deseas guardar de todas formas?`,
+            { title: 'Advertencias en los planos', variant: 'warning', confirmText: 'Guardar', cancelText: 'Cancelar' }
+          );
+          if (!proceed) return;
+        }
+
         const heroMerge = {
           kicker: document.getElementById('lp-hero-kicker')?.value ?? '',
           title: document.getElementById('lp-hero-title')?.value ?? '',
@@ -3063,6 +3456,11 @@ const AdminDashboard = {
           });
           baselineLanding = JSON.parse(JSON.stringify(landing));
           setDirtySaved();
+          clearAllMapDrafts();
+          checkMapDraftBanner();
+          saveLastSavedLocal(MAP_VIEW_KEYS.global, landing.mapaDistribucionJson);
+          saveLastSavedLocal(MAP_VIEW_KEYS.mesas, landing.mapaMesasJson);
+          saveLastSavedLocal(MAP_VIEW_KEYS.estacionamiento, landing.mapaEstacionamientoJson);
         } catch (err) {
           console.error(err);
           if (msg) msg.textContent = '';
@@ -3111,12 +3509,13 @@ const AdminDashboard = {
         const nextJson = getMapByContext();
         mapEditor?.destroy?.();
         if (canvasEl) {
-          mapEditor = createDistribucionEditor(canvasEl, nextJson, () => {}, { view: mapViewForContext() });
+          mapEditor = createDistribucionEditor(canvasEl, nextJson, handleMapEditorChange, { view: mapViewForContext() });
           wireMapEditorUi();
           const dims = parseDistribucionJson(nextJson);
           setVal('mapa-doc-w', dims.w);
           setVal('mapa-doc-h', dims.h);
         }
+        checkMapDraftBanner();
         void (async () => {
           try {
             const tres = await listTicketTypesAdmin();
@@ -4270,7 +4669,7 @@ const AdminDashboard = {
         const tickets = res.data?.tickets || [];
         if (tickets.length === 0) {
           tableBody.innerHTML = '<tr><td colspan="5" class="p-4 text-center text-gray-500">No hay tickets recientes</td></tr>';
-          void loadExecutiveKpis();
+          void loadExecutiveDashboard();
           return;
         }
 
@@ -4324,7 +4723,7 @@ const AdminDashboard = {
             });
           });
         }
-        void loadExecutiveKpis();
+        void loadExecutiveDashboard();
       } catch (error) {
         console.error('Error cargando tickets:', error);
         tableBody.innerHTML =
