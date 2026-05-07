@@ -123,7 +123,14 @@ const OperacionDashboard = {
           label: 'Venta física',
           icon: 'package',
           tone: 'bg-amber-600 text-white',
-          onClick: () => navigateTo('/admin/dashboard?section=inventario')
+          onClick: () => navigateTo('/operacion/venta')
+        });
+        actions.push({
+          id: 'close-day',
+          label: 'Corte del día',
+          icon: 'clock',
+          tone: 'bg-white text-slate-800 ring-1 ring-slate-200',
+          onClick: () => navigateTo('/admin/dashboard?section=corte-dia')
         });
       }
       actions.push({

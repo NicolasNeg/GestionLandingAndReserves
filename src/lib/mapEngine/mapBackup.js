@@ -11,13 +11,15 @@ const LAST_SAVED_PREFIX = 'mapLastSaved_v1_';
 export const MAP_VIEW_KEYS = {
   global: 'global',
   mesas: 'mesas',
-  estacionamiento: 'estacionamiento'
+  estacionamiento: 'estacionamiento',
+  albercas: 'albercas'
 };
 
 /** Admin context select value -> storage view key */
 export function mapContextToViewKey(mapContext) {
   if (mapContext === 'mesas') return MAP_VIEW_KEYS.mesas;
   if (mapContext === 'estacionamiento') return MAP_VIEW_KEYS.estacionamiento;
+  if (mapContext === 'albercas') return MAP_VIEW_KEYS.albercas;
   return MAP_VIEW_KEYS.global;
 }
 
@@ -81,6 +83,11 @@ function isTableKind(it) {
 function isParkingKind(it) {
   const k = String(it?.kind || '');
   return k === 'estacionamiento' || k === 'parkingSpot';
+}
+
+function isPoolKind(it) {
+  const k = String(it?.kind || '');
+  return k === 'alberca' || k === 'pool' || it?.type === 'pool';
 }
 
 /**
@@ -149,11 +156,24 @@ export function validateMapDocumentForSave(jsonStr, mapContext) {
     });
   }
 
+  if (mapContext === 'albercas') {
+    items.forEach((it) => {
+      if (!isPoolKind(it)) return;
+      const pub = String(it.metadata?.publicName || it.label || '').trim();
+      if (!pub) warnings.push(`Alberca "${it.id}": sin nombre visible.`);
+    });
+  }
+
   items.forEach((it) => {
     const lab = String(it.label || '').trim();
     const pub = String(it.metadata?.publicName || '').trim();
     if (!lab && !pub && (isTableKind(it) || isParkingKind(it))) {
       warnings.push(`Pieza "${it.id}": sin etiqueta ni nombre público.`);
+    }
+    const vis = it?.metadata?.visibilityByView;
+    if (vis && typeof vis === 'object') {
+      const anyOn = ['global', 'mesas', 'estacionamiento', 'albercas'].some((k) => vis[k] === true);
+      if (!anyOn) warnings.push(`Pieza "${it.id}": no visible en ninguna vista.`);
     }
   });
 
@@ -164,6 +184,7 @@ export function suggestFilenameForView(viewKey) {
   const day = formatFechaDia();
   if (viewKey === MAP_VIEW_KEYS.mesas) return `mapa-mesas-${day}.json`;
   if (viewKey === MAP_VIEW_KEYS.estacionamiento) return `mapa-estacionamiento-${day}.json`;
+  if (viewKey === MAP_VIEW_KEYS.albercas) return `mapa-albercas-${day}.json`;
   return `mapa-global-${day}.json`;
 }
 

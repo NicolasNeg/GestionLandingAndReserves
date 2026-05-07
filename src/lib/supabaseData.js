@@ -182,6 +182,7 @@ function mapProductoRow(r) {
   if (!r) return null;
   return {
     id: r.id,
+    codigo: r.codigo || '',
     titulo: r.titulo,
     descripcion: r.descripcion,
     imagenUrl: r.imagen_url,
@@ -191,6 +192,46 @@ function mapProductoRow(r) {
     activo: r.activo,
     fechaCreacion: r.fecha_creacion
   };
+}
+
+export function getProductCode(product) {
+  if (!product || typeof product !== 'object') return '';
+  return String(product.codigo || product.barcode || product.sku || '').trim().toUpperCase();
+}
+
+function createProductCodeSeed() {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let out = '';
+  for (let i = 0; i < 6; i += 1) out += chars[Math.floor(Math.random() * chars.length)];
+  return `PRD-${out}`;
+}
+
+async function ensureUniqueProductCode(sb) {
+  for (let i = 0; i < 8; i += 1) {
+    const code = createProductCodeSeed();
+    const { data, error } = await sb.from('productos').select('id').eq('codigo', code).limit(1);
+    if (error) throw error;
+    if (!(data || []).length) return code;
+  }
+  return `PRD-${String(Date.now()).slice(-6)}`;
+}
+
+export async function ensureProductCode(productId) {
+  const sb = requireClient();
+  const id = String(productId || '').trim();
+  if (!id) throw new Error('Producto inválido para generar código.');
+  const { data: row, error: readErr } = await sb
+    .from('productos')
+    .select('id,codigo')
+    .eq('id', id)
+    .maybeSingle();
+  if (readErr) throw readErr;
+  if (!row) throw new Error('Producto no encontrado.');
+  if (row.codigo) return { data: { codigo: String(row.codigo) } };
+  const nextCode = await ensureUniqueProductCode(sb);
+  const { error } = await sb.from('productos').update({ codigo: nextCode }).eq('id', id);
+  if (error) throw error;
+  return { data: { codigo: nextCode } };
 }
 
 function mapServicioRow(r) {
@@ -1113,7 +1154,9 @@ export async function deleteServicio({ id }) {
 
 export async function createProducto(vars) {
   const sb = requireClient();
+  const code = String(vars.codigo || '').trim().toUpperCase() || (await ensureUniqueProductCode(sb));
   const { error } = await sb.from('productos').insert({
+    codigo: code,
     titulo: vars.titulo,
     descripcion: vars.descripcion,
     imagen_url: vars.imagenUrl,
@@ -1128,9 +1171,11 @@ export async function createProducto(vars) {
 
 export async function updateProducto(vars) {
   const sb = requireClient();
+  const nextCode = String(vars.codigo || '').trim().toUpperCase();
   const { error } = await sb
     .from('productos')
     .update({
+      ...(nextCode ? { codigo: nextCode } : {}),
       titulo: vars.titulo,
       descripcion: vars.descripcion,
       imagen_url: vars.imagenUrl,
@@ -1160,6 +1205,345 @@ export async function deleteProducto({ id }) {
   const { error } = await sb.from('productos').delete().eq('id', id);
   if (error) throw error;
   return { data: {} };
+}
+
+function mapPhysicalSaleRow(r) {
+  if (!r) return null;
+  return {
+    id: r.id,
+    cashierUserId: r.cashier_user_id || '',
+    cashierEmail: r.cashier_email || '',
+    paymentMethod: r.payment_method || '',
+    subtotal: Number(r.subtotal || 0),
+    discountTotal: Number(r.discount_total || 0),
+    taxTotal: Number(r.tax_total || 0),
+    total: Number(r.total || 0),
+    status: r.status || 'paid',
+    createdAt: r.created_at || null,
+    metadata: r.metadata && typeof r.metadata === 'object' ? r.metadata : {}
+  };
+}
+
+function mapPhysicalSaleItemRow(r) {
+  if (!r) return null;
+  return {
+    id: r.id,
+    saleId: r.sale_id,
+    itemType: r.item_type,
+    itemId: r.item_id || '',
+    code: r.code || '',
+    name: r.name || '',
+    qty: Number(r.qty || 0),
+    price: Number(r.price || 0),
+    subtotal: Number(r.subtotal || 0),
+    metadata: r.metadata && typeof r.metadata === 'object' ? r.metadata : {}
+  };
+}
+
+function mapCashMovementRow(r) {
+  if (!r) return null;
+  return {
+    id: r.id,
+    type: r.type,
+    amount: Number(r.amount || 0),
+    method: r.method || '',
+    relatedType: r.related_type || '',
+    relatedId: r.related_id || '',
+    createdBy: r.created_by || '',
+    createdByEmail: r.created_by_email || '',
+    createdAt: r.created_at || null,
+    notes: r.notes || '',
+    metadata: r.metadata && typeof r.metadata === 'object' ? r.metadata : {}
+  };
+}
+
+function dateRangeForDia(fechaDia) {
+  const base = String(fechaDia || '').trim();
+  if (!base) throw new Error('Fecha inválida.');
+  const start = `${base}T00:00:00.000Z`;
+  const end = `${base}T23:59:59.999Z`;
+  return { start, end };
+}
+
+export async function listSellableItems() {
+  const sb = requireClient();
+  const [{ data: productos, error: pErr }, { data: tickets, error: tErr }, { data: servicios, error: sErr }] =
+    await Promise.all([
+      sb.from('productos').select('*').eq('activo', true).order('titulo', { ascending: true }).limit(500),
+      sb.from('ticket_types').select('*').eq('activo', true).order('orden', { ascending: true }).limit(200),
+      sb.from('servicios').select('*').eq('activo', true).order('orden', { ascending: true }).limit(200)
+    ]);
+  if (pErr) throw pErr;
+  if (tErr) throw tErr;
+  if (sErr) throw sErr;
+  const items = [];
+  for (const p of productos || []) {
+    items.push({
+      itemType: 'producto',
+      itemId: String(p.id),
+      code: getProductCode(p),
+      name: String(p.titulo || 'Producto'),
+      price: Number(p.precio || 0),
+      stockActual: Number(p.stock_actual || 0),
+      activo: Boolean(p.activo),
+      metadata: p
+    });
+  }
+  for (const t of tickets || []) {
+    items.push({
+      itemType: 'ticket',
+      itemId: String(t.id),
+      code: String(t.codigo || t.sku || '').trim().toUpperCase(),
+      name: String(t.nombre || 'Ticket'),
+      price: Number(t.precio || 0),
+      stockActual: null,
+      activo: Boolean(t.activo),
+      metadata: t
+    });
+  }
+  for (const s of servicios || []) {
+    items.push({
+      itemType: 'servicio',
+      itemId: String(s.id),
+      code: String(s.codigo || '').trim().toUpperCase(),
+      name: String(s.titulo || 'Servicio'),
+      price: Number(s.precio || 0),
+      stockActual: null,
+      activo: Boolean(s.activo),
+      metadata: s
+    });
+  }
+  return { data: { items } };
+}
+
+export async function findSellableItemByCode(code) {
+  const sb = requireClient();
+  const normalized = String(code || '').trim().toUpperCase();
+  if (!normalized) return { data: { item: null } };
+  const { data: prodRow, error: pErr } = await sb
+    .from('productos')
+    .select('*')
+    .eq('codigo', normalized)
+    .maybeSingle();
+  if (pErr && !/column.*codigo/i.test(String(pErr.message || ''))) throw pErr;
+  if (prodRow) {
+    return {
+      data: {
+        item: {
+          itemType: 'producto',
+          itemId: String(prodRow.id),
+          code: getProductCode(prodRow),
+          name: String(prodRow.titulo || 'Producto'),
+          price: Number(prodRow.precio || 0),
+          stockActual: Number(prodRow.stock_actual || 0),
+          activo: Boolean(prodRow.activo),
+          metadata: prodRow
+        }
+      }
+    };
+  }
+  const all = await listSellableItems();
+  const byPrefix = (all.data?.items || []).find((it) =>
+    String(it.code || '').toUpperCase() === normalized || String(it.itemId || '').toUpperCase() === normalized
+  );
+  return { data: { item: byPrefix || null } };
+}
+
+export async function decrementInventoryForSale(items = []) {
+  const sb = requireClient();
+  const decrements = Array.isArray(items) ? items.filter((x) => x?.itemType === 'producto') : [];
+  const applied = [];
+  for (const line of decrements) {
+    const productoId = String(line.itemId || '').trim();
+    const qty = Math.max(1, Number(line.qty || 1));
+    if (!productoId) continue;
+    const { data: row, error: readErr } = await sb
+      .from('productos')
+      .select('id,titulo,stock_actual')
+      .eq('id', productoId)
+      .maybeSingle();
+    if (readErr) throw readErr;
+    if (!row) throw new Error('Producto no encontrado para descuento de inventario.');
+    const current = Number(row.stock_actual || 0);
+    if (current < qty) throw new Error(`Stock insuficiente para ${row.titulo || 'producto'}.`);
+    const next = current - qty;
+    const { error: updErr } = await sb.from('productos').update({ stock_actual: next }).eq('id', productoId);
+    if (updErr) throw updErr;
+    await createMovimientoInventario({
+      productoId,
+      tipo: 'salida',
+      cantidad: qty,
+      nota: 'Venta física POS'
+    });
+    applied.push({ productoId, qty, stockBefore: current, stockAfter: next, nombre: row.titulo || 'Producto' });
+  }
+  return { data: { applied } };
+}
+
+export async function createCashMovement({
+  type = 'sale',
+  amount = 0,
+  method = '',
+  relatedType = '',
+  relatedId = '',
+  notes = '',
+  metadata = {}
+} = {}) {
+  const sb = requireClient();
+  const uid = getCanonicalUserId();
+  const { data: userRow } = uid
+    ? await sb.from('users').select('email').eq('id', uid).maybeSingle()
+    : { data: null };
+  const row = {
+    type: String(type || 'sale'),
+    amount: Number(amount || 0),
+    method: String(method || ''),
+    related_type: relatedType ? String(relatedType) : null,
+    related_id: relatedId ? String(relatedId) : null,
+    created_by: uid || null,
+    created_by_email: String(userRow?.email || ''),
+    notes: String(notes || ''),
+    metadata: metadata && typeof metadata === 'object' && !Array.isArray(metadata) ? metadata : {}
+  };
+  const { data, error } = await sb.from('cash_movements').insert(row).select('*').single();
+  if (error) throw error;
+  return { data: { cashMovement: mapCashMovementRow(data) } };
+}
+
+export async function createPhysicalSale({ items = [], paymentMethod = 'efectivo', notes = '' } = {}) {
+  const sb = requireClient();
+  const uid = getCanonicalUserId();
+  if (!uid) throw new Error('Inicia sesión para registrar una venta física.');
+  const lines = Array.isArray(items) ? items.filter((x) => x && Number(x.qty || 0) > 0) : [];
+  if (!lines.length) throw new Error('Agrega productos o servicios antes de cobrar.');
+  const normalized = lines.map((line) => {
+    const qty = Math.max(1, Number(line.qty || 1));
+    const price = Number(line.price || 0);
+    return {
+      itemType: String(line.itemType || 'producto'),
+      itemId: String(line.itemId || ''),
+      code: String(line.code || ''),
+      name: String(line.name || 'Item'),
+      qty,
+      price,
+      subtotal: Number((qty * price).toFixed(2)),
+      metadata: line.metadata && typeof line.metadata === 'object' ? line.metadata : {}
+    };
+  });
+  await decrementInventoryForSale(normalized);
+  const subtotal = normalized.reduce((sum, x) => sum + x.subtotal, 0);
+  const total = Number(subtotal.toFixed(2));
+  const { data: userRow } = await sb.from('users').select('email').eq('id', uid).maybeSingle();
+  const saleId = newUuidForTicket();
+  const saleRow = {
+    id: saleId,
+    cashier_user_id: uid,
+    cashier_email: String(userRow?.email || ''),
+    payment_method: String(paymentMethod || 'efectivo'),
+    subtotal: total,
+    discount_total: 0,
+    tax_total: 0,
+    total,
+    status: 'paid',
+    metadata: { source: 'pos', notes: String(notes || '') }
+  };
+  const { error: saleErr } = await sb.from('physical_sales').insert(saleRow);
+  if (saleErr) throw saleErr;
+  const itemRows = normalized.map((line) => ({
+    sale_id: saleId,
+    item_type: line.itemType,
+    item_id: line.itemId || null,
+    code: line.code || null,
+    name: line.name,
+    qty: line.qty,
+    price: line.price,
+    subtotal: line.subtotal,
+    metadata: line.metadata || {}
+  }));
+  const { error: itemsErr } = await sb.from('physical_sale_items').insert(itemRows);
+  if (itemsErr) throw itemsErr;
+  await createCashMovement({
+    type: 'sale',
+    amount: total,
+    method: paymentMethod,
+    relatedType: 'physical_sale',
+    relatedId: saleId,
+    notes,
+    metadata: { items: normalized.length }
+  });
+  return {
+    data: {
+      sale: {
+        ...mapPhysicalSaleRow(saleRow),
+        items: itemRows.map(mapPhysicalSaleItemRow)
+      }
+    }
+  };
+}
+
+export async function listPhysicalSalesByDate(date) {
+  const sb = requireClient();
+  const { start, end } = dateRangeForDia(date);
+  const { data, error } = await sb
+    .from('physical_sales')
+    .select('*')
+    .gte('created_at', start)
+    .lte('created_at', end)
+    .order('created_at', { ascending: false })
+    .limit(1000);
+  if (error) throw error;
+  return { data: { sales: (data || []).map(mapPhysicalSaleRow) } };
+}
+
+export async function listCashMovementsByDate(date) {
+  const sb = requireClient();
+  const { start, end } = dateRangeForDia(date);
+  const { data, error } = await sb
+    .from('cash_movements')
+    .select('*')
+    .gte('created_at', start)
+    .lte('created_at', end)
+    .order('created_at', { ascending: false })
+    .limit(1500);
+  if (error) throw error;
+  return { data: { movements: (data || []).map(mapCashMovementRow) } };
+}
+
+export async function getDailyCloseSummary(date) {
+  const fecha = String(date || formatFechaDia()).trim();
+  const [{ data: physicalRes }, { data: cashRes }, { data: ticketRes }, { data: mesaRes }] = await Promise.all([
+    listPhysicalSalesByDate(fecha),
+    listCashMovementsByDate(fecha),
+    listTicketsByFecha({ fechaDia: fecha }),
+    listMesaReservasByFecha({ fechaDia: fecha })
+  ]);
+  const physicalSales = physicalRes?.sales || [];
+  const cashMovements = cashRes?.movements || [];
+  const tickets = ticketRes?.tickets || [];
+  const mesas = mesaRes?.mesaReservas || [];
+  const byMethod = { efectivo: 0, terminal: 0, transferencia: 0, cortesia: 0 };
+  for (const sale of physicalSales) {
+    const method = String(sale.paymentMethod || '').toLowerCase();
+    if (byMethod[method] == null) byMethod[method] = 0;
+    byMethod[method] += Number(sale.total || 0);
+  }
+  return {
+    data: {
+      summary: {
+        fecha,
+        physicalSalesCount: physicalSales.length,
+        physicalTotal: physicalSales.reduce((s, x) => s + Number(x.total || 0), 0),
+        byMethod,
+        ticketsSold: tickets.length,
+        ticketsPaid: tickets.filter((t) => t.estadoPago === 'pagado').length,
+        ticketsPending: tickets.filter((t) => t.estadoPago !== 'pagado').length,
+        reservasMesas: mesas.length,
+        cashMovementsCount: cashMovements.length,
+        cashMovements,
+        physicalSales
+      }
+    }
+  };
 }
 
 export async function createMovimientoInventario({ productoId, tipo, cantidad, nota }) {

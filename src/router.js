@@ -9,6 +9,7 @@ import Escaner from './views/Escaner.js';
 import Politicas from './views/Politicas.js';
 import ProgramadorDashboard from './views/ProgramadorDashboard.js';
 import OperacionDashboard from './views/OperacionDashboard.js';
+import VentaFisica from './views/VentaFisica.js';
 import RecuperarTicket from './views/RecuperarTicket.js';
 import { getUserAccess, normalizeRole, waitForAuthUser } from './lib/accessControl.js';
 import { resolvePostLoginPath } from './lib/postLoginRoute.js';
@@ -29,6 +30,7 @@ const routes = {
     '/cliente/configuracion': ClienteDashboard,
     '/cliente/tickets': ClienteDashboard,
     '/operacion': OperacionDashboard,
+    '/operacion/venta': VentaFisica,
     '/admin/dashboard': AdminDashboard,
     '/escaner': Escaner,
     '/politicas': Politicas
@@ -49,13 +51,26 @@ const resolveView = (path) => {
 const isProtectedPath = (path) =>
     path.startsWith('/cliente') ||
     ['/admin/dashboard', '/escaner', '/operacion'].includes(path) ||
+    path.startsWith('/operacion/') ||
     path.startsWith('/programador');
 
 const guardPath = async (path, user) => {
     if (path.startsWith('/cliente')) return true;
     const access = await getUserAccess(user);
 
-    if (path === '/operacion') {
+    if (path === '/operacion' || path.startsWith('/operacion/')) {
+        if (path === '/operacion/venta') {
+            const allowedPos =
+                access.can('sales.physical') ||
+                access.can('admin.panel') ||
+                access.can('programador.access');
+            if (allowedPos) return true;
+            await showAlert('Acceso denegado. Se requiere permiso de ventas físicas.', {
+                title: 'Sin permiso',
+                variant: 'danger'
+            });
+            return false;
+        }
         const allowed =
             access.can('tickets.scan') ||
             access.can('parking.manage') ||
@@ -200,7 +215,7 @@ export const initRouter = () => {
         return (
           path.startsWith('/cliente') ||
           path === '/admin/dashboard' ||
-          path === '/operacion' ||
+          path.startsWith('/operacion') ||
           path === '/escaner' ||
           path === '/checkout'
         );
@@ -209,12 +224,12 @@ export const initRouter = () => {
         return (
           path === '/checkout' ||
           path === '/admin/dashboard' ||
-          path === '/operacion' ||
+          path.startsWith('/operacion') ||
           path.startsWith('/cliente')
         );
       }
       if (scope === 'inventory') {
-        return path === '/checkout' || path === '/admin/dashboard' || path === '/operacion';
+        return path === '/checkout' || path === '/admin/dashboard' || path.startsWith('/operacion');
       }
       return true;
     };

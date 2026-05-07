@@ -1685,6 +1685,57 @@
     color: white;
   }
 
+  .mapa-view-tab {
+    border: 1px solid rgb(255 255 255 / 0.12);
+    border-radius: 0.7rem;
+    padding: 0.42rem 0.66rem;
+    font-size: 0.68rem;
+    font-weight: 900;
+    color: rgb(203 213 225);
+    background: rgb(15 23 42 / 0.55);
+  }
+
+  .mapa-view-tab.is-active {
+    color: white;
+    transform: translateY(-1px);
+  }
+
+  .mapa-view-tab--global.is-active {
+    border-color: rgb(148 163 184 / 0.6);
+    background: rgb(71 85 105 / 0.45);
+  }
+
+  .mapa-view-tab--mesas.is-active {
+    border-color: rgb(34 197 94 / 0.65);
+    background: rgb(22 163 74 / 0.42);
+  }
+
+  .mapa-view-tab--estacionamiento.is-active {
+    border-color: rgb(245 158 11 / 0.72);
+    background: rgb(180 83 9 / 0.4);
+  }
+
+  .mapa-view-tab--albercas.is-active {
+    border-color: rgb(14 165 233 / 0.72);
+    background: rgb(2 132 199 / 0.42);
+  }
+
+  .mapa-inspector-tab {
+    border: 1px solid transparent;
+    border-radius: 0.6rem;
+    padding: 0.4rem 0.45rem;
+    font-size: 0.64rem;
+    font-weight: 900;
+    color: rgb(148 163 184);
+    background: transparent;
+  }
+
+  .mapa-inspector-tab.is-active {
+    border-color: rgb(34 211 238 / 0.45);
+    color: white;
+    background: rgb(34 211 238 / 0.16);
+  }
+
   .mapa-command-primary {
     border: 1px solid rgb(45 212 191 / 0.42);
     background: rgb(13 148 136);

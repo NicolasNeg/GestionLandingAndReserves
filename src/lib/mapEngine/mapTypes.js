@@ -3,7 +3,8 @@ export const MAP_SCHEMA_VERSION = 2;
 export const MAP_VIEWS = {
   GLOBAL: 'global',
   MESAS: 'mesas',
-  ESTACIONAMIENTO: 'estacionamiento'
+  ESTACIONAMIENTO: 'estacionamiento',
+  ALBERCAS: 'albercas'
 };
 
 export const LEGACY_VIEW_ALIASES = {
@@ -11,7 +12,11 @@ export const LEGACY_VIEW_ALIASES = {
   global: MAP_VIEWS.GLOBAL,
   mesas: MAP_VIEWS.MESAS,
   estacionamiento: MAP_VIEWS.ESTACIONAMIENTO,
-  parking: MAP_VIEWS.ESTACIONAMIENTO
+  parking: MAP_VIEWS.ESTACIONAMIENTO,
+  albercas: MAP_VIEWS.ALBERCAS,
+  alberca: MAP_VIEWS.ALBERCAS,
+  pools: MAP_VIEWS.ALBERCAS,
+  pool: MAP_VIEWS.ALBERCAS
 };
 
 export const DEFAULT_LAYER_IDS = {

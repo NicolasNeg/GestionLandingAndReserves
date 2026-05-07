@@ -54,6 +54,7 @@ function makeNewItem(doc, patch = {}) {
 }
 
 export function createMapEditor(canvas, initialJson, onChange, options = {}) {
+  const runtimeOptions = { ...options };
   let doc = parseMapDocument(initialJson, options);
   let selectedIds = [];
   let tool = 'select';
@@ -94,7 +95,7 @@ export function createMapEditor(canvas, initialJson, onChange, options = {}) {
 
   const redraw = () => {
     drawMapCanvas(canvas, doc, {
-      ...options,
+      ...runtimeOptions,
       editor: !previewMode,
       showItemIds: !previewMode,
       showKindBadge: !previewMode,
@@ -537,6 +538,10 @@ export function createMapEditor(canvas, initialJson, onChange, options = {}) {
         tool = 'select';
         marqueeRect = null;
       }
+      redraw();
+    },
+    setRenderOptions: (patch = {}) => {
+      Object.assign(runtimeOptions, patch || {});
       redraw();
     },
     getPreviewMode: () => previewMode,

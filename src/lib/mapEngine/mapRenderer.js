@@ -4,6 +4,66 @@ import { TABLE_STATES, getMapKind } from './mapTypes.js';
 
 const bgImageCache = new Map();
 
+function normalizeViewName(view) {
+  const v = String(view || '').toLowerCase();
+  if (v === 'parque') return 'global';
+  if (v === 'parking') return 'estacionamiento';
+  if (v === 'pool' || v === 'alberca') return 'albercas';
+  return v || 'global';
+}
+
+function defaultVisibilityByKind(item = {}) {
+  const kind = String(item.kind || '').toLowerCase();
+  const type = String(item.type || '').toLowerCase();
+  const isMesa = kind === 'mesa' || kind === 'table' || type === 'table';
+  const isParking = kind === 'estacionamiento' || kind === 'parkingspot' || type === 'parkingspot';
+  const isPool = kind === 'alberca' || kind === 'pool' || type === 'pool';
+  return {
+    global: true,
+    mesas: isMesa,
+    estacionamiento: isParking,
+    albercas: isPool
+  };
+}
+
+function isVisibleInView(item, view) {
+  if (item?.visible === false) return false;
+  const activeView = normalizeViewName(view);
+  if (activeView === 'global') return true;
+  const cfg =
+    item?.metadata &&
+    typeof item.metadata === 'object' &&
+    item.metadata.visibilityByView &&
+    typeof item.metadata.visibilityByView === 'object'
+      ? item.metadata.visibilityByView
+      : null;
+  const fallback = defaultVisibilityByKind(item);
+  if (cfg && Object.prototype.hasOwnProperty.call(cfg, activeView)) return cfg[activeView] !== false;
+  if (cfg) {
+    const hasAny =
+      Object.prototype.hasOwnProperty.call(cfg, 'global') ||
+      Object.prototype.hasOwnProperty.call(cfg, 'mesas') ||
+      Object.prototype.hasOwnProperty.call(cfg, 'estacionamiento') ||
+      Object.prototype.hasOwnProperty.call(cfg, 'albercas');
+    if (hasAny) return false;
+  }
+  return fallback[activeView] || fallback.global;
+}
+
+function relevanceAlphaForView(item, view) {
+  const activeView = normalizeViewName(view);
+  if (activeView === 'global') return 1;
+  const kind = String(item?.kind || '').toLowerCase();
+  const type = String(item?.type || '').toLowerCase();
+  const isMesa = kind === 'mesa' || kind === 'table' || type === 'table';
+  const isParking = kind === 'estacionamiento' || kind === 'parkingspot' || type === 'parkingspot';
+  const isPool = kind === 'alberca' || kind === 'pool' || type === 'pool';
+  if (activeView === 'mesas') return isMesa ? 1 : 0.32;
+  if (activeView === 'estacionamiento') return isParking ? 1 : 0.32;
+  if (activeView === 'albercas') return isPool ? 1 : 0.32;
+  return 1;
+}
+
 function ensureBgImage(url, requestRedraw) {
   if (!url) return { img: null, loaded: false, error: false };
   let entry = bgImageCache.get(url);
@@ -663,8 +723,12 @@ function drawHover(ctx, item, options = {}) {
 
 function drawItem(ctx, item, options = {}) {
   const { fill, stroke } = colorsForItem(item, options);
+  const view = normalizeViewName(options.view || options.docView);
+  if (!isVisibleInView(item, view)) return;
   ctx.save();
-  ctx.globalAlpha = Number(item.opacity ?? 1);
+  const attenuation =
+    options.editor && options.showViewContext !== false ? relevanceAlphaForView(item, view) : 1;
+  ctx.globalAlpha = Math.max(0, Number(item.opacity ?? 1) * attenuation);
   applyItemTransform(ctx, item);
   const type = item.type || 'rect';
   if (type === 'table') drawTable(ctx, item, fill, stroke, options);
@@ -709,10 +773,14 @@ function drawEmptyState(ctx, doc) {
 }
 
 export function drawMapDocument(ctx, doc, options = {}) {
-  const renderOptions = { ...options, view: options.view || doc.view, docView: doc.view };
+  const renderOptions = {
+    ...options,
+    view: normalizeViewName(options.view || doc.view),
+    docView: normalizeViewName(doc.view)
+  };
   drawBackground(ctx, doc, renderOptions);
   const selectedIds = new Set(options.selectedIds || []);
-  const sorted = getSortedMapItems(doc);
+  const sorted = getSortedMapItems(doc).filter(({ item }) => isVisibleInView(item, renderOptions.view));
   sorted.forEach(({ item }) => drawItem(ctx, item, renderOptions));
   if (!doc.items.length) drawEmptyState(ctx, doc);
   const hovered = options.hoveredId ? doc.items.find((item) => item.id === options.hoveredId) : null;

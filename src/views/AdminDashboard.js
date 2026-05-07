@@ -40,7 +40,10 @@ import {
   getTicketSupportDetails,
   listTicketDeliveryLogs,
   listAuditEvents,
-  listAuditEventsForEntity
+  listAuditEventsForEntity,
+  getDailyCloseSummary,
+  listPhysicalSalesByDate,
+  listCashMovementsByDate
 } from '../lib/dataLayer.js';
 import { listPendingScans } from '../lib/offlineScannerStore.js';
 import {
@@ -80,6 +83,7 @@ import { resendTicketEmail } from '../lib/ticketEmail.js';
 import { downloadTicketPdfBestEffort } from '../lib/ticketPdf.js';
 import { copyTicketCode } from '../lib/ticketShare.js';
 import { logAuditEvent } from '../lib/auditLog.js';
+import html2pdf from 'html2pdf.js';
 import {
   buildFullBackupPayload,
   clearAllMapDrafts,
@@ -313,6 +317,12 @@ const AdminDashboard = {
       canBitacora ||
       access.can('tickets.scan') ||
       access.can('sales.physical');
+    const canCorteDia =
+      access.can('sales.physical') ||
+      access.can('finance.view') ||
+      access.can('dashboard.manage') ||
+      access.can('admin.panel') ||
+      access.can('programador.access');
     const canTicketTypesPanel = canPackages || canAdminPanel;
     const showDiscountTechnical =
       access.isProgramador === true || access.can('programador.access');
@@ -339,6 +349,7 @@ const AdminDashboard = {
                     ${canTicketTypesPanel ? `<button type="button" data-admin-section="ticket-types" class="admin-sidebar-item" title="Tickets del catalogo">${icon('ticket', 'h-5 w-5')}<span class="admin-sidebar-label">Tickets</span></button>` : ''}
                     ${canParking ? `<button type="button" data-admin-section="parking" class="admin-sidebar-item" title="Estacionamiento">${icon('parking', 'h-5 w-5')}<span class="admin-sidebar-label">Estacionamiento</span></button>` : ''}
                     ${canInventoryView ? `<button type="button" data-admin-section="inventario" class="admin-sidebar-item" title="Inventario y ventas">${icon('package', 'h-5 w-5')}<span class="admin-sidebar-label">Inventario / Ventas</span></button>` : ''}
+                    ${canCorteDia ? `<button type="button" data-admin-section="corte-dia" class="admin-sidebar-item" title="Corte del día">${icon('clock', 'h-5 w-5')}<span class="admin-sidebar-label">Corte del día</span></button>` : ''}
                     ${canSupport ? `<button type="button" data-admin-section="soporte" class="admin-sidebar-item" title="Soporte clientes">${icon('users', 'h-5 w-5')}<span class="admin-sidebar-label">Soporte</span></button>` : ''}
                     ${canBitacora ? `<button type="button" data-admin-section="bitacora" class="admin-sidebar-item" title="Bitacora operativa">${icon('clock', 'h-5 w-5')}<span class="admin-sidebar-label">Bitácora</span></button>` : ''}
                     ${canScan ? `<a href="/escaner" data-link class="admin-sidebar-item" title="Escaner">${icon('scan', 'h-5 w-5')}<span class="admin-sidebar-label">Escaner</span></a>` : ''}
@@ -748,6 +759,38 @@ const AdminDashboard = {
                   </div>
                 </div>` : ''}
 
+                ${canCorteDia ? `<div id="admin-panel-corte-dia" class="hidden space-y-6">
+                  <section class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+                    <div class="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <h2 class="text-xl font-black text-slate-900">Corte del día</h2>
+                        <p class="mt-1 text-sm text-slate-600">Resumen de ventas físicas, online y movimientos de caja.</p>
+                      </div>
+                      <div class="flex items-center gap-2">
+                        <input id="corte-dia-fecha" type="date" value="${formatFechaDia()}" class="rounded-xl border border-slate-300 px-3 py-2 text-sm" />
+                        <button type="button" id="corte-dia-refresh" class="rounded-xl border border-slate-300 px-3 py-2 text-xs font-black text-slate-700">Actualizar</button>
+                      </div>
+                    </div>
+                    <p id="corte-dia-msg" class="mt-3 text-xs font-semibold text-slate-600"></p>
+                    <div id="corte-dia-kpis" class="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4"></div>
+                    <div class="mt-4 flex flex-wrap gap-2">
+                      <button type="button" id="corte-dia-export-csv" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-black text-slate-700">Exportar CSV</button>
+                      <button type="button" id="corte-dia-export-pdf" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-black text-slate-700">Exportar PDF</button>
+                      <button type="button" id="corte-dia-print" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-black text-slate-700">Imprimir resumen</button>
+                    </div>
+                    <div class="mt-4 grid gap-4 lg:grid-cols-2">
+                      <div class="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                        <h3 class="text-sm font-black text-slate-800">Ventas físicas</h3>
+                        <div id="corte-dia-sales-list" class="mt-2 space-y-2 text-xs text-slate-700"></div>
+                      </div>
+                      <div class="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                        <h3 class="text-sm font-black text-slate-800">Movimientos de caja</h3>
+                        <div id="corte-dia-cash-list" class="mt-2 space-y-2 text-xs text-slate-700"></div>
+                      </div>
+                    </div>
+                  </section>
+                </div>` : ''}
+
                 ${canSupport ? `<div id="admin-panel-soporte" class="hidden space-y-6">
                   <section class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
                     <h2 class="text-xl font-black text-slate-900">Soporte de clientes</h2>
@@ -1052,16 +1095,23 @@ const AdminDashboard = {
                               <div class="flex min-w-0 flex-1 items-center gap-3">
                                 <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-cyan-500/15 text-cyan-400">${icon('map', 'h-6 w-6')}</span>
                                 <div class="min-w-0">
-                                  <h2 class="text-base font-black tracking-tight text-white">Editor del mapa del parque</h2>
-                                  <p class="text-xs text-slate-400">Un lienzo por vista: global, mesas y estacionamiento.</p>
+                                  <h2 class="text-base font-black tracking-tight text-white">Editor del parque</h2>
+                                  <p class="text-xs text-slate-400">Workspace visual para personal operativo: Global, Mesas, Estacionamiento y Albercas.</p>
                                 </div>
                               </div>
                               <div class="flex flex-wrap items-center gap-2">
                                 <label class="sr-only" for="map-context-select">Vista del mapa</label>
-                                <select id="map-context-select" class="rounded-lg border border-cyan-400/30 bg-cyan-500/10 px-3 py-2 text-xs font-black text-cyan-100">
+                                <div id="map-view-tabs" class="inline-flex flex-wrap items-center gap-1 rounded-xl border border-white/10 bg-white/5 p-1">
+                                  <button type="button" data-map-view-tab="parque" class="mapa-view-tab mapa-view-tab--global is-active">Global</button>
+                                  <button type="button" data-map-view-tab="mesas" class="mapa-view-tab mapa-view-tab--mesas">Mesas</button>
+                                  <button type="button" data-map-view-tab="estacionamiento" class="mapa-view-tab mapa-view-tab--estacionamiento">Estacionamiento</button>
+                                  <button type="button" data-map-view-tab="albercas" class="mapa-view-tab mapa-view-tab--albercas">Albercas</button>
+                                </div>
+                                <select id="map-context-select" class="hidden rounded-lg border border-cyan-400/30 bg-cyan-500/10 px-3 py-2 text-xs font-black text-cyan-100">
                                   <option value="parque">Mapa Global</option>
                                   <option value="mesas">Mapa Mesas</option>
                                   <option value="estacionamiento">Mapa Estacionamiento</option>
+                                  <option value="albercas">Mapa Albercas</option>
                                 </select>
                                 <button type="button" id="mapa-save-shortcut" class="mapa-command-primary" title="Guardar contenido del sitio">${icon('check', 'h-4 w-4')} Guardar</button>
                                 <button type="button" id="mapa-focus-toggle" class="mapa-command-btn" title="Modo enfoque">${icon('eye', 'h-4 w-4')} Modo enfoque</button>
@@ -1072,10 +1122,10 @@ const AdminDashboard = {
                               <button type="button" data-map-mode="select" class="mapa-mode-btn mapa-command-btn is-active" title="Seleccionar">${icon('cursor', 'h-4 w-4')} Seleccionar</button>
                               <button type="button" data-map-mode="pan" class="mapa-mode-btn mapa-command-btn" title="Mano / pan">${icon('move', 'h-4 w-4')} Mano</button>
                               <span class="mx-0.5 hidden h-5 w-px bg-white/10 sm:block" aria-hidden="true"></span>
-                              <button type="button" id="mapa-undo" class="mapa-command-btn" title="Deshacer">${icon('undo', 'h-4 w-4')} Undo</button>
-                              <button type="button" id="mapa-redo" class="mapa-command-btn" title="Rehacer">${icon('redo', 'h-4 w-4')} Redo</button>
+                              <button type="button" id="mapa-undo" class="mapa-command-btn" title="Deshacer">${icon('undo', 'h-4 w-4')} Deshacer</button>
+                              <button type="button" id="mapa-redo" class="mapa-command-btn" title="Rehacer">${icon('redo', 'h-4 w-4')} Rehacer</button>
                               <span class="mx-0.5 hidden h-5 w-px bg-white/10 lg:block" aria-hidden="true"></span>
-                              <button type="button" id="mapa-preview-canvas" class="mapa-command-btn" title="Vista previa solo lectura. Pulsa Esc para salir.">${icon('eye', 'h-4 w-4')} Preview</button>
+                              <button type="button" id="mapa-preview-canvas" class="mapa-command-btn" title="Vista previa solo lectura. Pulsa Esc para salir.">${icon('eye', 'h-4 w-4')} Vista previa</button>
                               <a id="mapa-preview-link" href="/home#mapa" data-link class="mapa-command-btn" title="Abrir vista publica">${icon('home', 'h-4 w-4')} Abrir sitio</a>
                               <label class="mapa-command-btn cursor-pointer select-none"><input id="mapa-show-grid" type="checkbox" class="mr-1 align-middle" checked /> Grid</label>
                             </div>
@@ -1192,6 +1242,11 @@ const AdminDashboard = {
                                   <h3 class="text-sm font-black text-white">Seleccion</h3>
                                 </div>
                                 <span id="mapa-selected-kind-pill" class="rounded-full bg-slate-700 px-2 py-1 text-[10px] font-bold text-slate-300">Sin seleccion</span>
+                              </div>
+                              <div class="mb-3 grid grid-cols-3 gap-1 rounded-lg border border-white/10 bg-white/5 p-1">
+                                <button type="button" class="mapa-inspector-tab is-active" data-map-inspector-tab="propiedades">Propiedades</button>
+                                <button type="button" class="mapa-inspector-tab" data-map-inspector-tab="visibilidad">Visibilidad por vista</button>
+                                <button type="button" class="mapa-inspector-tab" data-map-inspector-tab="capas">Capas</button>
                               </div>
                               <p id="mapa-empty-state" class="rounded-xl border border-dashed border-white/15 bg-white/5 p-4 text-xs leading-relaxed text-slate-400">Haz clic en una pieza del lienzo. Flechas del teclado mueven 1px (Shift = 10px).</p>
                               <div id="mapa-multi-state" class="hidden rounded-xl border border-cyan-400/20 bg-cyan-400/10 p-4 text-xs leading-relaxed text-cyan-100">
@@ -1324,7 +1379,16 @@ const AdminDashboard = {
                                 </div>
                                 </section>
                               </div>
-                              <div class="mt-4 border-t border-white/10 pt-4">
+                              <div id="mapa-inspector-visibility-panel" class="hidden space-y-2 rounded-xl border border-white/10 bg-white/5 p-3">
+                                <p class="text-[10px] font-black uppercase tracking-widest text-cyan-200">Visible en</p>
+                                <p class="text-[11px] font-semibold text-slate-400">Elige en qué vistas se mostrará este elemento.</p>
+                                <label class="flex items-center justify-between rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs font-semibold text-slate-200"><span>Global</span><input id="mapa-visible-global" type="checkbox" /></label>
+                                <label class="flex items-center justify-between rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs font-semibold text-slate-200"><span>Mesas</span><input id="mapa-visible-mesas" type="checkbox" /></label>
+                                <label class="flex items-center justify-between rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs font-semibold text-slate-200"><span>Estacionamiento</span><input id="mapa-visible-estacionamiento" type="checkbox" /></label>
+                                <label class="flex items-center justify-between rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs font-semibold text-slate-200"><span>Albercas</span><input id="mapa-visible-albercas" type="checkbox" /></label>
+                                <label class="mt-1 flex items-center gap-2 text-xs font-semibold text-slate-400"><input id="mapa-show-context" type="checkbox" checked /> Mostrar contexto atenuado</label>
+                              </div>
+                              <div id="mapa-inspector-layers-panel" class="mt-4 border-t border-white/10 pt-4">
                                 <div class="mb-2 flex items-center justify-between">
                                   <p class="text-[10px] font-black uppercase tracking-widest text-slate-500">Capas e items</p>
                                   <span id="mapa-layer-count" class="text-[10px] font-bold text-slate-500">0</span>
@@ -1335,6 +1399,7 @@ const AdminDashboard = {
                                     <option value="">Todos los tipos</option>
                                     <option value="mesa">Mesas</option>
                                     <option value="parkingSpot">Parking</option>
+                                    <option value="alberca">Albercas</option>
                                     <option value="area">Áreas</option>
                                     <option value="servicio">Servicios</option>
                                   </select>
@@ -1401,6 +1466,7 @@ const AdminDashboard = {
     const panelTickets = document.getElementById('admin-panel-tickets');
     const panelParking = document.getElementById('admin-panel-parking');
     const panelInventario = document.getElementById('admin-panel-inventario');
+    const panelCorteDia = document.getElementById('admin-panel-corte-dia');
     const panelSoporte = document.getElementById('admin-panel-soporte');
     const panelBitacora = document.getElementById('admin-panel-bitacora');
     const panelAdmin = document.getElementById('admin-panel-admin');
@@ -1594,6 +1660,12 @@ const AdminDashboard = {
       }
       if (canBitacoraQuick) {
         links.push({ href: '/admin/dashboard?section=bitacora', label: 'Ver bitácora', icon: 'clock' });
+      }
+      if (canCorteDia) {
+        links.push({ href: '/admin/dashboard?section=corte-dia', label: 'Corte del día', icon: 'clock' });
+      }
+      if (access.can('sales.physical') || access.can('admin.panel') || canProgramadorTools) {
+        links.push({ href: '/operacion/venta', label: 'Venta física', icon: 'package' });
       }
       ql.innerHTML = links
         .map((l) => {
@@ -1880,12 +1952,14 @@ const AdminDashboard = {
       if (name === 'ticket-types' && !panelTicketTypes) return;
       if (name === 'admin' && !panelAdmin) return;
       if (name === 'inventario' && !panelInventario) return;
+      if (name === 'corte-dia' && !panelCorteDia) return;
       if (name === 'parking' && !panelParking) return;
       if (name === 'soporte' && !panelSoporte) return;
       if (name === 'bitacora' && !panelBitacora) return;
       if (panelTickets) panelTickets.classList.toggle('hidden', name !== 'tickets');
       if (panelParking) panelParking.classList.toggle('hidden', name !== 'parking');
       if (panelInventario) panelInventario.classList.toggle('hidden', name !== 'inventario');
+      if (panelCorteDia) panelCorteDia.classList.toggle('hidden', name !== 'corte-dia');
       if (panelSoporte) panelSoporte.classList.toggle('hidden', name !== 'soporte');
       if (panelBitacora) panelBitacora.classList.toggle('hidden', name !== 'bitacora');
       if (panelAdmin) panelAdmin.classList.toggle('hidden', name !== 'admin');
@@ -1906,6 +1980,7 @@ const AdminDashboard = {
         if (sec === 'ticket-types') initTicketTypesPanel();
         if (sec === 'parking') initParkingPanel();
         if (sec === 'inventario') initInventarioPanel();
+        if (sec === 'corte-dia') initCorteDiaPanel();
         if (sec === 'soporte') initSupportPanel();
         if (sec === 'bitacora') initBitacoraPanel();
       });
@@ -2601,12 +2676,16 @@ const AdminDashboard = {
           ? (landing.mapaMesasJson || landing.mapaDistribucionJson)
           : mapContext === 'estacionamiento'
             ? (landing.mapaEstacionamientoJson || landing.mapaDistribucionJson)
+            : mapContext === 'albercas'
+              ? (landing.mapaDistribucionJson || DEFAULT_MAPA_JSON)
             : landing.mapaDistribucionJson;
       const mapViewForContext = () =>
         mapContext === 'mesas'
           ? 'mesas'
           : mapContext === 'estacionamiento'
             ? 'estacionamiento'
+            : mapContext === 'albercas'
+              ? 'albercas'
             : 'global';
       const updateMapContextUsageHint = () => {
         const el = document.getElementById('mapa-context-usage');
@@ -2617,6 +2696,9 @@ const AdminDashboard = {
         } else if (mapContext === 'estacionamiento') {
           el.textContent =
             'Este mapa alimenta la vista de estacionamiento y el panel operativo de parking.';
+        } else if (mapContext === 'albercas') {
+          el.textContent =
+            'Vista Albercas: usa el mapa global y destaca zonas acuáticas sin romper compatibilidad actual.';
         } else {
           el.textContent =
             'Este mapa es el plano público del parque en /home (#mapa).';
@@ -2642,6 +2724,10 @@ const AdminDashboard = {
             title.textContent = 'Aún no hay mapa de estacionamiento.';
             hint.textContent =
               'Agrega cajones con la herramienta Estacionamiento o importa JSON. Configura código en cada cajón.';
+          } else if (mapContext === 'albercas') {
+            title.textContent = 'Aún no hay albercas configuradas.';
+            hint.textContent =
+              'Agrega albercas o áreas acuáticas. Puedes usar una plantilla rápida para iniciar.';
           } else {
             title.textContent = 'Aún no hay mapa global.';
             hint.textContent =
@@ -2672,6 +2758,7 @@ const AdminDashboard = {
         if (mapContext === 'parque') landing.mapaDistribucionJson = j;
         if (mapContext === 'mesas') landing.mapaMesasJson = j;
         if (mapContext === 'estacionamiento') landing.mapaEstacionamientoJson = j;
+        if (mapContext === 'albercas') landing.mapaDistribucionJson = j;
       };
       const parsedMapDims = parseDistribucionJson(getMapByContext());
       setVal('mapa-doc-w', parsedMapDims.w);
@@ -2683,6 +2770,8 @@ const AdminDashboard = {
 
       const wireMapEditorUi = () => {
         const fieldsWrap = document.getElementById('mapa-editor-fields');
+        const visibilityPanel = document.getElementById('mapa-inspector-visibility-panel');
+        const layersPanel = document.getElementById('mapa-inspector-layers-panel');
         const emptyState = document.getElementById('mapa-empty-state');
         const multiState = document.getElementById('mapa-multi-state');
         const multiCount = document.getElementById('mapa-multi-count');
@@ -2723,6 +2812,7 @@ const AdminDashboard = {
           genericDescription: 'mapa-meta-generic-description'
         };
         let syncing = false;
+        let mapShowContext = true;
 
         const el = (key) => document.getElementById(fieldIds[key]);
         const toColorValue = (value, fallback = '#0f766e') => {
@@ -2734,6 +2824,50 @@ const AdminDashboard = {
         };
         const isTableKind = (value) => value === 'mesa' || value === 'table';
         const isTableItem = (item) => isTableKind(item?.kind) || item?.type === 'table';
+        const defaultVisibilityByKind = (kindValue, typeValue = '') => {
+          const k = String(kindValue || '').toLowerCase();
+          const t = String(typeValue || '').toLowerCase();
+          const isMesa = k === 'mesa' || k === 'table' || t === 'table';
+          const isParking = k === 'estacionamiento' || k === 'parkingspot' || t === 'parkingspot';
+          const isPool = k === 'alberca' || k === 'pool' || t === 'pool';
+          return {
+            global: true,
+            mesas: isMesa,
+            estacionamiento: isParking,
+            albercas: isPool
+          };
+        };
+        const readVisibilityByView = (item) => {
+          const fallback = defaultVisibilityByKind(item?.kind, item?.type);
+          const raw =
+            item?.metadata && typeof item.metadata === 'object' && item.metadata.visibilityByView
+              ? item.metadata.visibilityByView
+              : null;
+          return {
+            global:
+              raw && Object.prototype.hasOwnProperty.call(raw, 'global')
+                ? raw.global !== false
+                : fallback.global,
+            mesas:
+              raw && Object.prototype.hasOwnProperty.call(raw, 'mesas') ? raw.mesas !== false : fallback.mesas,
+            estacionamiento:
+              raw && Object.prototype.hasOwnProperty.call(raw, 'estacionamiento')
+                ? raw.estacionamiento !== false
+                : fallback.estacionamiento,
+            albercas:
+              raw && Object.prototype.hasOwnProperty.call(raw, 'albercas')
+                ? raw.albercas !== false
+                : fallback.albercas
+          };
+        };
+        const syncInspectorTabs = () => {
+          const active = document.querySelector('[data-map-inspector-tab].is-active')?.getAttribute(
+            'data-map-inspector-tab'
+          ) || 'propiedades';
+          fieldsWrap?.classList.toggle('hidden', active !== 'propiedades');
+          visibilityPanel?.classList.toggle('hidden', active !== 'visibilidad');
+          layersPanel?.classList.toggle('hidden', active !== 'capas');
+        };
         const splitTags = (value) =>
           String(value || '')
             .split(',')
@@ -2783,6 +2917,9 @@ const AdminDashboard = {
           } else if (mapContext === 'estacionamiento') {
             previewLink.setAttribute('href', '#');
             previewLink.setAttribute('title', 'Usa Preview lienzo para ver solo lectura; el plano publico de parking esta en la landing si aplica');
+          } else if (mapContext === 'albercas') {
+            previewLink.setAttribute('href', '/home#mapa');
+            previewLink.setAttribute('title', 'Abrir vista pública general del mapa');
           } else {
             previewLink.setAttribute('href', '/home#mapa');
             previewLink.setAttribute('title', 'Abrir inicio en otra pestaña');
@@ -2793,9 +2930,15 @@ const AdminDashboard = {
           fieldsWrap?.classList.toggle('hidden', mode !== 'single');
           emptyState?.classList.toggle('hidden', mode !== 'empty');
           multiState?.classList.toggle('hidden', mode !== 'multi');
+          if (mode !== 'single') visibilityPanel?.classList.add('hidden');
           document.querySelectorAll('#mapa-editor-fields input, #mapa-editor-fields select, #mapa-editor-fields textarea, #mapa-editor-fields button').forEach((node) => {
             node.disabled = disabled;
           });
+          document
+            .querySelectorAll('#mapa-inspector-visibility-panel input')
+            .forEach((node) => {
+              node.disabled = disabled;
+            });
         };
         const fillFields = (item, _index, selection = []) => {
           syncing = true;
@@ -2862,6 +3005,15 @@ const AdminDashboard = {
           el('genericZone').value = item.metadata?.zone || '';
           el('description').value = item.metadata?.description || '';
           el('genericDescription').value = item.metadata?.description || '';
+          const vis = readVisibilityByView(item);
+          const vg = document.getElementById('mapa-visible-global');
+          const vm = document.getElementById('mapa-visible-mesas');
+          const ve = document.getElementById('mapa-visible-estacionamiento');
+          const va = document.getElementById('mapa-visible-albercas');
+          if (vg) vg.checked = vis.global;
+          if (vm) vm.checked = vis.mesas;
+          if (ve) ve.checked = vis.estacionamiento;
+          if (va) va.checked = vis.albercas;
           renderLayers();
           syncing = false;
         };
@@ -2892,6 +3044,13 @@ const AdminDashboard = {
               extras: parseExtras(el('extras')?.value || '')
             });
           }
+          const visibilityByView = {
+            global: document.getElementById('mapa-visible-global')?.checked !== false,
+            mesas: document.getElementById('mapa-visible-mesas')?.checked === true,
+            estacionamiento: document.getElementById('mapa-visible-estacionamiento')?.checked === true,
+            albercas: document.getElementById('mapa-visible-albercas')?.checked === true
+          };
+          metadataPatch.visibilityByView = visibilityByView;
           return {
             id: el('id')?.value || '',
             kind: kindValue,
@@ -2929,6 +3088,7 @@ const AdminDashboard = {
               (kindFilter === 'mesa' && (kindValue === 'mesa' || kindValue === 'table')) ||
               (kindFilter === 'parkingspot' &&
                 (kindValue === 'parkingspot' || kindValue === 'estacionamiento')) ||
+              (kindFilter === 'alberca' && (kindValue === 'alberca' || kindValue === 'pool')) ||
               (kindFilter === 'servicio' && (kindValue === 'servicio' || kindValue === 'servicearea'));
             if (!kindMatch) return false;
             if (!searchText) return true;
@@ -2970,6 +3130,26 @@ const AdminDashboard = {
         };
         document.getElementById('mapa-layers-search')?.addEventListener('input', () => renderLayers());
         document.getElementById('mapa-layers-kind-filter')?.addEventListener('change', () => renderLayers());
+        document.querySelectorAll('[data-map-inspector-tab]').forEach((btn) => {
+          btn.addEventListener('click', () => {
+            document
+              .querySelectorAll('[data-map-inspector-tab]')
+              .forEach((x) => x.classList.toggle('is-active', x === btn));
+            syncInspectorTabs();
+          });
+        });
+        document.getElementById('mapa-show-context')?.addEventListener('change', (ev) => {
+          mapShowContext = ev.currentTarget.checked !== false;
+          mapEditor?.setRenderOptions?.({ showViewContext: mapShowContext });
+        });
+        ['mapa-visible-global', 'mapa-visible-mesas', 'mapa-visible-estacionamiento', 'mapa-visible-albercas'].forEach((id) => {
+          const node = document.getElementById(id);
+          if (!node) return;
+          node.addEventListener('change', () => {
+            if (syncing) return;
+            mapEditor?.updateSelected(collectPatch());
+          });
+        });
 
         Object.values(fieldIds).forEach((id) => {
           const node = document.getElementById(id);
@@ -3190,6 +3370,7 @@ const AdminDashboard = {
           };
         });
         updatePreviewLink();
+        syncInspectorTabs();
         mapEditor?.onSelectionChange(fillFields);
         mapEditor?.onDocumentChange?.((d) => {
           syncBgFormFromDoc(d);
@@ -3235,6 +3416,7 @@ const AdminDashboard = {
         document.getElementById('mapa-empty-preset')?.addEventListener('click', () => {
           if (mapContext === 'mesas') document.getElementById('mapa-preset-mesas-grid')?.click();
           else if (mapContext === 'estacionamiento') document.getElementById('mapa-preset-parking-row')?.click();
+          else if (mapContext === 'albercas') document.getElementById('mapa-preset-global-kit')?.click();
           else document.getElementById('mapa-preset-global-kit')?.click();
         });
 
@@ -3399,12 +3581,28 @@ const AdminDashboard = {
       }
 
       const mapContextSelect = document.getElementById('map-context-select');
+      const syncMapViewTabs = () => {
+        document.querySelectorAll('[data-map-view-tab]').forEach((btn) => {
+          const on = btn.getAttribute('data-map-view-tab') === mapContext;
+          btn.classList.toggle('is-active', on);
+        });
+      };
+      document.querySelectorAll('[data-map-view-tab]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const value = btn.getAttribute('data-map-view-tab') || 'parque';
+          if (mapContextSelect) {
+            mapContextSelect.value = value;
+            mapContextSelect.dispatchEvent(new Event('change'));
+          }
+        });
+      });
       mapContextSelect?.addEventListener('change', () => {
         if (mapEditor) {
           const prev = mapEditor.getJson();
           if (mapContext === 'parque') landing.mapaDistribucionJson = prev;
           if (mapContext === 'mesas') landing.mapaMesasJson = prev;
           if (mapContext === 'estacionamiento') landing.mapaEstacionamientoJson = prev;
+          if (mapContext === 'albercas') landing.mapaDistribucionJson = prev;
         }
         mapContext = mapContextSelect.value || 'parque';
         const nextJson = getMapByContext();
@@ -3417,9 +3615,11 @@ const AdminDashboard = {
           setVal('mapa-doc-w', dims.w);
           setVal('mapa-doc-h', dims.h);
         }
+        syncMapViewTabs();
         updateMapContextUsageHint();
         checkMapDraftBanner();
       });
+      syncMapViewTabs();
 
       document.getElementById('btn-add-wa')?.addEventListener('click', () => {
         const wrap = document.getElementById('lp-botones-rows');
@@ -3668,6 +3868,7 @@ const AdminDashboard = {
         if (mapContext === 'parque') landing.mapaDistribucionJson = editedMapJson;
         if (mapContext === 'mesas') landing.mapaMesasJson = editedMapJson;
         if (mapContext === 'estacionamiento') landing.mapaEstacionamientoJson = editedMapJson;
+        if (mapContext === 'albercas') landing.mapaDistribucionJson = editedMapJson;
 
         const vP = validateMapDocumentForSave(landing.mapaDistribucionJson || DEFAULT_MAPA_JSON, 'parque');
         const vM = validateMapDocumentForSave(
@@ -3678,8 +3879,12 @@ const AdminDashboard = {
           landing.mapaEstacionamientoJson || landing.mapaDistribucionJson || DEFAULT_MAPA_JSON,
           'estacionamiento'
         );
-        const mapErrors = [...new Set([...vP.errors, ...vM.errors, ...vE.errors])];
-        const mapWarnings = [...new Set([...vP.warnings, ...vM.warnings, ...vE.warnings])];
+        const vA = validateMapDocumentForSave(
+          landing.mapaDistribucionJson || DEFAULT_MAPA_JSON,
+          'albercas'
+        );
+        const mapErrors = [...new Set([...vP.errors, ...vM.errors, ...vE.errors, ...vA.errors])];
+        const mapWarnings = [...new Set([...vP.warnings, ...vM.warnings, ...vE.warnings, ...vA.warnings])];
         if (mapErrors.length) {
           await showAlert(mapErrors.slice(0, 14).join('\n'), {
             title: 'Corrige el mapa antes de guardar',
@@ -4925,6 +5130,182 @@ const AdminDashboard = {
       void render();
     };
 
+    let corteDiaReady = false;
+    const initCorteDiaPanel = () => {
+      if (corteDiaReady) return;
+      corteDiaReady = true;
+      const fechaEl = document.getElementById('corte-dia-fecha');
+      const refreshBtn = document.getElementById('corte-dia-refresh');
+      const msgEl = document.getElementById('corte-dia-msg');
+      const kpisEl = document.getElementById('corte-dia-kpis');
+      const salesEl = document.getElementById('corte-dia-sales-list');
+      const cashEl = document.getElementById('corte-dia-cash-list');
+      const csvBtn = document.getElementById('corte-dia-export-csv');
+      const pdfBtn = document.getElementById('corte-dia-export-pdf');
+      const printBtn = document.getElementById('corte-dia-print');
+      if (!fechaEl || !refreshBtn || !kpisEl || !salesEl || !cashEl || !msgEl || !csvBtn || !pdfBtn || !printBtn)
+        return;
+      let lastPayload = null;
+      const setMsg = (msg, ok = false) => {
+        msgEl.textContent = msg || '';
+        msgEl.className = `mt-3 text-xs font-semibold ${ok ? 'text-emerald-700' : 'text-slate-600'}`;
+      };
+      const buildCsv = (summary, sales, cash) => {
+        const rows = [['fecha', 'tipo', 'concepto', 'cantidad', 'metodo_pago', 'total']];
+        for (const s of sales) {
+          rows.push([
+            summary.fecha,
+            'venta_fisica',
+            `Venta ${String(s.id).slice(0, 8)}`,
+            String(s.metadata?.items || 0),
+            s.paymentMethod || '',
+            Number(s.total || 0).toFixed(2)
+          ]);
+        }
+        for (const c of cash) {
+          rows.push([
+            summary.fecha,
+            'movimiento_caja',
+            c.type || '',
+            '1',
+            c.method || '',
+            Number(c.amount || 0).toFixed(2)
+          ]);
+        }
+        return rows.map((r) => r.map((x) => `"${String(x ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
+      };
+      const downloadCsv = () => {
+        if (!lastPayload) return;
+        const csv = buildCsv(lastPayload.summary, lastPayload.sales, lastPayload.cash);
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `corte_dia_${lastPayload.summary.fecha}.csv`;
+        a.click();
+        URL.revokeObjectURL(url);
+        void logAuditEvent({
+          eventType: 'corte_exportado',
+          entityType: 'daily_close',
+          entityId: lastPayload.summary.fecha,
+          title: 'Corte exportado CSV',
+          description: `Se exportó corte del día ${lastPayload.summary.fecha} en CSV.`,
+          metadata: { fecha: lastPayload.summary.fecha, format: 'csv' }
+        });
+      };
+      const downloadPdf = async () => {
+        if (!lastPayload) return;
+        const host = document.createElement('div');
+        host.style.cssText = 'position:fixed;left:-9999px;top:0;width:700px;background:#fff;padding:20px;';
+        host.innerHTML = `
+          <div style="font-family:sans-serif;color:#111">
+            <h2 style="margin:0 0 6px">Balneario San Antonio</h2>
+            <p style="margin:0 0 12px;color:#444">Corte del día · ${escapeHtml(lastPayload.summary.fecha)}</p>
+            <p style="margin:0"><strong>Total ventas físicas:</strong> ${fmtMxMoney(lastPayload.summary.physicalTotal || 0)}</p>
+            <p style="margin:0"><strong>Ventas físicas:</strong> ${Number(lastPayload.summary.physicalSalesCount || 0)}</p>
+            <p style="margin:0"><strong>Tickets vendidos:</strong> ${Number(lastPayload.summary.ticketsSold || 0)}</p>
+            <p style="margin:0 0 10px"><strong>Pagos pendientes:</strong> ${Number(lastPayload.summary.ticketsPending || 0)}</p>
+            <ul style="padding-left:18px;font-size:12px">
+              <li>Efectivo: ${fmtMxMoney(lastPayload.summary.byMethod?.efectivo || 0)}</li>
+              <li>Terminal: ${fmtMxMoney(lastPayload.summary.byMethod?.terminal || 0)}</li>
+              <li>Transferencia: ${fmtMxMoney(lastPayload.summary.byMethod?.transferencia || 0)}</li>
+              <li>Cortesía: ${fmtMxMoney(lastPayload.summary.byMethod?.cortesia || 0)}</li>
+            </ul>
+          </div>`;
+        document.body.appendChild(host);
+        try {
+          await html2pdf()
+            .set({
+              margin: 8,
+              filename: `corte_dia_${lastPayload.summary.fecha}.pdf`,
+              html2canvas: { scale: 2, backgroundColor: '#fff' },
+              jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+            })
+            .from(host.firstElementChild)
+            .save();
+          void logAuditEvent({
+            eventType: 'corte_exportado',
+            entityType: 'daily_close',
+            entityId: lastPayload.summary.fecha,
+            title: 'Corte exportado PDF',
+            description: `Se exportó corte del día ${lastPayload.summary.fecha} en PDF.`,
+            metadata: { fecha: lastPayload.summary.fecha, format: 'pdf' }
+          });
+        } finally {
+          document.body.removeChild(host);
+        }
+      };
+      const render = async () => {
+        const fecha = String(fechaEl.value || formatFechaDia()).trim();
+        setMsg('Cargando corte...');
+        try {
+          const [summaryRes, salesRes, cashRes] = await Promise.all([
+            getDailyCloseSummary(fecha),
+            listPhysicalSalesByDate(fecha),
+            listCashMovementsByDate(fecha)
+          ]);
+          const summary = summaryRes?.data?.summary || {};
+          const sales = salesRes?.data?.sales || [];
+          const cash = cashRes?.data?.movements || [];
+          lastPayload = { summary, sales, cash };
+          const cards = [
+            ['Ventas del día', String(summary.physicalSalesCount || 0), fmtMxMoney(summary.physicalTotal || 0)],
+            ['Efectivo', fmtMxMoney(summary.byMethod?.efectivo || 0), ''],
+            ['Terminal', fmtMxMoney(summary.byMethod?.terminal || 0), ''],
+            ['Transferencia', fmtMxMoney(summary.byMethod?.transferencia || 0), ''],
+            ['Cortesías', fmtMxMoney(summary.byMethod?.cortesia || 0), ''],
+            ['Tickets vendidos', String(summary.ticketsSold || 0), `${summary.ticketsPending || 0} pendientes`],
+            ['Reservas de mesas', String(summary.reservasMesas || 0), ''],
+            ['Movimientos de caja', String(summary.cashMovementsCount || 0), '']
+          ];
+          kpisEl.innerHTML = cards
+            .map(
+              (card) => `<article class="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <p class="text-[10px] font-black uppercase tracking-wide text-slate-500">${escapeHtml(card[0])}</p>
+                <p class="mt-1 text-xl font-black text-slate-900">${escapeHtml(card[1])}</p>
+                <p class="text-xs text-slate-500">${escapeHtml(card[2] || '')}</p>
+              </article>`
+            )
+            .join('');
+          salesEl.innerHTML = sales.length
+            ? sales
+                .slice(0, 100)
+                .map(
+                  (s) =>
+                    `<article class="rounded-lg border border-slate-200 bg-white px-3 py-2"><p class="font-black text-slate-800">#${escapeHtml(
+                      String(s.id).slice(0, 8)
+                    )} · ${escapeHtml(s.paymentMethod || '')}</p><p>${fmtMxMoney(s.total || 0)} · ${escapeHtml(
+                      relativeTimeEs(s.createdAt)
+                    )}</p></article>`
+                )
+                .join('')
+            : '<p class="text-slate-500">Sin ventas físicas en esta fecha.</p>';
+          cashEl.innerHTML = cash.length
+            ? cash
+                .slice(0, 120)
+                .map(
+                  (c) =>
+                    `<article class="rounded-lg border border-slate-200 bg-white px-3 py-2"><p class="font-black text-slate-800">${escapeHtml(
+                      c.type || ''
+                    )} · ${escapeHtml(c.method || '')}</p><p>${fmtMxMoney(c.amount || 0)} · ${escapeHtml(
+                      relativeTimeEs(c.createdAt)
+                    )}</p></article>`
+                )
+                .join('')
+            : '<p class="text-slate-500">Sin movimientos de caja en esta fecha.</p>';
+          setMsg('Corte actualizado.', true);
+        } catch (e) {
+          setMsg(e?.message || 'No se pudo cargar corte del día.');
+        }
+      };
+      refreshBtn.addEventListener('click', () => void render());
+      fechaEl.addEventListener('change', () => void render());
+      csvBtn.addEventListener('click', () => downloadCsv());
+      pdfBtn.addEventListener('click', () => void downloadPdf());
+      printBtn.addEventListener('click', () => window.print());
+      void render();
+    };
+
     const initialSection =
       requestedInitialSection === 'admin' && panelAdmin
         ? 'admin'
@@ -4932,6 +5313,8 @@ const AdminDashboard = {
           ? 'parking'
         : requestedInitialSection === 'inventario' && panelInventario
           ? 'inventario'
+        : requestedInitialSection === 'corte-dia' && panelCorteDia
+          ? 'corte-dia'
         : requestedInitialSection === 'soporte' && panelSoporte
           ? 'soporte'
         : requestedInitialSection === 'bitacora' && panelBitacora
@@ -4944,6 +5327,7 @@ const AdminDashboard = {
     showSection(initialSection);
     if (requestedInitialSection === 'parking' && panelParking) initParkingPanel();
     if (requestedInitialSection === 'inventario' && panelInventario) initInventarioPanel();
+    if (requestedInitialSection === 'corte-dia' && panelCorteDia) initCorteDiaPanel();
     if (requestedInitialSection === 'soporte' && panelSoporte) initSupportPanel();
     if (requestedInitialSection === 'bitacora' && panelBitacora) initBitacoraPanel();
     if (requestedInitialSection === 'ticket-types' && panelTicketTypes) await initTicketTypesPanel();
