@@ -1592,6 +1592,12 @@ const AdminDashboard = {
       canBitacoraQuick ||
       access.can('tickets.scan') ||
       access.can('sales.physical');
+    const canCorteDia =
+      access.can('sales.physical') ||
+      access.can('finance.view') ||
+      access.can('dashboard.manage') ||
+      access.can('admin.panel') ||
+      access.can('programador.access');
     const showLandingQuick =
       access.can('landing.manage') ||
       access.can('admin.panel') ||
