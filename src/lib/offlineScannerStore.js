@@ -180,6 +180,7 @@ export async function addRecentScan(scan) {
     status: scan.status || 'accepted',
     rawQr: scan.rawQr || '',
     message: scan.message || '',
+    displaySummary: scan.displaySummary || '',
     result: scan.result || {}
   };
   await withStore(STORE_HISTORY, 'readwrite', (store) => {

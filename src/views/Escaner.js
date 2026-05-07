@@ -2,7 +2,8 @@ import { Html5Qrcode } from 'html5-qrcode';
 import {
   listTicketsForScannerCache,
   scanTicketOnline,
-  syncPendingTicketScan
+  syncPendingTicketScan,
+  getTicketSnapshotForScan
 } from '../lib/dataLayer.js';
 import { getCurrentUser } from '../lib/authProvider.js';
 import { getUserAccess } from '../lib/accessControl.js';
@@ -20,8 +21,36 @@ import {
   markPendingScanSynced,
   markTicketScannedLocal
 } from '../lib/offlineScannerStore.js';
+import {
+  classifyOfflineOutcome,
+  classifyOnlineScanOutcome,
+  fmtWhen,
+  humanSummaryForHistory,
+  moneyMx,
+  normalizeTicketForScanDisplay
+} from '../lib/scanTicketDisplay.js';
 
 const UUID_PATTERN = /[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/i;
+
+const VARIANT_SURFACE = {
+  accepted: 'border-emerald-400 bg-emerald-50 ring-2 ring-emerald-400/80',
+  already_scanned: 'border-orange-400 bg-orange-50 ring-2 ring-orange-400/70',
+  cancelled: 'border-red-500 bg-red-50 ring-2 ring-red-500/70',
+  unpaid: 'border-amber-400 bg-amber-50 ring-2 ring-amber-400/80',
+  not_found: 'border-slate-400 bg-slate-100 ring-2 ring-slate-400/60',
+  offline_pending: 'border-yellow-400 bg-yellow-50 ring-2 ring-yellow-400/80',
+  conflict: 'border-rose-500 bg-rose-50 ring-2 ring-rose-500/70'
+};
+
+const TYPE_SECTION_LABEL = {
+  ticket: 'Entradas / tipo de ticket',
+  paquete: 'Paquetes',
+  producto: 'Productos',
+  servicio: 'Servicios extra',
+  mesa: 'Mesa y reserva',
+  extra: 'Extras',
+  item: 'Otros'
+};
 
 function parseTicketQr(rawValue) {
   const text = String(rawValue || '').trim();
@@ -71,9 +100,29 @@ function playTone(ok = true) {
   } catch {}
 }
 
+function escapeHtml(text) {
+  return String(text ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+function groupItemsByType(items) {
+  const map = new Map();
+  for (const it of items || []) {
+    const k = it.type || 'item';
+    if (!map.has(k)) map.set(k, []);
+    map.get(k).push(it);
+  }
+  const order = ['ticket', 'paquete', 'producto', 'servicio', 'mesa', 'extra', 'item'];
+  return order.filter((k) => map.has(k)).map((k) => ({ type: k, rows: map.get(k) }));
+}
+
 const Escaner = {
   render: () => `
-    <section class="min-h-full bg-slate-100 p-3 sm:p-4">
+    <section class="min-h-full bg-slate-100 p-3 pb-44 sm:p-4 sm:pb-48">
       <div class="mx-auto max-w-3xl space-y-3">
         <header class="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
           <h1 class="text-xl font-black text-slate-900">Escáner operativo</h1>
@@ -82,33 +131,32 @@ const Escaner = {
         </header>
 
         <section class="overflow-hidden rounded-2xl bg-slate-950 shadow-lg">
-          <div class="relative aspect-[4/5] min-h-[320px]">
+          <div class="relative aspect-[4/5] min-h-[280px] sm:min-h-[320px]">
             <div id="qr-reader-root" class="absolute inset-0"></div>
             <div class="pointer-events-none absolute inset-x-6 top-6 bottom-6 rounded-3xl border-4 border-cyan-300/80"></div>
             <div class="absolute left-3 top-3 rounded-full bg-black/60 px-3 py-1 text-xs font-bold text-cyan-100">${icon('scan', 'inline h-4 w-4 mr-1')} Cámara</div>
             <div id="camera-chip" class="absolute right-3 top-3 rounded-full bg-black/60 px-3 py-1 text-xs font-bold text-slate-100">En espera</div>
           </div>
           <div class="grid grid-cols-1 gap-2 border-t border-white/10 p-3 sm:grid-cols-2">
-            <button id="btn-start-camera" class="rounded-xl bg-cyan-400 px-3 py-3 text-sm font-black text-slate-900">Iniciar cámara</button>
-            <button id="btn-stop-camera" class="rounded-xl border border-white/20 px-3 py-3 text-sm font-bold text-white" disabled>Detener cámara</button>
+            <button id="btn-start-camera" type="button" class="rounded-xl bg-cyan-400 px-3 py-3 text-sm font-black text-slate-900">Iniciar cámara</button>
+            <button id="btn-stop-camera" type="button" class="rounded-xl border border-white/20 px-3 py-3 text-sm font-bold text-white" disabled>Detener cámara</button>
           </div>
         </section>
 
-        <section id="scanner-result-box" class="rounded-2xl border border-slate-200 bg-white p-4 text-sm shadow-sm" aria-live="polite">
-          <p id="scanner-result-title" class="font-black text-slate-900">Listo para escanear</p>
-          <p id="scanner-result-message" class="mt-1 text-slate-600">Escanea un QR o pega un código manual.</p>
-        </section>
+        <div id="scanner-result-strip" class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm" aria-live="polite">
+          <p id="scanner-strip-title" class="text-base font-black text-slate-900">Listo para escanear</p>
+          <p id="scanner-strip-msg" class="mt-1 text-sm text-slate-600">Escanea un código QR o usa la entrada manual debajo.</p>
+        </div>
 
         <section class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
           <p class="text-xs font-black uppercase text-slate-500">Entrada manual</p>
           <div class="mt-2 flex gap-2">
-            <input id="scanner-manual-input" class="flex-1 rounded-xl border border-slate-300 px-3 py-2 text-sm" placeholder="UUID, URL o ticket:..." />
-            <button id="scanner-manual-btn" class="rounded-xl bg-slate-900 px-4 py-2 text-sm font-bold text-white">Validar</button>
+            <input id="scanner-manual-input" class="flex-1 rounded-xl border border-slate-300 px-3 py-3 text-base" placeholder="UUID, URL o ticket:..." autocomplete="off" />
+            <button id="scanner-manual-btn" type="button" class="rounded-xl bg-slate-900 px-4 py-3 text-sm font-bold text-white">Validar</button>
           </div>
           <div class="mt-3 flex flex-wrap gap-2">
-            <button id="scanner-cache-btn" class="rounded-xl border border-slate-300 px-3 py-2 text-xs font-bold">Actualizar cache hoy</button>
-            <button id="scanner-sync-btn" class="rounded-xl border border-slate-300 px-3 py-2 text-xs font-bold">Sincronizar ahora</button>
-            <button id="scanner-another-btn" class="rounded-xl border border-slate-300 px-3 py-2 text-xs font-bold">Escanear otro</button>
+            <button id="scanner-cache-btn" type="button" class="rounded-xl border border-slate-300 px-3 py-2 text-xs font-bold">Actualizar cache hoy</button>
+            <button id="scanner-sync-btn" type="button" class="rounded-xl border border-slate-300 px-3 py-2 text-xs font-bold">Sincronizar ahora</button>
           </div>
         </section>
 
@@ -122,6 +170,21 @@ const Escaner = {
           <div id="scanner-history-list" class="mt-2 text-xs text-slate-600"></div>
         </section>
       </div>
+
+      <div id="scanner-result-overlay" class="fixed inset-0 z-50 hidden" aria-modal="true" role="dialog">
+        <div class="absolute inset-0 bg-black/50" aria-hidden="true"></div>
+        <div class="absolute inset-x-0 bottom-0 flex max-h-[94vh] flex-col rounded-t-3xl bg-white shadow-[0_-8px_40px_rgba(0,0,0,0.2)]">
+          <div class="flex shrink-0 justify-center pt-3 pb-1">
+            <div class="h-1.5 w-14 rounded-full bg-slate-200"></div>
+          </div>
+          <div id="scanner-result-scroll" class="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-2 pt-1"></div>
+          <div class="shrink-0 border-t border-slate-200 bg-white p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+            <button type="button" id="scanner-result-scan-another" class="w-full rounded-2xl bg-slate-900 py-4 text-base font-black text-white shadow-lg active:scale-[0.99]">
+              Escanear otro
+            </button>
+          </div>
+        </div>
+      </div>
     </section>
   `,
   mount: async () => {
@@ -133,13 +196,14 @@ const Escaner = {
     const btnManual = document.getElementById('scanner-manual-btn');
     const btnCache = document.getElementById('scanner-cache-btn');
     const btnSync = document.getElementById('scanner-sync-btn');
-    const btnAnother = document.getElementById('scanner-another-btn');
     const inputManual = document.getElementById('scanner-manual-input');
     const cameraChip = document.getElementById('camera-chip');
     const connState = document.getElementById('scanner-connection-state');
-    const resultBox = document.getElementById('scanner-result-box');
-    const resultTitle = document.getElementById('scanner-result-title');
-    const resultMessage = document.getElementById('scanner-result-message');
+    const stripTitle = document.getElementById('scanner-strip-title');
+    const stripMsg = document.getElementById('scanner-strip-msg');
+    const overlay = document.getElementById('scanner-result-overlay');
+    const scrollRoot = document.getElementById('scanner-result-scroll');
+    const btnScanAnotherFooter = document.getElementById('scanner-result-scan-another');
     const pendingList = document.getElementById('scanner-pending-list');
     const historyList = document.getElementById('scanner-history-list');
 
@@ -148,18 +212,186 @@ const Escaner = {
     let lastAt = 0;
     let busy = false;
     const deviceId = getScannerDeviceId();
+    let lastScanRawSaved = '';
 
-    const paintResult = (variant, title, message) => {
-      const styles = {
-        ok: 'rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm shadow-sm',
-        bad: 'rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm shadow-sm',
-        warn: 'rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm shadow-sm',
-        pending: 'rounded-2xl border border-yellow-200 bg-yellow-50 p-4 text-sm shadow-sm',
-        idle: 'rounded-2xl border border-slate-200 bg-white p-4 text-sm shadow-sm'
+    const paintStripIdle = () => {
+      stripTitle.textContent = 'Listo para escanear';
+      stripMsg.textContent = 'Escanea un código QR o usa la entrada manual.';
+    };
+
+    const paintStripBusy = (title, msg) => {
+      stripTitle.textContent = title;
+      stripMsg.textContent = msg;
+    };
+
+    const hideOverlay = () => {
+      overlay?.classList.add('hidden');
+      scrollRoot.innerHTML = '';
+    };
+
+    const appendIncludeLi = (ul, row, bulletClass) => {
+      const li = document.createElement('li');
+      li.className = 'flex gap-2 text-sm text-slate-800';
+      const qty = row.qty > 1 ? `${row.qty} × ` : '';
+      const pricePart =
+        row.price != null && Number.isFinite(row.price) ? ` · ${moneyMx(row.price)}` : '';
+      const desc = row.description ? ` — ${escapeHtml(row.description)}` : '';
+      const notes = row.notes ? ` (${escapeHtml(row.notes)})` : '';
+      li.innerHTML = `<span class="mt-1.5 h-2 w-2 shrink-0 rounded-full ${bulletClass}"></span><span>${qty}<strong>${escapeHtml(row.label)}</strong>${escapeHtml(pricePart)}${desc}${notes}</span>`;
+      ul.appendChild(li);
+    };
+
+    const buildIncludesSection = (display) => {
+      const groups = groupItemsByType(display.items);
+      const wrap = document.createElement('div');
+      wrap.className = 'mt-5 rounded-2xl border border-slate-200 bg-white p-4';
+
+      const h = document.createElement('h3');
+      h.className = 'text-sm font-black uppercase tracking-wide text-slate-700';
+      h.textContent = 'Este ticket incluye';
+      wrap.appendChild(h);
+
+      const flat = [];
+      for (const { type, rows } of groups) {
+        for (const row of rows) flat.push({ ...row, _section: type });
+      }
+
+      if (!flat.length) {
+        const p = document.createElement('p');
+        p.className = 'mt-2 text-sm text-slate-600';
+        p.textContent =
+          'No hay desglose guardado en el ticket. Revisa total y datos del cliente; mesas y extras aparecen si están vinculadas en el sistema o en metadata.';
+        wrap.appendChild(p);
+        return wrap;
+      }
+
+      const SHOW_FIRST = 8;
+      const head = flat.slice(0, SHOW_FIRST);
+      const tail = flat.slice(SHOW_FIRST);
+
+      const renderGrouped = (rows, bulletPrimary) => {
+        const host = document.createElement('div');
+        host.className = 'mt-3 space-y-4';
+        let lastSection = null;
+        let ul = null;
+        for (const row of rows) {
+          const sec = row._section || 'item';
+          if (sec !== lastSection) {
+            lastSection = sec;
+            const labEl = document.createElement('p');
+            labEl.className = bulletPrimary
+              ? 'text-xs font-black uppercase text-teal-800'
+              : 'text-xs font-black uppercase text-slate-500';
+            labEl.textContent = TYPE_SECTION_LABEL[sec] || TYPE_SECTION_LABEL.item;
+            host.appendChild(labEl);
+            ul = document.createElement('ul');
+            ul.className = 'mt-1 space-y-2';
+            host.appendChild(ul);
+          }
+          appendIncludeLi(ul, row, bulletPrimary ? 'bg-teal-500' : 'bg-slate-400');
+        }
+        return host;
       };
-      resultBox.className = styles[variant] || styles.idle;
-      resultTitle.textContent = title;
-      resultMessage.textContent = message;
+
+      wrap.appendChild(renderGrouped(head, true));
+
+      if (tail.length) {
+        const det = document.createElement('details');
+        det.className = 'mt-3';
+        const sum = document.createElement('summary');
+        sum.className = 'cursor-pointer rounded-xl bg-slate-50 px-3 py-2 text-sm font-black text-teal-800 ring-1 ring-slate-200';
+        sum.textContent = `Ver más (${tail.length})`;
+        det.appendChild(sum);
+        det.appendChild(renderGrouped(tail, false));
+        wrap.appendChild(det);
+      }
+
+      return wrap;
+    };
+
+    /** @param {{ outcome: ReturnType<typeof classifyOnlineScanOutcome>, display: ReturnType<typeof normalizeTicketForScanDisplay>, subtitle?: string, cacheNote?: string, rawQr: string, iconGlyph?: string }} ctx */
+    const showOperationalResult = (ctx) => {
+      lastScanRawSaved = ctx.rawQr || '';
+      scrollRoot.innerHTML = '';
+      const surface = VARIANT_SURFACE[ctx.outcome.variant] || VARIANT_SURFACE.not_found;
+
+      const banner = document.createElement('div');
+      banner.className = `rounded-2xl border p-4 ${surface}`;
+      const iconWrap = document.createElement('div');
+      iconWrap.className = 'flex items-start gap-3';
+      const glyph =
+        ctx.iconGlyph ||
+        (ctx.outcome.variant === 'accepted' || ctx.outcome.variant === 'offline_pending'
+          ? icon('check', 'h-10 w-10 shrink-0 text-emerald-700')
+          : ctx.outcome.variant === 'already_scanned' || ctx.outcome.variant === 'unpaid'
+            ? icon('clock', 'h-10 w-10 shrink-0 text-amber-800')
+            : icon('scan', 'h-10 w-10 shrink-0 text-slate-700'));
+      const icSlot = document.createElement('div');
+      icSlot.className = 'shrink-0';
+      icSlot.innerHTML = glyph;
+      const txtSlot = document.createElement('div');
+      txtSlot.className = 'min-w-0';
+      txtSlot.innerHTML = `<h2 class="text-xl font-black leading-tight text-slate-900">${escapeHtml(ctx.outcome.title)}</h2><p class="mt-1 text-sm font-semibold text-slate-700">${escapeHtml(ctx.subtitle || ctx.outcome.subtitle)}</p>`;
+      iconWrap.appendChild(icSlot.firstElementChild || icSlot);
+      iconWrap.appendChild(txtSlot);
+      banner.appendChild(iconWrap);
+      scrollRoot.appendChild(banner);
+
+      if (ctx.cacheNote) {
+        const note = document.createElement('p');
+        note.className =
+          'mt-3 rounded-xl bg-amber-50 px-3 py-2 text-xs font-bold text-amber-900 ring-1 ring-amber-200';
+        note.textContent = ctx.cacheNote;
+        scrollRoot.appendChild(note);
+      }
+
+      const grid = document.createElement('div');
+      grid.className =
+        'mt-4 grid gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-800';
+
+      const row = (k, v) =>
+        `<div class="flex flex-col gap-0.5 border-b border-slate-200/80 pb-2 last:border-0 last:pb-0"><span class="text-[11px] font-black uppercase text-slate-500">${escapeHtml(k)}</span><span class="font-semibold text-slate-900">${v}</span></div>`;
+
+      const tipo =
+        ctx.display.tipoTicketLabel ||
+        (ctx.display.items.find((x) => x.type === 'ticket')?.label ?? '—');
+      grid.innerHTML = [
+        row('Cliente', escapeHtml(ctx.display.clienteNombre)),
+        row('Correo', ctx.display.clienteEmail ? escapeHtml(ctx.display.clienteEmail) : '—'),
+        row('Ticket / código', `#${escapeHtml(ctx.display.shortId)}`),
+        row('Tipo de compra', escapeHtml(tipo)),
+        row('Estado del ticket', escapeHtml(ctx.display.estadoTicket)),
+        row('Estado de pago', escapeHtml(ctx.display.estadoPago)),
+        row('Fecha de compra', ctx.display.fechaCreacion ? escapeHtml(fmtWhen(ctx.display.fechaCreacion)) : '—'),
+        row('Último escaneo', ctx.display.fechaEscaneo ? escapeHtml(fmtWhen(ctx.display.fechaEscaneo)) : '—'),
+        row('Método de pago', escapeHtml(ctx.display.metodoPago)),
+        row('Total', escapeHtml(moneyMx(ctx.display.precioTotal)))
+      ].join('');
+      scrollRoot.appendChild(grid);
+
+      scrollRoot.appendChild(buildIncludesSection(ctx.display));
+
+      const actions = document.createElement('div');
+      actions.className = 'mt-4 flex flex-col gap-2';
+      const btnQr = document.createElement('button');
+      btnQr.type = 'button';
+      btnQr.className =
+        'rounded-xl border-2 border-slate-300 bg-white py-3 text-sm font-black text-slate-900';
+      btnQr.textContent = 'Ver código escaneado';
+      const preWrap = document.createElement('pre');
+      preWrap.className =
+        'hidden max-h-36 overflow-auto rounded-xl bg-slate-900 p-3 text-xs text-emerald-100';
+      preWrap.textContent = lastScanRawSaved || '(sin dato)';
+      btnQr.addEventListener('click', () => {
+        preWrap.classList.toggle('hidden');
+      });
+      actions.appendChild(btnQr);
+      actions.appendChild(preWrap);
+      scrollRoot.appendChild(actions);
+
+      overlay.classList.remove('hidden');
+      stripTitle.textContent = ctx.outcome.title;
+      stripMsg.textContent = 'Resultado abajo. Pulsa «Escanear otro» para continuar.';
     };
 
     const updateConn = async () => {
@@ -170,24 +402,36 @@ const Escaner = {
     const renderPending = async () => {
       const rows = await listPendingScans();
       if (!rows.length) {
-        pendingList.innerHTML = '<p class="text-emerald-700">Todo sincronizado.</p>';
+        pendingList.innerHTML = '<p class="text-emerald-700 font-semibold">Todo sincronizado.</p>';
         return;
       }
       pendingList.innerHTML = rows
         .slice(0, 10)
-        .map((row) => `<p class="mb-1 rounded-lg bg-slate-100 px-2 py-1">#${String(row.ticketId || '').slice(0, 8)} · ${row.status} · ${new Date(row.scannedAt).toLocaleTimeString()}</p>`)
+        .map(
+          (row) =>
+            `<p class="mb-1 rounded-lg bg-slate-100 px-2 py-2 font-medium">Ticket #${String(row.ticketId || '').slice(0, 8)} · ${escapeHtml(row.status)} · ${fmtWhen(row.scannedAt)}</p>`
+        )
         .join('');
     };
 
     const renderHistory = async () => {
-      const rows = await listRecentScans(12);
+      const rows = await listRecentScans(14);
       if (!rows.length) {
         historyList.innerHTML = '<p class="text-slate-500">Sin escaneos recientes.</p>';
         return;
       }
       historyList.innerHTML = rows
-        .map((row) => `<p class="mb-1 rounded-lg bg-slate-100 px-2 py-1">${row.mode.toUpperCase()} · ${row.status} · ${String(row.ticketId || '').slice(0, 8)}</p>`)
+        .map((row) => {
+          const lineRaw =
+            row.displaySummary ||
+            `${String(row.mode || '')} · ${String(row.status || '')} · #${String(row.ticketId || '').slice(0, 8)}`;
+          return `<p class="mb-1 rounded-lg bg-slate-100 px-2 py-2 font-semibold text-slate-800">${escapeHtml(lineRaw)}</p>`;
+        })
         .join('');
+    };
+
+    const pushHistory = async (payload) => {
+      await addRecentScan(payload);
     };
 
     const processOnline = async ({ ticketId, raw }) => {
@@ -199,45 +443,168 @@ const Escaner = {
       });
       const result = response.data?.result;
       const reason = response.data?.reason;
-      if (result === 'valid') {
-        paintResult('ok', 'Entrada aceptada', 'Ticket válido y marcado como escaneado en Supabase.');
-        playTone(true);
-        if (navigator.vibrate) navigator.vibrate(55);
-        await addRecentScan({ ticketId, rawQr: raw, mode: 'online', status: 'accepted', message: 'valid' });
-      } else {
-        paintResult('bad', 'Entrada rechazada', `No válido: ${reason || 'invalid'}.`);
-        playTone(false);
-        if (navigator.vibrate) navigator.vibrate([80, 40, 80]);
-        await addRecentScan({ ticketId, rawQr: raw, mode: 'online', status: 'rejected', message: reason || 'invalid' });
+      let ticketFull = response.data?.ticket || null;
+      let mesas = [];
+
+      try {
+        const snap = await getTicketSnapshotForScan(ticketId);
+        if (snap.ticket) ticketFull = snap.ticket;
+        mesas = snap.mesaReservas || [];
+      } catch {
+        /* usar ticket devuelto por RPC */
       }
+
+      const outcome = classifyOnlineScanOutcome(result, reason);
+      let subtitle = outcome.subtitle;
+      if (outcome.key === 'already_scanned' && ticketFull?.fechaEscaneo) {
+        subtitle = `Escaneado el ${fmtWhen(ticketFull.fechaEscaneo)}`;
+      }
+
+      const display = normalizeTicketForScanDisplay(ticketFull, {
+        mesaReservas: mesas,
+        stubTicketId: ticketId,
+        source: 'online'
+      });
+
+      showOperationalResult({
+        outcome,
+        display,
+        subtitle,
+        rawQr: raw,
+        cacheNote: ''
+      });
+
+      const ok = result === 'valid' && reason === 'accepted';
+      playTone(ok);
+      if (navigator.vibrate) navigator.vibrate(ok ? 55 : [80, 40, 80]);
+
+      const summary = humanSummaryForHistory({
+        outcomeKey: outcome.key,
+        clienteNombre: display.clienteNombre,
+        shortId: display.shortId,
+        offlinePending: false
+      });
+      await pushHistory({
+        ticketId,
+        rawQr: raw,
+        mode: 'online',
+        status: ok ? 'accepted' : reason || 'rejected',
+        displaySummary: summary,
+        message: outcome.title,
+        scannedAt: new Date().toISOString()
+      });
     };
 
     const processOffline = async ({ ticketId, raw }) => {
       const ticket = await getCachedTicket(ticketId);
       if (!ticket) {
-        paintResult('warn', 'No validable offline', 'No se puede validar offline: ticket no descargado en este dispositivo.');
+        const oc = classifyOfflineOutcome('not_cached');
+        const display = normalizeTicketForScanDisplay(null, { stubTicketId: ticketId, source: 'cache' });
+        showOperationalResult({
+          outcome: oc,
+          display,
+          subtitle: oc.subtitle,
+          rawQr: raw,
+          cacheNote: 'Sin datos en este dispositivo.'
+        });
         playTone(false);
-        await addRecentScan({ ticketId, rawQr: raw, mode: 'offline', status: 'not_cached' });
+        await pushHistory({
+          ticketId,
+          rawQr: raw,
+          mode: 'offline',
+          status: 'not_cached',
+          displaySummary: humanSummaryForHistory({
+            outcomeKey: 'not_cached',
+            clienteNombre: '',
+            shortId: display.shortId,
+            offlinePending: false
+          }),
+          scannedAt: new Date().toISOString()
+        });
         return;
       }
+
       if (ticket.estadoTicket === 'cancelado') {
-        paintResult('bad', 'Ticket cancelado', 'Ticket cancelado en cache local.');
+        const oc = classifyOfflineOutcome('cancelled');
+        const display = normalizeTicketForScanDisplay(ticket, { mesaReservas: [], source: 'cache' });
+        showOperationalResult({
+          outcome: oc,
+          display,
+          subtitle: oc.subtitle,
+          rawQr: raw,
+          cacheNote: 'Datos tomados del cache local.'
+        });
         playTone(false);
-        await addRecentScan({ ticketId, rawQr: raw, mode: 'offline', status: 'cancelled' });
+        await pushHistory({
+          ticketId,
+          rawQr: raw,
+          mode: 'offline',
+          status: 'cancelled',
+          displaySummary: humanSummaryForHistory({
+            outcomeKey: 'cancelled',
+            clienteNombre: display.clienteNombre,
+            shortId: display.shortId,
+            offlinePending: false
+          }),
+          scannedAt: new Date().toISOString()
+        });
         return;
       }
       if (ticket.estadoTicket === 'escaneado') {
-        paintResult('bad', 'Duplicado offline', 'Este ticket ya fue marcado como escaneado en este dispositivo.');
+        const oc = classifyOfflineOutcome('already_scanned');
+        const display = normalizeTicketForScanDisplay(ticket, { mesaReservas: [], source: 'cache' });
+        let subtitle = oc.subtitle;
+        if (ticket.fechaEscaneo) subtitle = `Escaneado el ${fmtWhen(ticket.fechaEscaneo)}`;
+        showOperationalResult({
+          outcome: oc,
+          display,
+          subtitle,
+          rawQr: raw,
+          cacheNote: 'Datos tomados del cache local.'
+        });
         playTone(false);
-        await addRecentScan({ ticketId, rawQr: raw, mode: 'offline', status: 'already_scanned' });
+        await pushHistory({
+          ticketId,
+          rawQr: raw,
+          mode: 'offline',
+          status: 'already_scanned',
+          displaySummary: humanSummaryForHistory({
+            outcomeKey: 'already_scanned',
+            clienteNombre: display.clienteNombre,
+            shortId: display.shortId,
+            offlinePending: false
+          }),
+          scannedAt: new Date().toISOString()
+        });
         return;
       }
       if (ticket.estadoTicket !== 'valido') {
-        paintResult('bad', 'Estado no válido', `Estado local no válido: ${ticket.estadoTicket || 'desconocido'}`);
+        const oc = classifyOfflineOutcome('invalid_state');
+        const display = normalizeTicketForScanDisplay(ticket, { mesaReservas: [], source: 'cache' });
+        showOperationalResult({
+          outcome: oc,
+          display,
+          subtitle: oc.subtitle,
+          rawQr: raw,
+          cacheNote: 'Datos tomados del cache local.'
+        });
         playTone(false);
-        await addRecentScan({ ticketId, rawQr: raw, mode: 'offline', status: 'invalid_state' });
+        await pushHistory({
+          ticketId,
+          rawQr: raw,
+          mode: 'offline',
+          status: 'invalid_state',
+          displaySummary: humanSummaryForHistory({
+            outcomeKey: 'invalid_state',
+            clienteNombre: display.clienteNombre,
+            shortId: display.shortId,
+            offlinePending: false
+          }),
+          scannedAt: new Date().toISOString()
+        });
         return;
       }
+
       const now = new Date().toISOString();
       await markTicketScannedLocal(ticketId, { scannedAt: now });
       await addPendingScan({
@@ -250,10 +617,34 @@ const Escaner = {
         rawQr: raw,
         resultSnapshot: { ticketEstado: ticket.estadoTicket }
       });
-      await addRecentScan({ ticketId, rawQr: raw, mode: 'offline', status: 'accepted_pending_sync' });
-      paintResult('pending', 'Aceptado offline', 'Entrada aceptada offline — pendiente de sincronizar.');
+
+      const oc = classifyOfflineOutcome('offline_pending');
+      const display = normalizeTicketForScanDisplay(
+        { ...ticket, estadoTicket: 'escaneado', fechaEscaneo: now },
+        { mesaReservas: [], source: 'cache' }
+      );
+      showOperationalResult({
+        outcome: oc,
+        display,
+        subtitle: oc.subtitle,
+        rawQr: raw,
+        cacheNote: 'Datos tomados del cache local. Pendiente de sincronizar con el servidor.'
+      });
       playTone(true);
       if (navigator.vibrate) navigator.vibrate(35);
+      await pushHistory({
+        ticketId,
+        rawQr: raw,
+        mode: 'offline',
+        status: 'accepted_pending_sync',
+        displaySummary: humanSummaryForHistory({
+          outcomeKey: 'offline_pending',
+          clienteNombre: display.clienteNombre,
+          shortId: display.shortId,
+          offlinePending: true
+        }),
+        scannedAt: now
+      });
     };
 
     const processRaw = async (rawInput) => {
@@ -263,11 +654,21 @@ const Escaner = {
       lastRaw = rawInput;
       lastAt = now;
       busy = true;
+      paintStripBusy('Validando…', 'Espera un momento.');
       try {
         const parsed = parseTicketQr(rawInput);
         if (!parsed.ticketId) {
-          paintResult('bad', 'QR inválido', 'No se encontró ticket id válido en el código.');
+          hideOverlay();
+          paintStripBusy('QR inválido', 'No se encontró un ticket válido en el código.');
           playTone(false);
+          await pushHistory({
+            ticketId: null,
+            rawQr: parsed.raw,
+            mode: navigator.onLine ? 'online' : 'offline',
+            status: 'bad_qr',
+            displaySummary: 'Código inválido — sin UUID de ticket',
+            scannedAt: new Date().toISOString()
+          });
           return;
         }
         if (navigator.onLine) await processOnline(parsed);
@@ -276,7 +677,8 @@ const Escaner = {
         await renderHistory();
         await updateConn();
       } catch (error) {
-        paintResult('warn', 'Error de validación', error?.message || 'No se pudo validar.');
+        hideOverlay();
+        paintStripBusy('Error', error?.message || 'No se pudo validar.');
       } finally {
         busy = false;
       }
@@ -296,7 +698,7 @@ const Escaner = {
 
     const startCamera = async () => {
       if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
-        paintResult('warn', 'Cámara no disponible', 'Usa validación manual en este dispositivo.');
+        paintStripBusy('Cámara no disponible', 'Usa validación manual en este dispositivo.');
         return;
       }
       await stopCamera();
@@ -313,7 +715,7 @@ const Escaner = {
         );
       } catch {
         await stopCamera();
-        paintResult('warn', 'Error de cámara', 'No se pudo abrir la cámara. Usa entrada manual.');
+        paintStripBusy('Error de cámara', 'No se pudo abrir la cámara. Usa entrada manual.');
       }
     };
 
@@ -321,10 +723,10 @@ const Escaner = {
       const rows = await listPendingScans();
       const pending = rows.filter((row) => row.status === 'pending' || row.status === 'conflict');
       if (!pending.length) {
-        paintResult('idle', 'Sin pendientes', 'No hay escaneos por sincronizar.');
+        paintStripBusy('Sin pendientes', 'No hay escaneos por sincronizar.');
         return;
       }
-      paintResult('warn', 'Sincronizando', `Procesando ${pending.length} escaneos pendientes...`);
+      paintStripBusy('Sincronizando', `Procesando ${pending.length} escaneos pendientes…`);
       for (const row of pending) {
         try {
           const res = await syncPendingTicketScan(row);
@@ -334,7 +736,8 @@ const Escaner = {
           await markPendingScanConflict(row.localId, error);
         }
       }
-      paintResult('idle', 'Sincronización terminada', 'Revisa pendientes y conflictos.');
+      hideOverlay();
+      paintStripIdle();
       await renderPending();
       await renderHistory();
       await updateConn();
@@ -342,7 +745,7 @@ const Escaner = {
 
     const refreshCache = async () => {
       if (!navigator.onLine) {
-        paintResult('warn', 'Offline', 'Conéctate a internet para actualizar cache del día.');
+        paintStripBusy('Offline', 'Conéctate a internet para actualizar cache del día.');
         return;
       }
       const date = new Date().toISOString().slice(0, 10);
@@ -350,7 +753,13 @@ const Escaner = {
       const rows = res.data?.tickets || [];
       await cacheTicketsForDay(date, rows);
       await clearOldCache(5);
-      paintResult('ok', 'Cache actualizado', `Cache actualizado: ${rows.length} tickets.`);
+      paintStripBusy('Cache actualizado', `${rows.length} tickets guardados en el dispositivo.`);
+    };
+
+    const scanAnother = () => {
+      inputManual.value = '';
+      hideOverlay();
+      paintStripIdle();
     };
 
     btnStart?.addEventListener('click', () => void startCamera());
@@ -361,10 +770,7 @@ const Escaner = {
     });
     btnCache?.addEventListener('click', () => void refreshCache());
     btnSync?.addEventListener('click', () => void syncPending());
-    btnAnother?.addEventListener('click', () => {
-      inputManual.value = '';
-      paintResult('idle', 'Listo para escanear', 'Escanea un QR o pega un código manual.');
-    });
+    btnScanAnotherFooter?.addEventListener('click', scanAnother);
 
     window.addEventListener('online', () => void syncPending());
     window.addEventListener('online', () => void updateConn());

@@ -223,6 +223,10 @@ function mapTicketRow(r, userRow = null) {
     precioTotal: Number(r.precio_total),
     fechaCreacion: r.fecha_creacion,
     fechaEscaneo: r.fecha_escaneo,
+    metadata:
+      r.metadata != null && typeof r.metadata === 'object' && !Array.isArray(r.metadata)
+        ? r.metadata
+        : {},
     user: userRow
       ? { id: userRow.id, nombre: userRow.nombre, email: userRow.email }
       : undefined
@@ -646,6 +650,36 @@ export async function updateTicketStatus({ id, estadoTicket, estadoPago }) {
 
 export async function getTicketForScan(ticketId) {
   return getTicketById({ id: ticketId });
+}
+
+export async function listMesaReservasByTicketId({ ticketId }) {
+  const sb = requireClient();
+  if (!ticketId) return { data: { mesaReservas: [] } };
+  const { data, error } = await sb
+    .from('mesa_reservas')
+    .select('*')
+    .eq('ticket_id', ticketId)
+    .order('creado_en', { ascending: false })
+    .limit(25);
+  if (error) throw error;
+  return { data: { mesaReservas: (data || []).map(mapMesaRow) } };
+}
+
+/** Ticket completo + mesas vinculadas para UI operativa del escáner. */
+export async function getTicketSnapshotForScan(ticketId) {
+  if (!ticketId) return { ticket: null, mesaReservas: [] };
+  try {
+    const [tr, mr] = await Promise.all([
+      getTicketById({ id: ticketId }),
+      listMesaReservasByTicketId({ ticketId }).catch(() => ({ data: { mesaReservas: [] } }))
+    ]);
+    return {
+      ticket: tr?.data?.ticket || null,
+      mesaReservas: mr?.data?.mesaReservas || []
+    };
+  } catch {
+    return { ticket: null, mesaReservas: [] };
+  }
 }
 
 export async function listTicketsForScannerCache({ date }) {
