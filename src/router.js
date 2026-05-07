@@ -9,6 +9,7 @@ import Escaner from './views/Escaner.js';
 import Politicas from './views/Politicas.js';
 import ProgramadorDashboard from './views/ProgramadorDashboard.js';
 import OperacionDashboard from './views/OperacionDashboard.js';
+import RecuperarTicket from './views/RecuperarTicket.js';
 import { getUserAccess, normalizeRole, waitForAuthUser } from './lib/accessControl.js';
 import { resolvePostLoginPath } from './lib/postLoginRoute.js';
 import { initAppShell, updateAppShell, closeUserMenu } from './lib/layout.js';
@@ -22,6 +23,7 @@ const routes = {
     '/login': Login,
     '/reservar': Reservar,
     '/checkout': Checkout,
+    '/recuperar-ticket': RecuperarTicket,
     '/cliente': ClienteDashboard,
     '/cliente/dashboard': ClienteDashboard,
     '/cliente/configuracion': ClienteDashboard,

@@ -652,6 +652,161 @@ export async function getTicketForScan(ticketId) {
   return getTicketById({ id: ticketId });
 }
 
+export async function createTicketDeliveryLog({
+  ticketId,
+  email = '',
+  channel = 'email',
+  status = 'sent',
+  error = '',
+  metadata = {}
+}) {
+  const sb = requireClient();
+  const row = {
+    ticket_id: String(ticketId || ''),
+    email: String(email || ''),
+    channel: String(channel || 'email'),
+    status: String(status || 'sent'),
+    error: String(error || ''),
+    metadata: metadata && typeof metadata === 'object' && !Array.isArray(metadata) ? metadata : {}
+  };
+  const { error: insErr } = await sb.from('ticket_delivery_logs').insert(row);
+  if (insErr) throw insErr;
+  return { data: {} };
+}
+
+export async function listTicketDeliveryLogs({ ticketId, limit = 50 } = {}) {
+  const sb = requireClient();
+  if (!ticketId) return { data: { logs: [] } };
+  const lim = Math.max(1, Math.min(200, Number(limit || 50)));
+  const { data, error } = await sb
+    .from('ticket_delivery_logs')
+    .select('*')
+    .eq('ticket_id', String(ticketId))
+    .order('created_at', { ascending: false })
+    .limit(lim);
+  if (error) throw error;
+  return { data: { logs: data || [] } };
+}
+
+export async function createAuditEvent({
+  actorUserId = null,
+  actorEmail = '',
+  eventType,
+  entityType = null,
+  entityId = null,
+  severity = 'info',
+  title,
+  description = '',
+  metadata = {}
+}) {
+  const sb = requireClient();
+  const row = {
+    actor_user_id: actorUserId ? String(actorUserId) : null,
+    actor_email: String(actorEmail || ''),
+    event_type: String(eventType || 'system_event'),
+    entity_type: entityType ? String(entityType) : null,
+    entity_id: entityId ? String(entityId) : null,
+    severity: String(severity || 'info'),
+    title: String(title || 'Evento'),
+    description: String(description || ''),
+    metadata: metadata && typeof metadata === 'object' && !Array.isArray(metadata) ? metadata : {}
+  };
+  const { error } = await sb.from('audit_events').insert(row);
+  if (error) throw error;
+  return { data: {} };
+}
+
+export async function listAuditEvents({
+  range = 'today',
+  eventType = '',
+  severity = '',
+  query = '',
+  limit = 50
+} = {}) {
+  const sb = requireClient();
+  const lim = Math.max(1, Math.min(200, Number(limit || 50)));
+  let q = sb.from('audit_events').select('*').order('created_at', { ascending: false }).limit(lim);
+  if (eventType) q = q.eq('event_type', String(eventType));
+  if (severity) q = q.eq('severity', String(severity));
+  const now = new Date();
+  if (range === 'today' || range === 'yesterday' || range === 'week') {
+    const start = new Date(now);
+    start.setHours(0, 0, 0, 0);
+    if (range === 'yesterday') {
+      start.setDate(start.getDate() - 1);
+      const end = new Date(start);
+      end.setDate(end.getDate() + 1);
+      q = q.gte('created_at', start.toISOString()).lt('created_at', end.toISOString());
+    } else if (range === 'week') {
+      start.setDate(start.getDate() - 6);
+      q = q.gte('created_at', start.toISOString());
+    } else {
+      q = q.gte('created_at', start.toISOString());
+    }
+  }
+  const queryClean = String(query || '').trim();
+  if (queryClean) {
+    q = q.or(
+      `title.ilike.%${queryClean}%,description.ilike.%${queryClean}%,actor_email.ilike.%${queryClean}%,entity_id.ilike.%${queryClean}%`
+    );
+  }
+  const { data, error } = await q;
+  if (error) throw error;
+  return { data: { events: data || [] } };
+}
+
+export async function listAuditEventsForEntity({ entityType, entityId, limit = 30 } = {}) {
+  const sb = requireClient();
+  if (!entityType || !entityId) return { data: { events: [] } };
+  const lim = Math.max(1, Math.min(200, Number(limit || 30)));
+  const { data, error } = await sb
+    .from('audit_events')
+    .select('*')
+    .eq('entity_type', String(entityType))
+    .eq('entity_id', String(entityId))
+    .order('created_at', { ascending: false })
+    .limit(lim);
+  if (error) throw error;
+  return { data: { events: data || [] } };
+}
+
+export async function searchTicketsForSupport({ query, limit = 25 } = {}) {
+  const sb = requireClient();
+  const qText = String(query || '').trim();
+  if (!qText) return { data: { tickets: [] } };
+  const lim = Math.max(1, Math.min(50, Number(limit || 25)));
+  const exact = await sb.from('tickets').select('*').eq('id', qText).limit(1);
+  let rows = exact.data || [];
+  if (!rows.length) {
+    const like = `%${qText}%`;
+    const runLookup = async (withPhone = true) =>
+      sb
+        .from('tickets')
+        .select('*')
+        .or(
+          withPhone
+            ? `cliente_email.ilike.${like},cliente_nombre.ilike.${like},id.ilike.${like},codigo_corto.ilike.${like},cliente_telefono.ilike.${like}`
+            : `cliente_email.ilike.${like},cliente_nombre.ilike.${like},id.ilike.${like},codigo_corto.ilike.${like}`
+        )
+        .order('fecha_creacion', { ascending: false })
+        .limit(lim);
+    let lookup = await runLookup(true);
+    if (lookup.error && /cliente_telefono|column/i.test(String(lookup.error?.message || ''))) {
+      lookup = await runLookup(false);
+    }
+    if (lookup.error) throw lookup.error;
+    rows = lookup.data || [];
+  } else if (exact.error) {
+    throw exact.error;
+  }
+  return { data: { tickets: rows.map((r) => mapTicketRow(r)) } };
+}
+
+export async function getTicketSupportDetails({ ticketId }) {
+  const { data } = await getTicketById({ id: ticketId });
+  return { data: { ticket: data?.ticket || null } };
+}
+
 export async function listMesaReservasByTicketId({ ticketId }) {
   const sb = requireClient();
   if (!ticketId) return { data: { mesaReservas: [] } };

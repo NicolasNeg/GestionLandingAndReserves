@@ -272,25 +272,74 @@ const renderPaquetes = (paquetes) => {
   `;
 };
 
+function normalizeBadgeFromProduct(producto) {
+  const stock = Number(producto?.stockActual ?? 0);
+  if (stock <= 0) return { label: 'Sin stock', tone: 'danger' };
+  if (stock <= 5) return { label: 'Pocas piezas', tone: 'warn' };
+  const metadataBadge =
+    producto?.metadata?.badge ||
+    producto?.badge ||
+    producto?.nuevo ||
+    producto?.esNuevo ||
+    producto?.destacado;
+  if (metadataBadge === true) return { label: 'Nuevo', tone: 'info' };
+  if (typeof metadataBadge === 'string' && metadataBadge.trim()) {
+    return { label: metadataBadge.trim().slice(0, 22), tone: 'info' };
+  }
+  const created = new Date(producto?.fechaCreacion || 0).getTime();
+  if (Number.isFinite(created) && created > 0) {
+    const ageDays = (Date.now() - created) / (1000 * 60 * 60 * 24);
+    if (ageDays <= 14) return { label: 'Nuevo', tone: 'info' };
+  }
+  return null;
+}
+
 const renderProductos = (productos) => {
   if (!productos.length) {
-    return `<p class="text-sm text-slate-500">Aun no hay productos publicados.</p>`;
+    return '<article class="landing-products-empty"><p class="landing-products-empty-title">Todavía no hay productos disponibles.</p><p class="landing-products-empty-sub">Pronto encontrarás nuevos extras para complementar tu visita.</p></article>';
   }
   return `
-    <div class="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+    <div class="landing-products-grid">
       ${productos
-        .map((p) => `
-          <article class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-            <img src="${escapeHtml(p.imagenUrl || '')}" alt="${escapeHtml(p.titulo)}" class="h-36 w-full rounded-lg object-cover border border-slate-100 mb-3" />
-            <h3 class="font-bold text-slate-900">${escapeHtml(p.titulo)}</h3>
-            <p class="mt-1 text-sm text-slate-600 min-h-10">${escapeHtml(p.descripcion || '')}</p>
-            <p class="mt-2 font-extrabold text-blue-700">${currencyFormatter.format(p.precio || 0)}</p>
-            <button type="button" class="btn-add-producto mt-3 w-full rounded-lg bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-black"
-              data-producto-id="${p.id}" data-producto-name="${escapeHtml(p.titulo)}" data-producto-price="${p.precio}">
-              Agregar al carrito
-            </button>
+        .map((p) => {
+          const stock = Number(p.stockActual ?? 0);
+          const canAdd = stock > 0;
+          const badge = normalizeBadgeFromProduct(p);
+          const badgeClass =
+            badge?.tone === 'danger'
+              ? 'landing-product-badge is-danger'
+              : badge?.tone === 'warn'
+                ? 'landing-product-badge is-warn'
+                : 'landing-product-badge is-info';
+          return `
+          <article class="landing-product-card">
+            <div class="landing-product-media-wrap">
+              <img src="${escapeHtml(p.imagenUrl || heroImageUrl)}" alt="${escapeHtml(p.titulo || 'Producto')}" class="landing-product-media" loading="lazy" />
+              ${badge ? `<span class="${badgeClass}">${escapeHtml(badge.label)}</span>` : ''}
+            </div>
+            <div class="landing-product-body">
+              <h3 class="landing-product-title">${escapeHtml(p.titulo || 'Producto')}</h3>
+              <p class="landing-product-desc">${escapeHtml(p.descripcion || '')}</p>
+              <div class="landing-product-price-row">
+                <p class="landing-product-price">${currencyFormatter.format(p.precio || 0)}</p>
+                ${canAdd ? '' : '<p class="landing-product-unavailable">No disponible</p>'}
+              </div>
+              <button
+                type="button"
+                class="btn-add-producto landing-product-add"
+                data-producto-id="${p.id}"
+                data-producto-name="${escapeHtml(p.titulo)}"
+                data-producto-price="${p.precio}"
+                aria-label="${canAdd ? `Agregar ${escapeHtml(p.titulo)} al carrito` : 'Producto sin stock'}"
+                ${canAdd ? '' : 'disabled'}
+              >
+                ${icon('shoppingCart', 'h-4 w-4')}
+                ${canAdd ? 'Agregar al carrito' : 'Sin stock'}
+              </button>
+            </div>
           </article>
-        `)
+        `;
+        })
         .join('')}
     </div>
   `;
@@ -544,18 +593,29 @@ export default {
             </section>
 
             <section id="servicios" class="landing-reveal scroll-mt-24 bg-slate-50 px-4 py-14 sm:px-8">
-              <div class="mx-auto max-w-5xl">
-                <h2 class="text-2xl font-black text-slate-900 sm:text-3xl">Servicios</h2>
-                <p class="mt-2 text-sm text-slate-500">Gestionados desde el panel del personal.</p>
-                <div class="group relative mt-8 overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-xl">
-                  <img src="${heroImageUrl}" alt="Experiencia en el parque" class="h-56 w-full object-cover transition duration-500 group-hover:scale-105 sm:h-72" />
-                  <div class="absolute inset-0 bg-slate-900/25"></div>
-                  <button type="button" class="absolute inset-0 m-auto h-20 w-20 rounded-full border-4 border-white/70 bg-white/35 text-white backdrop-blur">
-                    ${icon('ticket', 'h-8 w-8')}
-                  </button>
+              <div class="mx-auto max-w-[1280px]">
+                <div class="landing-services-head">
+                  <div class="landing-services-copy">
+                    <p class="landing-services-kicker">Servicios premium</p>
+                    <h2 class="landing-services-title">Servicios Adicionales</h2>
+                    <p class="landing-services-subtitle">
+                      Mejora tu experiencia agregando estos servicios a tu visita. Selecciona los extras que necesites para complementar tu estancia.
+                    </p>
+                  </div>
+                  <div id="landing-servicios-controls" class="landing-services-controls" aria-hidden="true">
+                    <button type="button" id="landing-servicios-prev" class="landing-services-arrow" aria-label="Servicio anterior">
+                      ${icon('chevronDown', 'h-5 w-5 -rotate-90')}
+                    </button>
+                    <button type="button" id="landing-servicios-next" class="landing-services-arrow landing-services-arrow--primary" aria-label="Servicio siguiente">
+                      ${icon('chevronDown', 'h-5 w-5 rotate-90')}
+                    </button>
+                  </div>
                 </div>
-                <div id="landing-servicios" class="mt-8 grid gap-6 sm:grid-cols-2">
+                <div id="landing-servicios" class="landing-services-track" aria-live="polite">
                   <p class="text-sm text-slate-500">Cargando servicios...</p>
+                </div>
+                <div class="landing-services-progress" aria-hidden="true">
+                  <div id="landing-servicios-progress-bar" class="landing-services-progress-bar"></div>
                 </div>
               </div>
             </section>
@@ -706,9 +766,10 @@ export default {
             </section>
 
             <section id="productos" class="landing-reveal scroll-mt-24 border-t border-slate-200 bg-white px-4 py-14 sm:px-8">
-              <div class="mx-auto max-w-5xl">
-                <h2 class="text-2xl font-black text-slate-900 sm:text-3xl">Productos y extras</h2>
-                <p class="mt-2 text-sm text-slate-500">Agrega bebidas, alimentos o extras (ej. estacionamiento) al carrito.</p>
+              <div class="mx-auto max-w-[1280px]">
+                <p class="landing-products-kicker">Catálogo</p>
+                <h2 class="landing-products-title">Productos</h2>
+                <p class="landing-products-subtitle">Explora productos disponibles para complementar tu visita.</p>
                 <div id="landing-productos" class="mt-6 min-h-24">
                   <p class="text-sm text-slate-500">Cargando productos...</p>
                 </div>
@@ -973,34 +1034,77 @@ export default {
     if (botWrap) botWrap.innerHTML = renderBotones(filterPublicBotones(parseBotones(landing.botonesJson)));
 
     const serviciosEl = document.getElementById('landing-servicios');
+    const serviciosPrevBtn = document.getElementById('landing-servicios-prev');
+    const serviciosNextBtn = document.getElementById('landing-servicios-next');
+    const serviciosControls = document.getElementById('landing-servicios-controls');
+    const serviciosProgressBar = document.getElementById('landing-servicios-progress-bar');
     if (serviciosEl) {
       try {
         const sres = await listServiciosLanding();
         const servicios = sres.data?.servicios || [];
         if (!servicios.length) {
           serviciosEl.innerHTML =
-            '<p class="text-sm text-slate-500">No hay servicios publicados. El personal puede crearlos en el panel.</p>';
+            '<article class="landing-services-empty"><p class="landing-services-empty-title">Todavía no hay servicios adicionales disponibles.</p><p class="landing-services-empty-sub">Vuelve pronto para descubrir nuevos extras para tu visita.</p></article>';
+          if (serviciosControls) serviciosControls.classList.add('is-hidden');
+          if (serviciosProgressBar) serviciosProgressBar.style.width = '0%';
         } else {
           serviciosEl.innerHTML = servicios
             .map(
               (s) => `
-            <article class="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-lg">
-              ${s.imagenUrl ? `<img src="${escapeHtml(s.imagenUrl)}" alt="${escapeHtml(s.titulo)}" class="h-36 w-full object-cover" loading="lazy" />` : ''}
-              <div class="p-6">
-                <div class="flex items-start justify-between gap-3">
-                  <h3 class="text-lg font-bold text-slate-900">${escapeHtml(s.titulo)}</h3>
-                  ${Number(s.precio || 0) > 0 ? `<span class="rounded-full bg-amber-100 px-3 py-1 text-xs font-black text-amber-800">${currencyFormatter.format(s.precio)}</span>` : ''}
+            <article class="landing-service-card">
+              <div class="landing-service-media-wrap">
+                ${
+                  s.imagenUrl
+                    ? `<img src="${escapeHtml(s.imagenUrl)}" alt="${escapeHtml(s.titulo)}" class="landing-service-media" loading="lazy" />`
+                    : `<img src="${heroImageUrl}" alt="${escapeHtml(s.titulo)}" class="landing-service-media" loading="lazy" />`
+                }
+              </div>
+              <div class="landing-service-body">
+                <div class="landing-service-title-row">
+                  <h3 class="landing-service-title">${escapeHtml(s.titulo)}</h3>
+                  ${
+                    Number(s.precio || 0) > 0
+                      ? `<span class="landing-service-price">${currencyFormatter.format(s.precio)}</span>`
+                      : ''
+                  }
                 </div>
-                <p class="mt-2 text-sm text-slate-600 whitespace-pre-wrap">${escapeHtml(s.descripcion)}</p>
+                <p class="landing-service-desc">${escapeHtml(s.descripcion || '')}</p>
+                <button type="button" class="btn-add-servicio landing-service-add"
+                  data-servicio-id="${escapeHtml(s.id)}"
+                  data-servicio-name="${escapeHtml(s.titulo)}"
+                  data-servicio-price="${Number(s.precio || 0)}">
+                  ${icon('shoppingCart', 'h-4 w-4')} Agregar al carrito
+                </button>
               </div>
             </article>`
             )
             .join('');
+          const updateServicesProgress = () => {
+            if (!serviciosProgressBar) return;
+            const maxScroll = Math.max(1, serviciosEl.scrollWidth - serviciosEl.clientWidth);
+            const pct = Math.min(100, Math.max(0, (serviciosEl.scrollLeft / maxScroll) * 100));
+            serviciosProgressBar.style.width = `${Math.max(10, pct)}%`;
+          };
+          const scrollByCard = (direction = 1) => {
+            const card = serviciosEl.querySelector('.landing-service-card');
+            const step = card ? card.getBoundingClientRect().width + 24 : serviciosEl.clientWidth * 0.9;
+            serviciosEl.scrollBy({ left: direction * step, behavior: 'smooth' });
+          };
+          if (servicios.length <= 1 && serviciosControls) {
+            serviciosControls.classList.add('is-hidden');
+          } else {
+            if (serviciosControls) serviciosControls.classList.remove('is-hidden');
+            serviciosPrevBtn?.addEventListener('click', () => scrollByCard(-1));
+            serviciosNextBtn?.addEventListener('click', () => scrollByCard(1));
+          }
+          serviciosEl.addEventListener('scroll', updateServicesProgress, { passive: true });
+          requestAnimationFrame(updateServicesProgress);
         }
       } catch (e) {
         console.error(e);
         serviciosEl.innerHTML =
           '<p class="text-sm text-rose-600">No se pudieron cargar los servicios.</p>';
+        if (serviciosControls) serviciosControls.classList.add('is-hidden');
       }
     }
 
@@ -1065,6 +1169,7 @@ export default {
 
     document.querySelectorAll('.btn-add-producto').forEach((btn) => {
       btn.addEventListener('click', async () => {
+        if (btn.disabled) return;
         addToCart({
           key: `producto:${btn.dataset.productoId}`,
           type: 'producto',
@@ -1074,6 +1179,20 @@ export default {
           qty: 1
         });
         await showAlert('Producto agregado al carrito.', { title: 'Carrito', variant: 'success' });
+      });
+    });
+
+    document.querySelectorAll('.btn-add-servicio').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        addToCart({
+          key: `servicio:${btn.dataset.servicioId}`,
+          type: 'servicio',
+          id: btn.dataset.servicioId,
+          name: btn.dataset.servicioName,
+          price: Number(btn.dataset.servicioPrice || 0),
+          qty: 1
+        });
+        await showAlert('Servicio agregado al carrito.', { title: 'Carrito', variant: 'success' });
       });
     });
 

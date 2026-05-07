@@ -2,6 +2,7 @@ import { getCurrentUser, onAuthChange } from '../lib/authProvider.js';
 import {
     createAnonymousTicket,
     createUserTicket,
+    createTicketDeliveryLog,
     getUserProfile,
     listProductosAdmin,
     updateProductoStock,
@@ -13,7 +14,7 @@ import {
 import { navigateTo } from '../router.js';
 import { showAlert } from '../lib/appDialog.js';
 import { downloadTicketPdfBestEffort } from '../lib/ticketPdf.js';
-import { sendTicketEmailBestEffort } from '../lib/ticketEmail.js';
+import { resendTicketEmail, sendTicketEmailBestEffort } from '../lib/ticketEmail.js';
 import { listCartItems, setCartQty, removeFromCart, cartSubtotal, addToCart, clearCart } from '../lib/cart.js';
 import { publishAppUpdate } from '../lib/realtimeSync.js';
 import { applyDiscountToCart } from '../lib/discountRules.js';
@@ -21,6 +22,7 @@ import { calculateCartTotal, formatMoney } from '../lib/cartTotals.js';
 import QRCode from 'qrcode';
 import { saveGuestTicket } from '../lib/guestTicketStore.js';
 import { copyTicketCode, saveTicketQrImage, shareTicketViaWhatsApp, shareTicketGeneric } from '../lib/ticketShare.js';
+import { logAuditEvent } from '../lib/auditLog.js';
 
 function escapeHtml(text) {
   return String(text ?? '')
@@ -163,6 +165,7 @@ const Checkout = {
                     <div class="mt-4 flex flex-col gap-2">
                         <button type="button" id="purchase-btn-my-tickets" class="w-full rounded-xl bg-teal-700 py-3 text-sm font-black text-white hover:bg-teal-800">Ver mis tickets</button>
                         <button type="button" id="purchase-btn-home" class="w-full rounded-xl border border-slate-200 py-3 text-sm font-black text-slate-700 hover:bg-slate-50">Volver al inicio</button>
+                        <a href="/recuperar-ticket" data-link class="text-center text-xs font-black text-blue-700 hover:underline">¿No encuentras tu ticket? Recuperarlo por correo + folio</a>
                     </div>
                 </div>
             </div>
@@ -486,6 +489,15 @@ const Checkout = {
                     discountAmount = 0;
                     if (discountRemoveBtn) discountRemoveBtn.classList.add('hidden');
                     setDiscountStatus('Codigo invalido o no existe.', 'err');
+                    void logAuditEvent({
+                        eventType: 'descuento_fallido',
+                        entityType: 'descuento',
+                        entityId: code,
+                        severity: 'warning',
+                        title: 'Descuento fallido',
+                        description: `El código ${code} no existe o no está activo.`,
+                        metadata: { code, reason: 'not_found' }
+                    });
                     syncTotals();
                     return;
                 }
@@ -502,11 +514,28 @@ const Checkout = {
                     discountAmount = 0;
                     if (discountRemoveBtn) discountRemoveBtn.classList.add('hidden');
                     setDiscountStatus(evaluation.message || 'El cupon no cumple condiciones.', 'err');
+                    void logAuditEvent({
+                        eventType: 'descuento_fallido',
+                        entityType: 'descuento',
+                        entityId: discount?.id || code,
+                        severity: 'warning',
+                        title: 'Descuento fallido',
+                        description: evaluation.message || `El código ${code} no cumple condiciones.`,
+                        metadata: { code, discountId: discount?.id || null, reason: 'rules_not_met' }
+                    });
                     syncTotals();
                     return;
                 }
                 appliedDiscount = discount;
                 discountAmount = Number(evaluation.discountAmount || 0);
+                void logAuditEvent({
+                    eventType: 'descuento_aplicado',
+                    entityType: 'descuento',
+                    entityId: discount?.id || code,
+                    title: 'Descuento aplicado',
+                    description: `Se aplicó ${discount?.codigo || code} por ${formatMoney(discountAmount)}.`,
+                    metadata: { code, discountId: discount?.id || null, amount: discountAmount }
+                });
                 setDiscountStatus(`Codigo ${discount.codigo} aplicado correctamente.`, 'ok');
                 if (discountRemoveBtn) discountRemoveBtn.classList.remove('hidden');
                 syncTotals();
@@ -617,6 +646,14 @@ const Checkout = {
 
         const setDeliveryMessage = (text) => {
             if (purchaseConfirmMsg) purchaseConfirmMsg.textContent = text;
+        };
+
+        const logDelivery = async ({ ticketId, email, channel, status, error = '', metadata = {} }) => {
+            try {
+                await createTicketDeliveryLog({ ticketId, email, channel, status, error, metadata });
+            } catch (e) {
+                console.warn('[ticket_delivery_logs]', e?.message || e);
+            }
         };
 
         const showDeliveryModal = async (delivery) => {
@@ -735,9 +772,35 @@ const Checkout = {
 
             if (emailResult.sent) {
                 lastEmailStatus = 'sent';
+                void logDelivery({ ticketId, email, channel: 'email', status: 'sent', metadata: { mode: 'auto' } });
+                void logAuditEvent({
+                    eventType: 'correo_enviado',
+                    entityType: 'ticket',
+                    entityId: ticketId,
+                    title: 'Correo enviado',
+                    description: `Se envió ticket por correo a ${email || 'cliente'}.`,
+                    metadata: { ticketId, email, mode: 'auto' }
+                });
                 line('Enviamos una copia a tu correo.', 'ok');
             } else {
                 lastEmailStatus = 'failed';
+                void logDelivery({
+                    ticketId,
+                    email,
+                    channel: 'email',
+                    status: 'failed',
+                    error: String(emailResult?.reason || 'send_failed'),
+                    metadata: { mode: 'auto' }
+                });
+                void logAuditEvent({
+                    eventType: 'correo_fallo',
+                    entityType: 'ticket',
+                    entityId: ticketId,
+                    severity: 'warning',
+                    title: 'Correo falló',
+                    description: `Falló envío automático de ticket a ${email || 'cliente'}.`,
+                    metadata: { ticketId, email, reason: String(emailResult?.reason || 'send_failed') }
+                });
                 line(
                     'No pudimos enviar el correo ahora, pero tu ticket ya está listo para guardarse o compartirse.',
                     'warn'
@@ -800,6 +863,12 @@ const Checkout = {
                 }
                 await downloadTicketPdfBestEffort(lastCheckoutPdfOpts);
                 appendConfirmLine('PDF descargado correctamente.', 'ok');
+                void logDelivery({
+                    ticketId: lastTicketDelivery.ticketId,
+                    email: lastTicketDelivery.clienteEmail,
+                    channel: 'pdf',
+                    status: 'downloaded'
+                });
             } catch {
                 await showAlert(
                     'No pudimos generar el PDF. Intenta guardar la imagen QR.',
@@ -821,6 +890,12 @@ const Checkout = {
             try {
                 await saveTicketQrImage({ ticketId: lastTicketDelivery.ticketId });
                 appendConfirmLine('Imagen QR guardada en tu dispositivo.', 'ok');
+                void logDelivery({
+                    ticketId: lastTicketDelivery.ticketId,
+                    email: lastTicketDelivery.clienteEmail,
+                    channel: 'qr',
+                    status: 'downloaded'
+                });
             } catch {
                 await showAlert('No se pudo guardar la imagen QR.', { title: 'QR', variant: 'warning' });
             }
@@ -836,6 +911,12 @@ const Checkout = {
                     preferQrFile: true
                 });
                 appendConfirmLine('Ticket compartido por WhatsApp (o menú de compartir).', 'ok');
+                void logDelivery({
+                    ticketId: lastTicketDelivery.ticketId,
+                    email: lastTicketDelivery.clienteEmail,
+                    channel: 'whatsapp',
+                    status: 'shared'
+                });
             } catch {
                 await showAlert('No se pudo compartir ahora. Intenta copiar el código y compartir manualmente.', {
                     title: 'Compartir',
@@ -870,6 +951,12 @@ const Checkout = {
             try {
                 await copyTicketCode(lastTicketDelivery.ticketId);
                 appendConfirmLine('Código del ticket copiado al portapapeles.', 'ok');
+                void logDelivery({
+                    ticketId: lastTicketDelivery.ticketId,
+                    email: lastTicketDelivery.clienteEmail,
+                    channel: 'copy',
+                    status: 'copied'
+                });
             } catch {
                 await showAlert('No se pudo copiar el código.', { title: 'Copiar', variant: 'warning' });
             }
@@ -878,24 +965,46 @@ const Checkout = {
             if (!lastTicketDelivery?.ticketId || !lastTicketDelivery?.clienteEmail) return;
             appendConfirmLine('Reintentando envío al correo…', 'muted');
             try {
-                const mailRes = await sendTicketEmailBestEffort(
+                const mailRes = await resendTicketEmail(
                     {
                         ticketId: lastTicketDelivery.ticketId,
-                        toEmail: lastTicketDelivery.clienteEmail,
+                        email: lastTicketDelivery.clienteEmail,
                         clienteNombre: lastTicketDelivery.clienteNombre
                     },
                     { timeoutMs: 10000 }
                 );
-                if (mailRes.sent) {
+                if (mailRes.sent || mailRes.ok) {
                     lastEmailStatus = 'sent';
                     appendConfirmLine('Correo reenviado correctamente.', 'ok');
+                    void logDelivery({
+                        ticketId: lastTicketDelivery.ticketId,
+                        email: lastTicketDelivery.clienteEmail,
+                        channel: 'email',
+                        status: 'resent'
+                    });
                 } else {
                     lastEmailStatus = 'failed';
                     appendConfirmLine('No se pudo reenviar el correo. Usa QR/PDF/WhatsApp.', 'warn');
+                    void logDelivery({
+                        ticketId: lastTicketDelivery.ticketId,
+                        email: lastTicketDelivery.clienteEmail,
+                        channel: 'email',
+                        status: 'failed',
+                        error: String(mailRes?.reason || 'resend_failed'),
+                        metadata: { mode: 'resend' }
+                    });
                 }
             } catch {
                 lastEmailStatus = 'failed';
                 appendConfirmLine('No se pudo reenviar el correo. Usa QR/PDF/WhatsApp.', 'warn');
+                void logDelivery({
+                    ticketId: lastTicketDelivery.ticketId,
+                    email: lastTicketDelivery.clienteEmail,
+                    channel: 'email',
+                    status: 'failed',
+                    error: 'resend_exception',
+                    metadata: { mode: 'resend' }
+                });
             }
         };
 
@@ -1019,6 +1128,14 @@ const Checkout = {
                     const res = await createAnonymousTicket(variables);
                     ticketId = res.data.ticket_insert.id;
                 }
+                void logAuditEvent({
+                    eventType: 'ticket_creado',
+                    entityType: 'ticket',
+                    entityId: ticketId,
+                    title: 'Ticket creado',
+                    description: `${name || 'Cliente'} compró ticket por ${formatMoney(totalCarrito)}.`,
+                    metadata: { ticketId, email, total: totalCarrito, metodoPago: selectedPayment }
+                });
 
                 clearCart();
                 syncTotals();

@@ -35,6 +35,7 @@ import {
   runScannerFeedback,
   setScannerSoundEnabled
 } from '../lib/scannerFeedback.js';
+import { logAuditEvent } from '../lib/auditLog.js';
 
 const UUID_PATTERN = /[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/i;
 
@@ -435,6 +436,18 @@ const Escaner = {
       await addRecentScan(payload);
     };
 
+    const logScanAudit = ({ eventType, title, description, severity = 'info', ticketId = '', metadata = {} }) => {
+      void logAuditEvent({
+        eventType,
+        entityType: ticketId ? 'ticket' : 'scan',
+        entityId: ticketId || null,
+        severity,
+        title,
+        description,
+        metadata
+      });
+    };
+
     const processOnline = async ({ ticketId, raw }) => {
       const response = await scanTicketOnline({
         ticketId,
@@ -476,6 +489,33 @@ const Escaner = {
       });
 
       const ok = result === 'valid' && reason === 'accepted';
+      if (ok) {
+        logScanAudit({
+          eventType: 'ticket_escaneado',
+          title: 'Ticket escaneado',
+          description: `Entrada validada para ${display.clienteNombre || 'cliente'}.`,
+          ticketId,
+          metadata: { reason, mode: 'online' }
+        });
+      } else if (outcome.key === 'already_scanned') {
+        logScanAudit({
+          eventType: 'ticket_ya_usado',
+          title: 'Ticket ya usado',
+          description: `Se intentó escanear de nuevo el ticket ${display.shortId}.`,
+          severity: 'warning',
+          ticketId,
+          metadata: { reason, mode: 'online' }
+        });
+      } else {
+        logScanAudit({
+          eventType: 'ticket_scan_rechazado',
+          title: 'Escaneo rechazado',
+          description: `Escaneo rechazado (${outcome.key}) para ticket ${display.shortId}.`,
+          severity: 'warning',
+          ticketId,
+          metadata: { reason, mode: 'online', outcomeKey: outcome.key }
+        });
+      }
       runScannerFeedback(ok ? 'accepted' : outcome.key === 'already_scanned' ? 'already_scanned' : 'rejected');
 
       const summary = humanSummaryForHistory({
@@ -508,6 +548,14 @@ const Escaner = {
           cacheNote: 'Sin datos en este dispositivo.'
         });
         runScannerFeedback('rejected');
+        logScanAudit({
+          eventType: 'scanner_offline_no_cache',
+          title: 'Escaneo sin cache',
+          description: `No se encontró en cache local el ticket ${display.shortId}.`,
+          severity: 'warning',
+          ticketId,
+          metadata: { mode: 'offline' }
+        });
         await pushHistory({
           ticketId,
           rawQr: raw,
@@ -535,6 +583,14 @@ const Escaner = {
           cacheNote: 'Datos tomados del cache local.'
         });
         runScannerFeedback('rejected');
+        logScanAudit({
+          eventType: 'ticket_scan_rechazado',
+          title: 'Ticket cancelado',
+          description: `Se intentó escanear ticket cancelado ${display.shortId}.`,
+          severity: 'warning',
+          ticketId,
+          metadata: { mode: 'offline', state: 'cancelado' }
+        });
         await pushHistory({
           ticketId,
           rawQr: raw,
@@ -563,6 +619,14 @@ const Escaner = {
           cacheNote: 'Datos tomados del cache local.'
         });
         runScannerFeedback('already_scanned');
+        logScanAudit({
+          eventType: 'ticket_ya_usado',
+          title: 'Ticket ya usado',
+          description: `Ticket ${display.shortId} ya estaba marcado como escaneado.`,
+          severity: 'warning',
+          ticketId,
+          metadata: { mode: 'offline', state: 'escaneado' }
+        });
         await pushHistory({
           ticketId,
           rawQr: raw,
@@ -589,6 +653,14 @@ const Escaner = {
           cacheNote: 'Datos tomados del cache local.'
         });
         runScannerFeedback('rejected');
+        logScanAudit({
+          eventType: 'ticket_scan_rechazado',
+          title: 'Estado de ticket inválido',
+          description: `No se pudo validar ticket ${display.shortId} por estado ${ticket.estadoTicket || 'desconocido'}.`,
+          severity: 'warning',
+          ticketId,
+          metadata: { mode: 'offline', state: ticket.estadoTicket || null }
+        });
         await pushHistory({
           ticketId,
           rawQr: raw,
@@ -631,6 +703,13 @@ const Escaner = {
         cacheNote: 'Datos tomados del cache local. Pendiente de sincronizar con el servidor.'
       });
       runScannerFeedback('offline_pending');
+      logScanAudit({
+        eventType: 'scanner_offline_pending_sync',
+        title: 'Escaneo offline pendiente',
+        description: `Ticket ${display.shortId} validado offline, pendiente de sincronizar.`,
+        ticketId,
+        metadata: { mode: 'offline', pendingSync: true }
+      });
       await pushHistory({
         ticketId,
         rawQr: raw,

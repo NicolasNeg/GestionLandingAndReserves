@@ -35,7 +35,12 @@ import {
   deleteTicket,
   deleteMesaReserva,
   listMesaReservasByFecha,
-  getExecutiveDashboardData
+  getExecutiveDashboardData,
+  searchTicketsForSupport,
+  getTicketSupportDetails,
+  listTicketDeliveryLogs,
+  listAuditEvents,
+  listAuditEventsForEntity
 } from '../lib/dataLayer.js';
 import { listPendingScans } from '../lib/offlineScannerStore.js';
 import {
@@ -71,6 +76,10 @@ import {
 } from '../lib/discountRulesAdmin.js';
 import heroImageUrl from '../assets/hero.png';
 import { splitBotonesJson, mergeBotonesJson } from '../lib/landingBotonesHero.js';
+import { resendTicketEmail } from '../lib/ticketEmail.js';
+import { downloadTicketPdfBestEffort } from '../lib/ticketPdf.js';
+import { copyTicketCode } from '../lib/ticketShare.js';
+import { logAuditEvent } from '../lib/auditLog.js';
 import {
   buildFullBackupPayload,
   clearAllMapDrafts,
@@ -293,6 +302,15 @@ const AdminDashboard = {
     const canAdminPanel = access.can('admin.panel');
     const canInventoryView = access.can('inventory.manage') || access.can('inventory.adjust') || access.can('sales.physical');
     const canParking = access.can('parking.manage');
+    const canBitacora =
+      access.can('dashboard.manage') ||
+      access.can('admin.panel') ||
+      access.can('programador.access') ||
+      access.can('users.permissions');
+    const canSupport =
+      canBitacora ||
+      access.can('tickets.scan') ||
+      access.can('sales.physical');
     const canTicketTypesPanel = canPackages || canAdminPanel;
     const showDiscountTechnical =
       access.isProgramador === true || access.can('programador.access');
@@ -319,6 +337,8 @@ const AdminDashboard = {
                     ${canTicketTypesPanel ? `<button type="button" data-admin-section="ticket-types" class="admin-sidebar-item" title="Tickets del catalogo">${icon('ticket', 'h-5 w-5')}<span class="admin-sidebar-label">Tickets</span></button>` : ''}
                     ${canParking ? `<button type="button" data-admin-section="parking" class="admin-sidebar-item" title="Estacionamiento">${icon('parking', 'h-5 w-5')}<span class="admin-sidebar-label">Estacionamiento</span></button>` : ''}
                     ${canInventoryView ? `<button type="button" data-admin-section="inventario" class="admin-sidebar-item" title="Inventario y ventas">${icon('package', 'h-5 w-5')}<span class="admin-sidebar-label">Inventario / Ventas</span></button>` : ''}
+                    ${canSupport ? `<button type="button" data-admin-section="soporte" class="admin-sidebar-item" title="Soporte clientes">${icon('users', 'h-5 w-5')}<span class="admin-sidebar-label">Soporte</span></button>` : ''}
+                    ${canBitacora ? `<button type="button" data-admin-section="bitacora" class="admin-sidebar-item" title="Bitacora operativa">${icon('clock', 'h-5 w-5')}<span class="admin-sidebar-label">Bitácora</span></button>` : ''}
                     ${canScan ? `<a href="/escaner" data-link class="admin-sidebar-item" title="Escaner">${icon('scan', 'h-5 w-5')}<span class="admin-sidebar-label">Escaner</span></a>` : ''}
                     ${canAdminPanel ? `<button type="button" data-admin-section="admin" class="admin-sidebar-item" title="Panel administracion">${icon('dashboard', 'h-5 w-5')}<span class="admin-sidebar-label">Panel administracion</span></button>` : ''}
                     ${canSitioPanel ? `<button type="button" data-admin-section="sitio" class="admin-sidebar-item" title="Landing, mapa y servicios">${icon('palette', 'h-5 w-5')}<span class="admin-sidebar-label">Sitio</span></button>` : ''}
@@ -724,6 +744,49 @@ const AdminDashboard = {
                     <h3 class="font-bold text-lg mb-3">Movimientos recientes</h3>
                     <div id="inventario-movimientos" class="space-y-2 text-sm text-slate-600">Selecciona un producto para ver historial.</div>
                   </div>
+                </div>` : ''}
+
+                ${canSupport ? `<div id="admin-panel-soporte" class="hidden space-y-6">
+                  <section class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+                    <h2 class="text-xl font-black text-slate-900">Soporte de clientes</h2>
+                    <p class="mt-1 text-sm text-slate-600">Busca por correo, nombre, folio, ticket ID o teléfono.</p>
+                    <div class="mt-4 flex flex-col gap-2 sm:flex-row">
+                      <input id="support-query" type="text" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" placeholder="Buscar por correo, nombre, folio, ticket ID o teléfono" />
+                      <button id="support-search-btn" type="button" class="rounded-xl bg-slate-900 px-4 py-2 text-sm font-black text-white">Buscar</button>
+                    </div>
+                    <p id="support-msg" class="mt-3 text-xs font-semibold text-slate-600"></p>
+                    <div id="support-results" class="mt-4 space-y-3"></div>
+                    <div id="support-detail" class="mt-4 hidden rounded-xl border border-slate-200 bg-slate-50 p-4">
+                      <div id="support-detail-body" class="text-sm text-slate-700"></div>
+                    </div>
+                  </section>
+                </div>` : ''}
+
+                ${canBitacora ? `<div id="admin-panel-bitacora" class="hidden space-y-6">
+                  <section class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+                    <h2 class="text-xl font-black text-slate-900">Bitácora</h2>
+                    <p class="mt-1 text-sm text-slate-600">Revisa eventos importantes del sistema y operación del parque.</p>
+                    <div class="mt-4 grid gap-2 sm:grid-cols-4">
+                      <select id="audit-range" class="rounded-xl border border-slate-300 px-3 py-2 text-sm">
+                        <option value="today">Hoy</option>
+                        <option value="yesterday">Ayer</option>
+                        <option value="week">Esta semana</option>
+                        <option value="all">Todos</option>
+                      </select>
+                      <input id="audit-type" type="text" class="rounded-xl border border-slate-300 px-3 py-2 text-sm" placeholder="Tipo de evento" />
+                      <select id="audit-severity" class="rounded-xl border border-slate-300 px-3 py-2 text-sm">
+                        <option value="">Todas severidades</option>
+                        <option value="info">Info</option>
+                        <option value="warning">Warning</option>
+                        <option value="error">Error</option>
+                      </select>
+                      <input id="audit-query" type="text" class="rounded-xl border border-slate-300 px-3 py-2 text-sm" placeholder="Buscar texto" />
+                    </div>
+                    <div class="mt-3 flex justify-end">
+                      <button id="audit-refresh-btn" type="button" class="rounded-xl border border-slate-300 px-3 py-2 text-xs font-black text-slate-800">Actualizar</button>
+                    </div>
+                    <div id="audit-list" class="mt-3 space-y-3"></div>
+                  </section>
                 </div>` : ''}
 
                 ${canAdminPanel ? `<div id="admin-panel-admin" class="hidden space-y-8">
@@ -1286,6 +1349,8 @@ const AdminDashboard = {
     const panelTickets = document.getElementById('admin-panel-tickets');
     const panelParking = document.getElementById('admin-panel-parking');
     const panelInventario = document.getElementById('admin-panel-inventario');
+    const panelSoporte = document.getElementById('admin-panel-soporte');
+    const panelBitacora = document.getElementById('admin-panel-bitacora');
     const panelAdmin = document.getElementById('admin-panel-admin');
     const panelSitio = document.getElementById('admin-panel-sitio');
     const panelTicketTypes = document.getElementById('admin-panel-ticket-types');
@@ -1749,9 +1814,13 @@ const AdminDashboard = {
       if (name === 'admin' && !panelAdmin) return;
       if (name === 'inventario' && !panelInventario) return;
       if (name === 'parking' && !panelParking) return;
+      if (name === 'soporte' && !panelSoporte) return;
+      if (name === 'bitacora' && !panelBitacora) return;
       if (panelTickets) panelTickets.classList.toggle('hidden', name !== 'tickets');
       if (panelParking) panelParking.classList.toggle('hidden', name !== 'parking');
       if (panelInventario) panelInventario.classList.toggle('hidden', name !== 'inventario');
+      if (panelSoporte) panelSoporte.classList.toggle('hidden', name !== 'soporte');
+      if (panelBitacora) panelBitacora.classList.toggle('hidden', name !== 'bitacora');
       if (panelAdmin) panelAdmin.classList.toggle('hidden', name !== 'admin');
       if (panelSitio) panelSitio.classList.toggle('hidden', name !== 'sitio');
       if (panelTicketTypes) panelTicketTypes.classList.toggle('hidden', name !== 'ticket-types');
@@ -1770,6 +1839,8 @@ const AdminDashboard = {
         if (sec === 'ticket-types') initTicketTypesPanel();
         if (sec === 'parking') initParkingPanel();
         if (sec === 'inventario') initInventarioPanel();
+        if (sec === 'soporte') initSupportPanel();
+        if (sec === 'bitacora') initBitacoraPanel();
       });
     });
     const adminUrlParams = new URLSearchParams(window.location.search);
@@ -1931,9 +2002,24 @@ const AdminDashboard = {
           const existingId = String(idEl?.value || '').trim();
           if (existingId) {
             await updateTicketType({ id: existingId, ...payload });
+            void logAuditEvent({
+              eventType: 'ticket_type_editado',
+              entityType: 'ticket_type',
+              entityId: existingId,
+              title: 'Ticket type editado',
+              description: `Se actualizó ${payload.nombre}.`,
+              metadata: { id: existingId, payload }
+            });
             setStatus('Guardado.', 'ok');
           } else {
             await createTicketType(payload);
+            void logAuditEvent({
+              eventType: 'ticket_type_creado',
+              entityType: 'ticket_type',
+              title: 'Ticket type creado',
+              description: `Se creó ${payload.nombre}.`,
+              metadata: { payload }
+            });
             setStatus('Ticket creado.', 'ok');
             if (idEl) idEl.value = '';
           }
@@ -3296,6 +3382,14 @@ const AdminDashboard = {
                   orden,
                   activo
                 });
+                void logAuditEvent({
+                  eventType: 'servicio_editado',
+                  entityType: 'servicio',
+                  entityId: id,
+                  title: 'Servicio editado',
+                  description: `Se actualizó el servicio ${titulo || id}.`,
+                  metadata: { id, titulo, precio, activo }
+                });
                 await publishAppUpdate('landing', 'Servicio actualizado');
                 const msg = document.getElementById('lp-save-msg');
                 if (msg) msg.textContent = 'Servicio actualizado.';
@@ -3366,6 +3460,13 @@ const AdminDashboard = {
           let imagenUrl = '';
           if (croppedServiceFile) imagenUrl = await uploadServiceImage(croppedServiceFile, user.uid ?? user.id);
           await createServicio({ titulo, descripcion, imagenUrl, precio, orden, activo: true });
+          void logAuditEvent({
+            eventType: 'servicio_creado',
+            entityType: 'servicio',
+            title: 'Servicio creado',
+            description: `Se creó el servicio ${titulo}.`,
+            metadata: { titulo, precio, orden }
+          });
           await publishAppUpdate('landing', 'Servicio creado');
           document.getElementById('svc-new-title').value = '';
           document.getElementById('svc-new-desc').value = '';
@@ -3440,6 +3541,14 @@ const AdminDashboard = {
         if (lpDiscardBtn) lpDiscardBtn.disabled = true;
         try {
           await upsertLandingPage(payload);
+          void logAuditEvent({
+            eventType: 'landing_editada',
+            entityType: 'landing',
+            entityId: LANDING_PAGE_ID,
+            title: 'Landing editada',
+            description: 'Se actualizó contenido público de la landing.',
+            metadata: { mapContext, hasMapErrors: mapErrors.length > 0 }
+          });
           await publishAppUpdate('landing', 'Contenido landing actualizado');
           if (msg) msg.textContent = 'Guardado correctamente.';
           Object.assign(landing, {
@@ -3997,6 +4106,14 @@ const AdminDashboard = {
               precio,
               activo: Boolean(prodEditTarget.activo)
             });
+            void logAuditEvent({
+              eventType: 'producto_editado',
+              entityType: 'producto',
+              entityId: prodEditTarget.id,
+              title: 'Producto editado',
+              description: `Se actualizó ${titulo}.`,
+              metadata: { id: prodEditTarget.id, titulo, precio }
+            });
             await publishAppUpdate('inventory', `Producto ${prodEditTarget.id} editado`);
             closeProdEdit();
             await loadProductos();
@@ -4305,6 +4422,13 @@ const AdminDashboard = {
             reservadoAprox: 0,
             activo: true
           });
+          void logAuditEvent({
+            eventType: 'producto_creado',
+            entityType: 'producto',
+            title: 'Producto creado',
+            description: `Se creó ${titulo}.`,
+            metadata: { titulo, precio, stockActual }
+          });
           await publishAppUpdate('inventory', `Producto ${titulo} creado`);
           document.getElementById('prod-title').value = '';
           document.getElementById('prod-desc').value = '';
@@ -4326,6 +4450,268 @@ const AdminDashboard = {
       await loadProductos();
     };
 
+    let supportReady = false;
+    const initSupportPanel = () => {
+      if (supportReady) return;
+      supportReady = true;
+      const queryEl = document.getElementById('support-query');
+      const btnEl = document.getElementById('support-search-btn');
+      const msgEl = document.getElementById('support-msg');
+      const listEl = document.getElementById('support-results');
+      const detailWrap = document.getElementById('support-detail');
+      const detailBody = document.getElementById('support-detail-body');
+      if (!queryEl || !btnEl || !listEl || !msgEl || !detailWrap || !detailBody) return;
+      const setMsg = (msg = '', tone = 'muted') => {
+        msgEl.textContent = msg;
+        msgEl.className =
+          tone === 'ok'
+            ? 'mt-3 text-xs font-semibold text-emerald-700'
+            : tone === 'err'
+              ? 'mt-3 text-xs font-semibold text-rose-700'
+              : 'mt-3 text-xs font-semibold text-slate-600';
+      };
+      const renderDeliveryHistory = (logs = []) => {
+        if (!logs.length) return '<p class="text-xs text-slate-500">Sin historial de entrega todavía.</p>';
+        return logs
+          .map((row) => {
+            const state =
+              row.status === 'failed'
+                ? 'Error al enviar correo'
+                : row.status === 'resent'
+                  ? 'Correo reenviado'
+                  : row.status === 'sent'
+                    ? `Correo enviado${row.email ? ` a ${row.email}` : ''}`
+                    : row.status === 'downloaded'
+                      ? row.channel === 'pdf'
+                        ? 'PDF descargado'
+                        : 'Imagen QR guardada'
+                      : row.status === 'shared'
+                        ? 'Ticket compartido'
+                        : row.status === 'copied'
+                          ? 'Código copiado'
+                          : `${row.channel || 'canal'} · ${row.status || 'evento'}`;
+            return `<li class="rounded-lg bg-white px-3 py-2 text-xs text-slate-700">${escapeHtml(state)} · ${escapeHtml(relativeTimeEs(row.created_at))}</li>`;
+          })
+          .join('');
+      };
+      const renderSupportCard = (ticket) => {
+        const shortId = String(ticket.id || '').slice(0, 8).toUpperCase();
+        const paid = ticket.estadoPago || 'pendiente';
+        const st = ticket.estadoTicket || 'valido';
+        return `<article class="rounded-xl border border-slate-200 bg-white p-4">
+          <div class="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p class="text-xs font-black uppercase tracking-wide text-slate-500">Folio ${escapeHtml(shortId)}</p>
+              <h4 class="text-base font-black text-slate-900">${escapeHtml(ticket.clienteNombre || 'Cliente')}</h4>
+              <p class="text-xs text-slate-600">${escapeHtml(ticket.clienteEmail || 'Sin correo')} · ${escapeHtml(ticket.metodoPago || '—')}</p>
+            </div>
+            <div class="text-right text-xs">
+              <p><span class="font-bold">Pago:</span> ${escapeHtml(paid)}</p>
+              <p><span class="font-bold">Ticket:</span> ${escapeHtml(st)}</p>
+              <p><span class="font-bold">Total:</span> ${escapeHtml(fmtMxMoney(ticket.precioTotal || 0))}</p>
+            </div>
+          </div>
+          <div class="mt-3 flex flex-wrap gap-2">
+            <button type="button" data-support-action="detail" data-ticket-id="${escapeHtml(ticket.id)}" class="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-bold text-slate-700">Ver detalles</button>
+            <button type="button" data-support-action="resend" data-ticket-id="${escapeHtml(ticket.id)}" data-ticket-email="${escapeHtml(ticket.clienteEmail || '')}" class="rounded-lg bg-blue-700 px-3 py-1.5 text-xs font-bold text-white">Reenviar correo</button>
+            <button type="button" data-support-action="pdf" data-ticket-id="${escapeHtml(ticket.id)}" data-ticket-name="${escapeHtml(ticket.clienteNombre || '')}" data-ticket-email="${escapeHtml(ticket.clienteEmail || '')}" data-ticket-total="${escapeHtml(String(ticket.precioTotal || 0))}" data-ticket-pay="${escapeHtml(ticket.metodoPago || '')}" data-ticket-pay-status="${escapeHtml(ticket.estadoPago || '')}" class="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-bold text-slate-700">Descargar PDF</button>
+            <button type="button" data-support-action="copy" data-ticket-id="${escapeHtml(ticket.id)}" class="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-bold text-slate-700">Copiar folio</button>
+            <button type="button" data-support-action="audit" data-ticket-id="${escapeHtml(ticket.id)}" class="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-bold text-slate-700">Ver bitácora</button>
+          </div>
+        </article>`;
+      };
+      const wireSupportActions = () => {
+        listEl.querySelectorAll('[data-support-action]').forEach((btn) => {
+          btn.addEventListener('click', async () => {
+            const action = btn.getAttribute('data-support-action');
+            const ticketId = btn.getAttribute('data-ticket-id') || '';
+            if (!ticketId) return;
+            if (action === 'copy') {
+              await copyTicketCode(ticketId);
+              setMsg('Folio copiado.', 'ok');
+              return;
+            }
+            if (action === 'pdf') {
+              await downloadTicketPdfBestEffort({
+                ticketId,
+                clienteNombre: btn.getAttribute('data-ticket-name') || '',
+                clienteEmail: btn.getAttribute('data-ticket-email') || '',
+                fechaCreacion: new Date(),
+                precioTotal: Number(btn.getAttribute('data-ticket-total') || 0),
+                metodoPago: btn.getAttribute('data-ticket-pay') || '',
+                estadoPago: btn.getAttribute('data-ticket-pay-status') || ''
+              });
+              setMsg('PDF descargado.', 'ok');
+              return;
+            }
+            if (action === 'resend') {
+              const email = btn.getAttribute('data-ticket-email') || '';
+              setMsg('Reenviando correo...');
+              try {
+                await resendTicketEmail({ ticketId, email }, { timeoutMs: 10000 });
+                await logAuditEvent({
+                  eventType: 'ticket_reenviado',
+                  entityType: 'ticket',
+                  entityId: ticketId,
+                  title: 'Ticket reenviado',
+                  description: `Se reenvió el ticket ${String(ticketId).slice(0, 8)} a ${email || 'correo del ticket'}.`,
+                  metadata: { ticketId, email }
+                });
+                setMsg('Correo reenviado correctamente.', 'ok');
+              } catch (e) {
+                setMsg(`No se pudo reenviar: ${e?.message || 'configuración de correo.'}`, 'err');
+              }
+              return;
+            }
+            if (action === 'audit') {
+              try {
+                const res = await listAuditEventsForEntity({ entityType: 'ticket', entityId: ticketId, limit: 20 });
+                const events = res?.data?.events || [];
+                detailWrap.classList.remove('hidden');
+                detailBody.innerHTML = `<h5 class="mb-2 text-sm font-black text-slate-900">Bitácora relacionada</h5>${
+                  events.length
+                    ? `<ul class="space-y-2">${events
+                        .map(
+                          (ev) =>
+                            `<li class="rounded-lg bg-white px-3 py-2 text-xs"><p class="font-bold text-slate-800">${escapeHtml(ev.title || 'Evento')}</p><p class="text-slate-600">${escapeHtml(ev.description || '')}</p></li>`
+                        )
+                        .join('')}</ul>`
+                    : '<p class="text-xs text-slate-500">Sin eventos relacionados.</p>'
+                }`;
+              } catch {
+                setMsg('No se pudo cargar la bitácora relacionada.', 'err');
+              }
+              return;
+            }
+            try {
+              const [ticketRes, logsRes] = await Promise.all([
+                getTicketSupportDetails({ ticketId }),
+                listTicketDeliveryLogs({ ticketId, limit: 40 })
+              ]);
+              const t = ticketRes?.data?.ticket;
+              const items = Array.isArray(t?.metadata?.items) ? t.metadata.items : [];
+              const logs = logsRes?.data?.logs || [];
+              detailWrap.classList.remove('hidden');
+              detailBody.innerHTML = `
+                <h5 class="text-sm font-black text-slate-900">Detalle del ticket</h5>
+                <p class="mt-1 text-xs text-slate-700">${escapeHtml(t?.clienteNombre || 'Cliente')} · ${escapeHtml(t?.clienteEmail || 'Sin correo')}</p>
+                <p class="mt-1 text-xs text-slate-700">Compra: ${escapeHtml(t?.fechaCreacion ? new Date(t.fechaCreacion).toLocaleString('es-MX') : '—')} · Escaneo: ${escapeHtml(t?.fechaEscaneo ? new Date(t.fechaEscaneo).toLocaleString('es-MX') : 'No escaneado')}</p>
+                <div class="mt-3 rounded-lg border border-slate-200 bg-white p-3">
+                  <p class="text-xs font-black uppercase tracking-wide text-slate-500">Este ticket incluye</p>
+                  ${
+                    items.length
+                      ? `<ul class="mt-2 list-disc space-y-1 pl-5 text-xs text-slate-700">${items
+                          .map((it) => `<li>${escapeHtml(String(it?.cantidad || 1))} x ${escapeHtml(it?.nombre || it?.label || 'Item')}</li>`)
+                          .join('')}</ul>`
+                      : '<p class="mt-2 text-xs text-slate-500">Sin desglose disponible.</p>'
+                  }
+                </div>
+                <div class="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                  <p class="text-xs font-black uppercase tracking-wide text-slate-500">Historial de entrega</p>
+                  <ul class="mt-2 space-y-1">${renderDeliveryHistory(logs)}</ul>
+                </div>`;
+            } catch {
+              setMsg('No se pudo cargar el detalle del ticket.', 'err');
+            }
+          });
+        });
+      };
+      const doSearch = async () => {
+        const q = String(queryEl.value || '').trim();
+        if (!q) {
+          setMsg('Escribe un término de búsqueda.', 'err');
+          listEl.innerHTML = '';
+          detailWrap.classList.add('hidden');
+          return;
+        }
+        setMsg('Buscando...');
+        btnEl.disabled = true;
+        try {
+          const res = await searchTicketsForSupport({ query: q, limit: 25 });
+          const rows = res?.data?.tickets || [];
+          if (!rows.length) {
+            listEl.innerHTML = '<p class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-600">No encontramos tickets con ese criterio.</p>';
+            setMsg('Sin resultados.');
+            return;
+          }
+          listEl.innerHTML = rows.map(renderSupportCard).join('');
+          wireSupportActions();
+          setMsg(`${rows.length} resultado(s).`, 'ok');
+        } catch (e) {
+          listEl.innerHTML = '';
+          setMsg(e?.message || 'No se pudo buscar tickets.', 'err');
+        } finally {
+          btnEl.disabled = false;
+        }
+      };
+      btnEl.addEventListener('click', () => void doSearch());
+      queryEl.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') void doSearch();
+      });
+    };
+
+    let bitacoraReady = false;
+    const initBitacoraPanel = () => {
+      if (bitacoraReady) return;
+      bitacoraReady = true;
+      const listEl = document.getElementById('audit-list');
+      const btnEl = document.getElementById('audit-refresh-btn');
+      const rangeEl = document.getElementById('audit-range');
+      const typeEl = document.getElementById('audit-type');
+      const sevEl = document.getElementById('audit-severity');
+      const queryEl = document.getElementById('audit-query');
+      if (!listEl || !btnEl || !rangeEl || !typeEl || !sevEl || !queryEl) return;
+      const render = async () => {
+        listEl.innerHTML = '<p class="text-sm text-slate-600">Cargando bitácora...</p>';
+        try {
+          const res = await listAuditEvents({
+            range: rangeEl.value || 'today',
+            eventType: String(typeEl.value || '').trim(),
+            severity: String(sevEl.value || '').trim(),
+            query: String(queryEl.value || '').trim(),
+            limit: 80
+          });
+          const rows = res?.data?.events || [];
+          if (!rows.length) {
+            listEl.innerHTML = '<p class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-600">Todavía no hay eventos registrados.</p>';
+            return;
+          }
+          listEl.innerHTML = rows
+            .map((ev) => {
+              const sevClass =
+                ev.severity === 'error'
+                  ? 'bg-rose-100 text-rose-700'
+                  : ev.severity === 'warning'
+                    ? 'bg-amber-100 text-amber-700'
+                    : 'bg-slate-100 text-slate-700';
+              return `<article class="rounded-xl border border-slate-200 bg-white p-4">
+                <div class="flex items-start justify-between gap-3">
+                  <div class="min-w-0">
+                    <p class="text-sm font-black text-slate-900">${escapeHtml(ev.title || 'Evento')}</p>
+                    <p class="mt-1 text-xs text-slate-600">${escapeHtml(ev.description || 'Sin descripción.')}</p>
+                    <p class="mt-2 text-xs text-slate-500">${escapeHtml(relativeTimeEs(ev.created_at))}${ev.actor_email ? ` · ${escapeHtml(ev.actor_email)}` : ''}${ev.entity_id ? ` · ${escapeHtml(ev.entity_type || 'entidad')} ${escapeHtml(String(ev.entity_id).slice(0, 12))}` : ''}</p>
+                  </div>
+                  <span class="rounded-full px-2 py-1 text-[10px] font-black uppercase ${sevClass}">${escapeHtml(ev.severity || 'info')}</span>
+                </div>
+              </article>`;
+            })
+            .join('');
+        } catch (e) {
+          listEl.innerHTML = `<p class="rounded-lg border border-rose-200 bg-rose-50 px-3 py-3 text-sm text-rose-700">${escapeHtml(
+            e?.message || 'No se pudo cargar la bitácora.'
+          )}</p>`;
+        }
+      };
+      btnEl.addEventListener('click', () => void render());
+      [rangeEl, sevEl].forEach((el) => el.addEventListener('change', () => void render()));
+      [typeEl, queryEl].forEach((el) =>
+        el.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') void render();
+        })
+      );
+      void render();
+    };
+
     const initialSection =
       requestedInitialSection === 'admin' && panelAdmin
         ? 'admin'
@@ -4333,6 +4719,10 @@ const AdminDashboard = {
           ? 'parking'
         : requestedInitialSection === 'inventario' && panelInventario
           ? 'inventario'
+        : requestedInitialSection === 'soporte' && panelSoporte
+          ? 'soporte'
+        : requestedInitialSection === 'bitacora' && panelBitacora
+          ? 'bitacora'
         : requestedInitialSection === 'ticket-types' && panelTicketTypes
           ? 'ticket-types'
           : requestedInitialSection === 'sitio' && panelSitio
@@ -4341,6 +4731,8 @@ const AdminDashboard = {
     showSection(initialSection);
     if (requestedInitialSection === 'parking' && panelParking) initParkingPanel();
     if (requestedInitialSection === 'inventario' && panelInventario) initInventarioPanel();
+    if (requestedInitialSection === 'soporte' && panelSoporte) initSupportPanel();
+    if (requestedInitialSection === 'bitacora' && panelBitacora) initBitacoraPanel();
     if (requestedInitialSection === 'ticket-types' && panelTicketTypes) await initTicketTypesPanel();
     if (requestedInitialSection === 'sitio' && panelSitio) {
       await initSitioPanel();
@@ -4451,6 +4843,14 @@ const AdminDashboard = {
                 activo: Boolean(row.querySelector('[data-disc-active]')?.checked),
                 reglasJson: reglas
               });
+              void logAuditEvent({
+                eventType: 'descuento_editado',
+                entityType: 'descuento',
+                entityId: id,
+                title: 'Descuento editado',
+                description: `Se actualizó descuento ${String(row.querySelector('[data-disc-code]')?.value || id).trim().toUpperCase()}.`,
+                metadata: { id }
+              });
               setStatus('Descuento actualizado.', true);
               await publishAppUpdate('sales', `discount-update:${id}`);
             } catch (e) {
@@ -4530,6 +4930,13 @@ const AdminDashboard = {
             usosRestantes: Math.max(1, Number(discUses?.value || 1)),
             activo: Boolean(discActive?.checked),
             reglasJson: reglas
+          });
+          void logAuditEvent({
+            eventType: 'descuento_creado',
+            entityType: 'descuento',
+            title: 'Descuento creado',
+            description: `Se creó descuento ${String(discCode?.value || '').trim().toUpperCase()}.`,
+            metadata: { codigo: String(discCode?.value || '').trim().toUpperCase() }
           });
           setDiscStatus('Descuento creado.', true);
           if (discCode) discCode.value = '';

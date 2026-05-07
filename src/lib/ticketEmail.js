@@ -38,3 +38,45 @@ export async function sendTicketEmailBestEffort(payload, opts = {}) {
 
   return sendTicketEmailCopy({ toEmail, ticketId, clienteNombre }, { timeoutMs });
 }
+
+export async function resendTicketEmail({ ticketId, email, clienteNombre = '' }, opts = {}) {
+  const timeoutMs = opts.timeoutMs ?? 10000;
+  const edgeAttempt = async () => {
+    const { data, error } = await supabase.functions.invoke('send-ticket-email', {
+      body: {
+        ticketId: String(ticketId || ''),
+        toEmail: String(email || ''),
+        clienteNombre: String(clienteNombre || ''),
+        mode: 'resend'
+      }
+    });
+    if (error) throw error;
+    return data || { sent: true };
+  };
+  return Promise.race([
+    edgeAttempt(),
+    new Promise((_, rej) =>
+      setTimeout(() => rej(Object.assign(new Error('timeout'), { code: 'TIMEOUT' })), timeoutMs)
+    )
+  ]);
+}
+
+export async function recoverTicketByEmailAndFolio({ email, folio }, opts = {}) {
+  const timeoutMs = opts.timeoutMs ?? 10000;
+  const edgeAttempt = async () => {
+    const { data, error } = await supabase.functions.invoke('recover-ticket', {
+      body: {
+        email: String(email || '').trim(),
+        folio: String(folio || '').trim()
+      }
+    });
+    if (error) throw error;
+    return data || { ok: true };
+  };
+  return Promise.race([
+    edgeAttempt(),
+    new Promise((_, rej) =>
+      setTimeout(() => rej(Object.assign(new Error('timeout'), { code: 'TIMEOUT' })), timeoutMs)
+    )
+  ]);
+}

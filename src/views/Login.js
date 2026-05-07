@@ -72,6 +72,7 @@ const Login = {
                         <p class="font-semibold mb-2">¿No llegó el correo o está en spam?</p>
                         <p class="mb-3 text-amber-800">Deja el mismo correo arriba y pulsa reenviar; Supabase envía un <strong>enlace</strong> de confirmación.</p>
                         <button type="button" id="btn-resend-verification" class="w-full rounded-lg bg-amber-600 px-4 py-2 font-bold text-white hover:bg-amber-700">Reenviar correo de verificación</button>
+                        <button type="button" id="btn-already-verified" class="mt-2 w-full rounded-lg border border-amber-300 bg-white px-4 py-2 font-bold text-amber-900 hover:bg-amber-100">Ya verifiqué, iniciar sesión</button>
                     </div>
 
                     <div class="mt-6 flex items-center justify-center">
@@ -98,6 +99,10 @@ const Login = {
                             </button>
                         </div>
                     </div>
+                    <p class="mt-4 text-center text-xs text-slate-500">
+                      ¿No encuentras tu ticket?
+                      <a href="/recuperar-ticket" data-link class="font-black text-blue-700 hover:underline">Recupéralo aquí</a>
+                    </p>
                     </div>
 
                     <div id="reset-password-panel" class="hidden space-y-4">
@@ -361,17 +366,15 @@ const Login = {
             nombre: nameInput.value
           });
           const su = data?.user;
-          if (data?.session && su) {
+          if (su) {
             const payload = profilePayloadFromSupabaseUser(su);
             await afterLoginProfileSync(payload);
-            const access = await getUserAccess(payload);
-            navigateTo(resolvePostLoginPath(access));
-          } else {
-            showSuccess(
-              'Te enviamos un correo de confirmación. Revisa tu bandeja antes de iniciar sesión.'
-            );
-            toggleMode();
           }
+          showSuccess(
+            'Te enviamos un correo de verificación. Revisa tu bandeja y spam para activar tu cuenta.'
+          );
+          if (resendWrap) resendWrap.classList.remove('hidden');
+          if (isRegistering) toggleMode();
         } else {
           const result = await signInWithEmail(emailInput.value, passwordInput.value);
           const su = result?.user;
@@ -448,6 +451,12 @@ const Login = {
         btn.disabled = false;
         btn.textContent = 'Reenviar correo de verificación';
       }
+    });
+
+    document.getElementById('btn-already-verified')?.addEventListener('click', () => {
+      if (isRegistering) toggleMode();
+      showSuccess('Perfecto. Ahora inicia sesión con tu correo y contraseña.');
+      passwordInput?.focus();
     });
   }
 };

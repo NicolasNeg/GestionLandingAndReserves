@@ -10,6 +10,7 @@ import { icon } from '../lib/icons.js';
 import { DEFAULT_THEME, applyTheme, readThemeConfig, saveThemeConfig } from '../lib/theme.js';
 import { refreshAppTheme } from '../lib/layout.js';
 import { publishAppUpdate } from '../lib/realtimeSync.js';
+import { logAuditEvent } from '../lib/auditLog.js';
 
 function escapeHtml(text) {
   return String(text ?? '')
@@ -508,6 +509,14 @@ const ProgramadorDashboard = {
           id: uid,
           rol: role,
           permissions: readChecked('user-permission')
+        });
+        void logAuditEvent({
+          eventType: 'usuario_rol_actualizado',
+          entityType: 'user',
+          entityId: uid,
+          title: 'Usuario actualizado',
+          description: `Se cambió rol/permisos del usuario ${uid} a ${role}.`,
+          metadata: { uid, role }
         });
         await publishAppUpdate('users', `Permisos usuario ${uid}`);
         if (msg) msg.textContent = 'Usuario guardado en Postgres.';
