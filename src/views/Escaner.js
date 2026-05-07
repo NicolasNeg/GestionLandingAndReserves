@@ -29,6 +29,12 @@ import {
   moneyMx,
   normalizeTicketForScanDisplay
 } from '../lib/scanTicketDisplay.js';
+import {
+  isScannerSoundEnabled,
+  primeScannerAudioContext,
+  runScannerFeedback,
+  setScannerSoundEnabled
+} from '../lib/scannerFeedback.js';
 
 const UUID_PATTERN = /[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/i;
 
@@ -80,26 +86,6 @@ function parseTicketQr(rawValue) {
   return { ticketId: null, raw: text };
 }
 
-function playTone(ok = true) {
-  try {
-    const Ctx = window.AudioContext || window.webkitAudioContext;
-    if (!Ctx) return;
-    const ctx = new Ctx();
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.type = 'sine';
-    osc.frequency.value = ok ? 920 : 280;
-    gain.gain.value = 0.0001;
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    const now = ctx.currentTime;
-    gain.gain.exponentialRampToValueAtTime(0.2, now + 0.01);
-    gain.gain.exponentialRampToValueAtTime(0.0001, now + (ok ? 0.14 : 0.24));
-    osc.start(now);
-    osc.stop(now + (ok ? 0.16 : 0.26));
-  } catch {}
-}
-
 function escapeHtml(text) {
   return String(text ?? '')
     .replace(/&/g, '&amp;')
@@ -126,8 +112,14 @@ const Escaner = {
       <div class="mx-auto max-w-3xl space-y-3">
         <header class="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
           <h1 class="text-xl font-black text-slate-900">Escáner operativo</h1>
-          <p class="mt-1 text-sm text-slate-600">Validación online/offline para personal con permiso tickets.scan.</p>
-          <div id="scanner-connection-state" class="mt-2 text-xs font-bold text-slate-500" aria-live="polite"></div>
+          <p class="mt-1 text-sm text-slate-600">Validación rápida para personal en móvil.</p>
+          <div class="mt-2 flex flex-wrap items-center gap-2">
+            <div id="scanner-connection-state" class="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600" aria-live="polite"></div>
+            <label class="inline-flex cursor-pointer items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-bold text-slate-700">
+              <input id="scanner-sound-toggle" type="checkbox" class="h-4 w-4" />
+              Sonido
+            </label>
+          </div>
         </header>
 
         <section class="overflow-hidden rounded-2xl bg-slate-950 shadow-lg">
@@ -160,15 +152,15 @@ const Escaner = {
           </div>
         </section>
 
-        <section class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-          <h2 class="text-sm font-black text-slate-900">Pendientes offline</h2>
-          <div id="scanner-pending-list" class="mt-2 text-xs text-slate-600"></div>
-        </section>
+        <details class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+          <summary class="cursor-pointer text-sm font-black text-slate-900">Pendientes offline</summary>
+          <div id="scanner-pending-list" class="mt-3 text-xs text-slate-600"></div>
+        </details>
 
-        <section class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-          <h2 class="text-sm font-black text-slate-900">Historial reciente</h2>
-          <div id="scanner-history-list" class="mt-2 text-xs text-slate-600"></div>
-        </section>
+        <details class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+          <summary class="cursor-pointer text-sm font-black text-slate-900">Historial reciente</summary>
+          <div id="scanner-history-list" class="mt-3 text-xs text-slate-600"></div>
+        </details>
       </div>
 
       <div id="scanner-result-overlay" class="fixed inset-0 z-50 hidden" aria-modal="true" role="dialog">
@@ -179,6 +171,9 @@ const Escaner = {
           </div>
           <div id="scanner-result-scroll" class="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-2 pt-1"></div>
           <div class="shrink-0 border-t border-slate-200 bg-white p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+            <button type="button" id="scanner-result-sync-pending" class="mb-2 hidden w-full rounded-xl border border-amber-300 bg-amber-50 py-3 text-sm font-black text-amber-800">
+              Sincronizar pendientes
+            </button>
             <button type="button" id="scanner-result-scan-another" class="w-full rounded-2xl bg-slate-900 py-4 text-base font-black text-white shadow-lg active:scale-[0.99]">
               Escanear otro
             </button>
@@ -197,6 +192,7 @@ const Escaner = {
     const btnCache = document.getElementById('scanner-cache-btn');
     const btnSync = document.getElementById('scanner-sync-btn');
     const inputManual = document.getElementById('scanner-manual-input');
+    const soundToggle = document.getElementById('scanner-sound-toggle');
     const cameraChip = document.getElementById('camera-chip');
     const connState = document.getElementById('scanner-connection-state');
     const stripTitle = document.getElementById('scanner-strip-title');
@@ -204,6 +200,7 @@ const Escaner = {
     const overlay = document.getElementById('scanner-result-overlay');
     const scrollRoot = document.getElementById('scanner-result-scroll');
     const btnScanAnotherFooter = document.getElementById('scanner-result-scan-another');
+    const btnResultSyncPending = document.getElementById('scanner-result-sync-pending');
     const pendingList = document.getElementById('scanner-pending-list');
     const historyList = document.getElementById('scanner-history-list');
 
@@ -377,7 +374,7 @@ const Escaner = {
       btnQr.type = 'button';
       btnQr.className =
         'rounded-xl border-2 border-slate-300 bg-white py-3 text-sm font-black text-slate-900';
-      btnQr.textContent = 'Ver código escaneado';
+      btnQr.textContent = 'Ver detalles';
       const preWrap = document.createElement('pre');
       preWrap.className =
         'hidden max-h-36 overflow-auto rounded-xl bg-slate-900 p-3 text-xs text-emerald-100';
@@ -390,6 +387,10 @@ const Escaner = {
       scrollRoot.appendChild(actions);
 
       overlay.classList.remove('hidden');
+      if (btnResultSyncPending) {
+        const needsSync = ctx.outcome.key === 'offline_pending' || ctx.outcome.key === 'conflict';
+        btnResultSyncPending.classList.toggle('hidden', !needsSync);
+      }
       stripTitle.textContent = ctx.outcome.title;
       stripMsg.textContent = 'Resultado abajo. Pulsa «Escanear otro» para continuar.';
     };
@@ -475,8 +476,7 @@ const Escaner = {
       });
 
       const ok = result === 'valid' && reason === 'accepted';
-      playTone(ok);
-      if (navigator.vibrate) navigator.vibrate(ok ? 55 : [80, 40, 80]);
+      runScannerFeedback(ok ? 'accepted' : outcome.key === 'already_scanned' ? 'already_scanned' : 'rejected');
 
       const summary = humanSummaryForHistory({
         outcomeKey: outcome.key,
@@ -507,7 +507,7 @@ const Escaner = {
           rawQr: raw,
           cacheNote: 'Sin datos en este dispositivo.'
         });
-        playTone(false);
+        runScannerFeedback('rejected');
         await pushHistory({
           ticketId,
           rawQr: raw,
@@ -534,7 +534,7 @@ const Escaner = {
           rawQr: raw,
           cacheNote: 'Datos tomados del cache local.'
         });
-        playTone(false);
+        runScannerFeedback('rejected');
         await pushHistory({
           ticketId,
           rawQr: raw,
@@ -562,7 +562,7 @@ const Escaner = {
           rawQr: raw,
           cacheNote: 'Datos tomados del cache local.'
         });
-        playTone(false);
+        runScannerFeedback('already_scanned');
         await pushHistory({
           ticketId,
           rawQr: raw,
@@ -588,7 +588,7 @@ const Escaner = {
           rawQr: raw,
           cacheNote: 'Datos tomados del cache local.'
         });
-        playTone(false);
+        runScannerFeedback('rejected');
         await pushHistory({
           ticketId,
           rawQr: raw,
@@ -630,8 +630,7 @@ const Escaner = {
         rawQr: raw,
         cacheNote: 'Datos tomados del cache local. Pendiente de sincronizar con el servidor.'
       });
-      playTone(true);
-      if (navigator.vibrate) navigator.vibrate(35);
+      runScannerFeedback('offline_pending');
       await pushHistory({
         ticketId,
         rawQr: raw,
@@ -660,7 +659,7 @@ const Escaner = {
         if (!parsed.ticketId) {
           hideOverlay();
           paintStripBusy('QR inválido', 'No se encontró un ticket válido en el código.');
-          playTone(false);
+          runScannerFeedback('rejected');
           await pushHistory({
             ticketId: null,
             rawQr: parsed.raw,
@@ -762,15 +761,29 @@ const Escaner = {
       paintStripIdle();
     };
 
-    btnStart?.addEventListener('click', () => void startCamera());
+    if (soundToggle) {
+      soundToggle.checked = isScannerSoundEnabled();
+      soundToggle.addEventListener('change', () => {
+        setScannerSoundEnabled(Boolean(soundToggle.checked));
+      });
+    }
+
+    btnStart?.addEventListener('click', async () => {
+      await primeScannerAudioContext();
+      void startCamera();
+    });
     btnStop?.addEventListener('click', () => void stopCamera());
-    btnManual?.addEventListener('click', () => void processRaw(inputManual.value));
+    btnManual?.addEventListener('click', async () => {
+      await primeScannerAudioContext();
+      void processRaw(inputManual.value);
+    });
     inputManual?.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') void processRaw(inputManual.value);
     });
     btnCache?.addEventListener('click', () => void refreshCache());
     btnSync?.addEventListener('click', () => void syncPending());
     btnScanAnotherFooter?.addEventListener('click', scanAnother);
+    btnResultSyncPending?.addEventListener('click', () => void syncPending());
 
     window.addEventListener('online', () => void syncPending());
     window.addEventListener('online', () => void updateConn());

@@ -3,7 +3,8 @@ import { getUserAccess } from './accessControl.js';
 import { syncAuthProfileAfterSession } from './syncSupabaseAuthProfile.js';
 import { icon } from './icons.js';
 import { readThemeConfig, applyTheme } from './theme.js';
-import { cartCount, cartSubtotal, listCartItems, removeFromCart, setCartQty } from './cart.js';
+import { cartCount, listCartItems, removeFromCart, setCartQty } from './cart.js';
+import { calculateCartTotal, formatMoney } from './cartTotals.js';
 
 let navigate = (url) => {
   window.history.pushState(null, '', url);
@@ -13,7 +14,6 @@ let lastPath = window.location.pathname;
 let themeCache = null;
 let renderToken = 0;
 let cartOpen = false;
-const CART_TAX_RATE = 0.089;
 
 function escapeHtml(text) {
   return String(text ?? '')
@@ -111,10 +111,36 @@ function renderHeader(access, theme) {
               ${icon('chevronDown', 'h-4 w-4')}
             </button>
             <div id="app-user-menu" class="app-user-menu hidden">
+              <div class="app-user-menu-mobile-head">
+                <strong class="text-sm font-black text-slate-900">Usuario</strong>
+                <button type="button" class="app-user-menu-close" data-app-user-menu-close aria-label="Cerrar menú">
+                  ${icon('x', 'h-4 w-4')}
+                </button>
+              </div>
               <a href="/cliente" data-link class="app-user-menu-item">
                 ${icon('settings', 'h-4 w-4')}
                 <span>Mi cuenta</span>
               </a>
+              <a href="/cliente/tickets" data-link class="app-user-menu-item">
+                ${icon('ticket', 'h-4 w-4')}
+                <span>Mis tickets</span>
+              </a>
+              <button type="button" class="app-user-menu-item" data-app-cart-toggle data-app-user-menu-close>
+                ${icon('shoppingCart', 'h-4 w-4')}
+                <span>Carrito</span>
+              </button>
+              ${access.can('tickets.scan') || access.can('parking.manage') || access.can('sales.physical')
+                ? `<a href="/operacion" data-link class="app-user-menu-item">
+                    ${icon('waves', 'h-4 w-4')}
+                    <span>Operación</span>
+                  </a>`
+                : ''}
+              ${access.can('dashboard.manage')
+                ? `<a href="/admin/dashboard?section=tickets" data-link class="app-user-menu-item">
+                    ${icon('briefcase', 'h-4 w-4')}
+                    <span>Gestión</span>
+                  </a>`
+                : ''}
               <a href="/home#contacto" data-link class="app-user-menu-item">
                 ${icon('info', 'h-4 w-4')}
                 <span>Ayuda y contacto</span>
@@ -163,7 +189,7 @@ function ensureCartDrawer() {
             <strong id="app-cart-subtotal" class="text-slate-900">$0.00 MXN</strong>
           </div>
           <div class="flex items-center justify-between">
-            <span class="text-slate-500">Impuestos y cargos</span>
+            <span class="text-slate-500">Impuestos</span>
             <strong id="app-cart-fees" class="text-slate-700">$0.00 MXN</strong>
           </div>
           <div class="mt-2 flex items-center justify-between border-t border-slate-200 pt-2">
@@ -189,7 +215,6 @@ function renderCartDrawer() {
   const feesEl = drawer.querySelector('#app-cart-fees');
   const totalEl = drawer.querySelector('#app-cart-total');
   const items = listCartItems();
-  const fmtMoney = (value) => `$${Number(value || 0).toFixed(2)} MXN`;
   const itemCover = (item) => {
     const img = item?.meta?.imageUrl || item?.meta?.imagenUrl || '';
     if (img) {
@@ -203,18 +228,16 @@ function renderCartDrawer() {
           : 'from-emerald-200 to-teal-100 text-emerald-700';
     return `<div class="grid h-16 w-16 place-items-center rounded-2xl bg-gradient-to-br ${tint}">${icon('shoppingCart', 'h-7 w-7')}</div>`;
   };
-  const subtotal = cartSubtotal();
-  const fees = subtotal * CART_TAX_RATE;
-  const total = subtotal + fees;
+  const totals = calculateCartTotal({ items });
   if (!items.length) {
     itemsWrap.innerHTML = `
       <div class="rounded-2xl border border-dashed border-slate-300 bg-white p-6 text-center">
         <p class="text-sm font-semibold text-slate-500">Tu carrito está vacío.</p>
       </div>
     `;
-    subtotalEl.textContent = fmtMoney(0);
-    feesEl.textContent = fmtMoney(0);
-    totalEl.textContent = fmtMoney(0);
+    subtotalEl.textContent = formatMoney(0);
+    feesEl.textContent = formatMoney(0);
+    totalEl.textContent = formatMoney(0);
     return;
   }
   itemsWrap.innerHTML = items
@@ -236,16 +259,16 @@ function renderCartDrawer() {
                 <span class="w-5 text-center text-sm font-black">${Number(item.qty || 1)}</span>
                 <button type="button" data-app-cart-plus="${escapeHtml(item.key)}" class="grid h-6 w-6 place-items-center rounded-full text-slate-700 hover:bg-slate-200">+</button>
               </div>
-              <span class="text-lg font-black text-teal-700">${fmtMoney(Number(item.price || 0) * Number(item.qty || 0))}</span>
+              <span class="text-lg font-black text-teal-700">${formatMoney(Number(item.price || 0) * Number(item.qty || 0))}</span>
             </div>
           </div>
         </div>
       </article>
     `)
     .join('');
-  subtotalEl.textContent = fmtMoney(subtotal);
-  feesEl.textContent = fmtMoney(fees);
-  totalEl.textContent = fmtMoney(total);
+  subtotalEl.textContent = formatMoney(totals.subtotal);
+  feesEl.textContent = formatMoney(totals.taxAmount);
+  totalEl.textContent = formatMoney(totals.total);
 }
 
 function openCartDrawer() {
@@ -363,6 +386,11 @@ export function initAppShell(options = {}) {
       return;
     }
 
+    if (event.target.closest('[data-app-user-menu-close]')) {
+      closeUserMenu();
+      return;
+    }
+
     const menuToggle = event.target.closest('[data-app-user-menu-toggle]');
     if (menuToggle) {
       event.preventDefault();
@@ -378,6 +406,13 @@ export function initAppShell(options = {}) {
       }
       if (nowOpen && isMobile) document.body.classList.add('overflow-hidden');
       else document.body.classList.remove('overflow-hidden');
+      if (menu) {
+        menu.classList.remove('app-user-menu--up');
+        if (nowOpen && !isMobile) {
+          const rect = menu.getBoundingClientRect();
+          if (rect.bottom > window.innerHeight - 8) menu.classList.add('app-user-menu--up');
+        }
+      }
       menuToggle.setAttribute('aria-expanded', nowOpen ? 'true' : 'false');
       return;
     }
@@ -391,6 +426,11 @@ export function initAppShell(options = {}) {
       }
       closeUserMenu();
       navigate('/login');
+      return;
+    }
+
+    if (event.target.closest('#app-user-menu a[data-link]')) {
+      closeUserMenu();
       return;
     }
 

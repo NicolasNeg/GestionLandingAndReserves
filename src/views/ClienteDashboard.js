@@ -10,6 +10,7 @@ import { getUserAccess } from '../lib/accessControl.js';
 import { icon } from '../lib/icons.js';
 import { openImageCropModal } from '../lib/imageCropModal.js';
 import { uploadAvatarImage } from '../lib/storageProvider.js';
+import { calculateCustomerLoyalty, formatLoyaltyMessage } from '../lib/loyalty.js';
 
 function escapeHtml(text) {
   return String(text ?? '')
@@ -103,6 +104,11 @@ const ClienteDashboard = {
               <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
                 <h2 class="text-lg font-black text-slate-900">Historial reciente</h2>
                 <div id="cliente-home-history" class="mt-3 divide-y divide-slate-100 text-sm"></div>
+              </div>
+
+              <div class="rounded-2xl border border-amber-200 bg-amber-50 p-5 shadow-sm">
+                <h2 class="text-lg font-black text-amber-900">Cliente frecuente</h2>
+                <div id="cliente-home-loyalty" class="mt-3 text-sm text-amber-900">Calculando beneficios…</div>
               </div>
             </section>
 
@@ -200,7 +206,10 @@ const ClienteDashboard = {
 
             <section id="cliente-section-tickets" class="${section === 'tickets' ? '' : 'hidden'} space-y-4">
               <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                <h1 class="text-2xl font-black text-slate-900">Mis tickets</h1>
+                <div class="flex items-center justify-between gap-2">
+                  <h1 class="text-2xl font-black text-slate-900">Mis tickets</h1>
+                  <button id="btn-refresh-tickets" type="button" class="rounded-lg border border-slate-200 px-3 py-2 text-xs font-black text-slate-700 hover:bg-slate-50">Actualizar</button>
+                </div>
                 <p class="mt-1 text-sm text-slate-500">Consulta tus entradas, descarga tu PDF o muestra el QR en la entrada.</p>
                 <div id="tickets-role-breakdown" class="mt-3 rounded-xl border border-slate-100 bg-slate-50 p-3 text-sm text-slate-600">
                   Resumen cargando…
@@ -233,6 +242,7 @@ const ClienteDashboard = {
   mount: () => {
     const btnLogout = document.getElementById('btn-logout');
     const btnLogoutMobile = document.getElementById('btn-logout-mobile');
+    const btnRefreshTickets = document.getElementById('btn-refresh-tickets');
     const ticketsContainer = document.getElementById('tickets-container');
     const modalQr = document.getElementById('modal-qr');
     const btnCloseQr = document.getElementById('btn-close-qr');
@@ -387,6 +397,7 @@ const ClienteDashboard = {
       const mes = document.getElementById('cliente-home-mesas');
       const hist = document.getElementById('cliente-home-history');
       const cnt = document.getElementById('cliente-home-cart-count');
+      const loyaltyEl = document.getElementById('cliente-home-loyalty');
       if (!nm || !user) return;
       nm.textContent = profileSnapshot.nombre || user.displayName || 'Cliente';
       if (cnt) cnt.textContent = String(cartCount());
@@ -448,10 +459,27 @@ const ClienteDashboard = {
               .join('');
           }
         }
+        if (loyaltyEl) {
+          const loyalty = calculateCustomerLoyalty({
+            tickets: dash.tickets || [],
+            reservas: dash.mesas || []
+          });
+          loyaltyEl.innerHTML = `
+            <div class="grid gap-2 sm:grid-cols-2">
+              <p><strong>Nivel:</strong> ${escapeHtml(loyalty.level)}</p>
+              <p><strong>Visitas registradas:</strong> ${loyalty.visits}</p>
+              <p><strong>Tickets comprados:</strong> ${loyalty.ticketCount}</p>
+              <p><strong>Tickets usados:</strong> ${loyalty.usedTickets}</p>
+            </div>
+            <p class="mt-2 font-semibold">${escapeHtml(formatLoyaltyMessage(loyalty))}</p>
+            <p class="mt-2 text-xs text-amber-700">Próximamente: descuentos exclusivos, acceso rápido, promociones de cumpleaños, prioridad en mesas y paquetes especiales.</p>
+          `;
+        }
       } catch (e) {
         console.warn('Cliente home:', e);
         if (act) act.innerHTML = '<p class="text-rose-600 text-xs">No se pudieron cargar datos.</p>';
         if (mes) mes.innerHTML = '<p class="text-slate-500 text-xs">—</p>';
+        if (loyaltyEl) loyaltyEl.innerHTML = '<p class="text-rose-700 text-xs">No se pudo calcular nivel de cliente frecuente.</p>';
       }
     };
 
@@ -471,14 +499,18 @@ const ClienteDashboard = {
       tickets.forEach((ticket) => {
         ticketById.set(ticket.id, ticket);
         const pagado = ticket.estadoPago === 'pagado';
-        const escaneado = ticket.estadoTicket === 'escaneado';
+        const escaneado = ticket.estadoTicket === 'escaneado' || Boolean(ticket.fechaEscaneo);
+        const cancelado = ticket.estadoTicket === 'cancelado';
         const vigenteTicket = ticket.estadoTicket === 'valido';
 
-        let statusText = escaneado ? 'Usado' : vigenteTicket ? 'Vigente' : 'No válido';
-        if (vigenteTicket && !pagado && !escaneado) statusText = 'Pendiente de pago';
+        let statusText = escaneado ? 'USADO' : vigenteTicket ? 'VIGENTE' : 'NO VÁLIDO';
+        if (cancelado) statusText = 'CANCELADO';
+        if (vigenteTicket && !pagado && !escaneado) statusText = 'PENDIENTE DE PAGO';
 
-        const statusBg = escaneado
-          ? 'bg-slate-100 text-slate-700'
+        const statusBg = cancelado
+          ? 'bg-rose-100 text-rose-800'
+          : escaneado
+          ? 'bg-rose-100 text-rose-800'
           : vigenteTicket && pagado
             ? 'bg-emerald-100 text-emerald-800'
             : vigenteTicket && !pagado
@@ -486,9 +518,9 @@ const ClienteDashboard = {
               : 'bg-slate-100 text-slate-700';
 
         const leftBorderClass =
-          vigenteTicket && pagado ? 'border-blue-500' : vigenteTicket && !pagado ? 'border-amber-400' : 'border-gray-300';
+          cancelado ? 'border-rose-400' : escaneado ? 'border-rose-400' : vigenteTicket && pagado ? 'border-blue-500' : vigenteTicket && !pagado ? 'border-amber-400' : 'border-gray-300';
 
-        const showQr = vigenteTicket && pagado;
+        const showQr = vigenteTicket && pagado && !escaneado && !cancelado;
         const basicResume = preferences.compactTickets
           ? `
           <p><span class="font-medium">Estado:</span> ${statusText}</p>
@@ -537,6 +569,7 @@ const ClienteDashboard = {
               <p><span class="font-medium">Pago:</span> ${escapeHtml(ticket.estadoPago)}</p>
               <p><span class="font-medium">Método:</span> ${escapeHtml(ticket.metodoPago || 'online')}</p>
               <p><span class="font-medium">Escaneado:</span> ${ticket.fechaEscaneo ? new Date(ticket.fechaEscaneo).toLocaleString() : 'No'}</p>
+              ${escaneado ? '<p class="font-semibold text-rose-700">Este ticket ya fue utilizado.</p>' : ''}
               ${includeHtml}
             </div>
           </details>`;
@@ -702,6 +735,7 @@ const ClienteDashboard = {
     });
 
     btnSavePreferences?.addEventListener('click', writePreferences);
+    btnRefreshTickets?.addEventListener('click', () => void loadTickets());
     btnCloseQr?.addEventListener('click', () => modalQr.classList.add('hidden'));
     btnOpenScanner?.addEventListener('click', () => accessSnapshot?.can('tickets.scan') && navigateTo('/escaner'));
     document.getElementById('cliente-home-cart')?.addEventListener('click', () => {

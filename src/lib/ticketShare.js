@@ -93,3 +93,30 @@ export async function shareTicketViaWhatsApp({ ticket, preferQrFile = true }) {
   return { shared: true, mode: 'wa_me' };
 }
 
+export async function shareTicketGeneric({ ticket, preferQrFile = true }) {
+  const text = fallbackText(ticket);
+  const shortId = String(ticket?.id || '').slice(0, 8);
+  const qrFileName = `ticket-${shortId}-qr.png`;
+  if (preferQrFile && navigator.share) {
+    try {
+      const dataUrl = await getTicketQrDataUrl(ticket?.id);
+      const file = await dataUrlToFile(dataUrl, qrFileName);
+      if (navigator.canShare?.({ files: [file] })) {
+        await navigator.share({
+          title: 'Mi ticket del parque',
+          text,
+          files: [file]
+        });
+        return { shared: true, mode: 'share_files' };
+      }
+    } catch {
+      // fallback to text
+    }
+  }
+  if (navigator.share) {
+    await navigator.share({ title: 'Mi ticket del parque', text });
+    return { shared: true, mode: 'share_text' };
+  }
+  return { shared: false, mode: 'unsupported' };
+}
+

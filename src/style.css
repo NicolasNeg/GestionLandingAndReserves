@@ -133,6 +133,27 @@
     box-shadow: 0 24px 70px rgb(15 23 42 / 0.18);
   }
 
+  .app-user-menu--up {
+    top: auto;
+    bottom: calc(100% + 0.55rem);
+  }
+
+  .app-user-menu-mobile-head {
+    display: none;
+  }
+
+  .app-user-menu-close {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    border-radius: 999px;
+    border: 1px solid rgb(226 232 240);
+    background: white;
+    color: rgb(71 85 105);
+  }
+
   .app-user-menu-item {
     display: flex;
     width: 100%;
@@ -222,6 +243,21 @@
       border-radius: 1.1rem 1.1rem 0 0;
       padding-bottom: max(0.5rem, env(safe-area-inset-bottom));
       box-shadow: 0 -12px 48px rgb(15 23 42 / 0.2);
+      max-height: min(84vh, 36rem);
+      overflow-y: auto;
+    }
+
+    .app-user-menu-mobile-head {
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.75rem;
+      padding: 0.85rem 1rem;
+      background: white;
+      border-bottom: 1px solid rgb(226 232 240);
     }
 
     .app-topbar {

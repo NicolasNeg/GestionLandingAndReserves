@@ -17,9 +17,10 @@ import { sendTicketEmailBestEffort } from '../lib/ticketEmail.js';
 import { listCartItems, setCartQty, removeFromCart, cartSubtotal, addToCart, clearCart } from '../lib/cart.js';
 import { publishAppUpdate } from '../lib/realtimeSync.js';
 import { applyDiscountToCart } from '../lib/discountRules.js';
+import { calculateCartTotal, formatMoney } from '../lib/cartTotals.js';
 import QRCode from 'qrcode';
 import { saveGuestTicket } from '../lib/guestTicketStore.js';
-import { copyTicketCode, saveTicketQrImage, shareTicketViaWhatsApp } from '../lib/ticketShare.js';
+import { copyTicketCode, saveTicketQrImage, shareTicketViaWhatsApp, shareTicketGeneric } from '../lib/ticketShare.js';
 
 function escapeHtml(text) {
   return String(text ?? '')
@@ -88,6 +89,7 @@ const Checkout = {
                 <div class="w-full">
                     <p class="text-gray-600">Subtotal: <span class="font-bold text-gray-800" id="subtotal-text">$0.00 MXN</span></p>
                     <p class="text-gray-600">Descuento: <span class="font-bold text-emerald-700" id="discount-text">$0.00 MXN</span></p>
+                    <p class="text-gray-600">Impuestos: <span class="font-bold text-slate-700" id="tax-text">$0.00 MXN</span></p>
                 </div>
                 <div class="text-right">
                     <p class="text-sm text-gray-500">Total a pagar:</p>
@@ -149,19 +151,38 @@ const Checkout = {
                         </div>
                     </div>
 
-                    <div class="mt-5 grid gap-2 sm:grid-cols-2">
+                    <div id="purchase-actions-desktop" class="mt-5 hidden gap-2 sm:grid sm:grid-cols-2">
                         <button type="button" id="purchase-btn-download" class="w-full rounded-xl bg-blue-600 py-3 text-sm font-black text-white hover:bg-blue-700">Descargar PDF</button>
                         <button type="button" id="purchase-btn-save-qr" class="w-full rounded-xl bg-emerald-600 py-3 text-sm font-black text-white hover:bg-emerald-700">Guardar imagen QR</button>
                         <button type="button" id="purchase-btn-share-whatsapp" class="w-full rounded-xl bg-green-600 py-3 text-sm font-black text-white hover:bg-green-700">Compartir por WhatsApp</button>
                         <button type="button" id="purchase-btn-copy-code" class="w-full rounded-xl border border-slate-300 py-3 text-sm font-black text-slate-800 hover:bg-slate-50">Copiar código</button>
                         <button type="button" id="purchase-btn-resend-email" class="w-full rounded-xl border border-slate-300 py-3 text-sm font-black text-slate-800 hover:bg-slate-50 sm:col-span-2">Reenviar correo</button>
                     </div>
+                    <button type="button" id="purchase-btn-open-share-sheet" class="mt-5 w-full rounded-xl bg-slate-900 py-3 text-sm font-black text-white sm:hidden">Guardar o compartir</button>
 
                     <div class="mt-4 flex flex-col gap-2">
                         <button type="button" id="purchase-btn-my-tickets" class="w-full rounded-xl bg-teal-700 py-3 text-sm font-black text-white hover:bg-teal-800">Ver mis tickets</button>
                         <button type="button" id="purchase-btn-home" class="w-full rounded-xl border border-slate-200 py-3 text-sm font-black text-slate-700 hover:bg-slate-50">Volver al inicio</button>
                     </div>
                 </div>
+            </div>
+
+            <div id="ticket-share-sheet-backdrop" class="fixed inset-0 z-[60] hidden bg-black/45 sm:hidden"></div>
+            <div id="ticket-share-sheet" class="fixed inset-x-0 bottom-0 z-[70] hidden rounded-t-2xl bg-white p-4 pb-[max(1rem,env(safe-area-inset-bottom))] shadow-2xl sm:hidden">
+                <div class="mx-auto mb-3 h-1.5 w-14 rounded-full bg-slate-200"></div>
+                <div class="mb-3 flex items-center justify-between">
+                    <h4 class="text-sm font-black text-slate-900">Guardar o compartir</h4>
+                    <button type="button" id="ticket-share-sheet-close" class="rounded-full border border-slate-200 px-3 py-1 text-slate-600">✕</button>
+                </div>
+                <div class="grid gap-2">
+                    <button type="button" id="purchase-sheet-btn-whatsapp" class="w-full rounded-xl bg-green-600 py-3 text-sm font-black text-white">Compartir por WhatsApp</button>
+                    <button type="button" id="purchase-sheet-btn-share" class="w-full rounded-xl bg-slate-900 py-3 text-sm font-black text-white">Compartir con otra app</button>
+                    <button type="button" id="purchase-sheet-btn-save-qr" class="w-full rounded-xl border border-slate-300 py-3 text-sm font-black text-slate-800">Guardar imagen QR</button>
+                    <button type="button" id="purchase-sheet-btn-pdf" class="w-full rounded-xl border border-slate-300 py-3 text-sm font-black text-slate-800">Descargar PDF</button>
+                    <button type="button" id="purchase-sheet-btn-copy" class="w-full rounded-xl border border-slate-300 py-3 text-sm font-black text-slate-800">Copiar código</button>
+                    <button type="button" id="purchase-sheet-btn-resend" class="w-full rounded-xl border border-slate-300 py-3 text-sm font-black text-slate-800">Reenviar correo</button>
+                </div>
+                <p class="mt-3 text-xs text-slate-500">En algunos teléfonos WhatsApp no permite adjuntar el QR automáticamente. Si no aparece, guarda la imagen QR y envíala manualmente.</p>
             </div>
 
         </div>
@@ -175,6 +196,7 @@ const Checkout = {
         const cartWrap = document.getElementById('checkout-cart-items');
         const subtotalText = document.getElementById('subtotal-text');
         const discountText = document.getElementById('discount-text');
+        const taxText = document.getElementById('tax-text');
         const totalText = document.getElementById('total-text');
         const ticketTypesWrap = document.getElementById('checkout-ticket-types');
         const discountCodeInput = document.getElementById('discount-code-input');
@@ -186,17 +208,23 @@ const Checkout = {
         const purchaseConfirm = document.getElementById('purchase-confirm');
         const purchaseConfirmMsg = document.getElementById('purchase-confirm-msg');
         const purchaseConfirmStatus = document.getElementById('purchase-confirm-status');
+        const purchaseTicketSummary = document.getElementById('purchase-ticket-summary');
+        const purchaseQrCanvas = document.getElementById('purchase-qr-canvas');
+        const purchaseQrCaption = document.getElementById('purchase-qr-caption');
         const modalInviteStatus = document.getElementById('modal-invite-status');
         const checkoutStepMsg = document.getElementById('checkout-step-msg');
         const roleBreakdown = document.getElementById('checkout-role-breakdown');
 
         let checkoutInFlight = false;
         let lastCheckoutPdfOpts = null;
+        let lastTicketDelivery = null;
+        let lastEmailStatus = 'pending';
 
         let selectedPayment = 'online';
         let cartItems = listCartItems();
         let appliedDiscount = null;
         let discountAmount = 0;
+        let taxAmount = 0;
         let effectiveTotal = cartSubtotal();
 
         const normalizeCartItemType = (t) => {
@@ -328,7 +356,7 @@ const Checkout = {
             };
         };
 
-        const fmt = (n) => `$${Number(n || 0).toFixed(2)} MXN`;
+        const fmt = (n) => formatMoney(n);
         const setDiscountStatus = (msg, tone = 'neutral') => {
             if (!discountStatus) return;
             discountStatus.textContent = msg || '';
@@ -340,6 +368,7 @@ const Checkout = {
         const syncTotals = () => {
             const subtotal = cartSubtotal();
             const totalQty = listCartItems().reduce((acc, item) => acc + Number(item.qty || 0), 0);
+            let computedDiscount = 0;
             if (appliedDiscount) {
                 const evaluation = applyDiscountToCart({
                     discount: appliedDiscount,
@@ -348,20 +377,22 @@ const Checkout = {
                     user: getCurrentUser()
                 });
                 if (evaluation.ok) {
-                    discountAmount = Number(evaluation.discountAmount || 0);
-                    effectiveTotal = Number(evaluation.total || subtotal);
+                    computedDiscount = Number(evaluation.discountAmount || 0);
+                    discountAmount = computedDiscount;
                     setDiscountStatus(`Codigo ${appliedDiscount.codigo} aplicado.`, 'ok');
                 } else {
                     discountAmount = 0;
-                    effectiveTotal = subtotal;
                     setDiscountStatus(evaluation.message || 'El cupon ya no aplica con el carrito actual.', 'err');
                 }
             } else {
                 discountAmount = 0;
-                effectiveTotal = subtotal;
             }
+            const totals = calculateCartTotal({ items: listCartItems(), discountAmount: computedDiscount });
+            taxAmount = Number(totals.taxAmount || 0);
+            effectiveTotal = Number(totals.total || 0);
             subtotalText.textContent = fmt(subtotal);
             discountText.textContent = `-${fmt(discountAmount)}`;
+            if (taxText) taxText.textContent = fmt(taxAmount);
             totalText.textContent = fmt(effectiveTotal);
         };
         const renderCart = () => {
@@ -551,6 +582,57 @@ const Checkout = {
             });
         });
 
+        const renderDeliverySummary = (delivery) => {
+            if (!purchaseTicketSummary) return;
+            const shortId = String(delivery.ticketId || '').slice(0, 8);
+            const items = Array.isArray(delivery.metadata?.items) ? delivery.metadata.items : [];
+            const lines = items
+                .slice(0, 6)
+                .map((it) => {
+                    const qty = Math.max(1, Number(it.qty || 1) || 1);
+                    const label = escapeHtml(it.label || it.name || 'Ítem');
+                    const desc = it.description || it.incluye ? `<span class="text-xs text-slate-500">${escapeHtml(it.description || it.incluye)}</span>` : '';
+                    return `<li class="flex flex-col"><span>${qty > 1 ? `${qty} × ` : ''}${label}</span>${desc}</li>`;
+                })
+                .join('');
+            purchaseTicketSummary.innerHTML = `
+                <p><strong>Cliente:</strong> ${escapeHtml(delivery.clienteNombre || '—')}</p>
+                <p><strong>Correo:</strong> ${escapeHtml(delivery.clienteEmail || '—')}</p>
+                <p><strong>Código:</strong> #${escapeHtml(shortId)}</p>
+                <p><strong>Total:</strong> $${Number(delivery.precioTotal || 0).toFixed(2)} MXN</p>
+                <p><strong>Fecha:</strong> ${new Date(delivery.fechaCreacion || Date.now()).toLocaleString()}</p>
+                <p><strong>Pago:</strong> ${escapeHtml(delivery.estadoPago || '—')} (${escapeHtml(delivery.metodoPago || '—')})</p>
+                <div class="mt-2">
+                    <p class="text-xs font-black uppercase tracking-wide text-slate-500">Resumen de compra</p>
+                    ${lines ? `<ul class="mt-1 space-y-1">${lines}</ul>` : '<p class="text-xs text-slate-500 mt-1">Sin desglose disponible.</p>'}
+                </div>
+            `;
+        };
+
+        const renderDeliveryQr = async (delivery) => {
+            if (!purchaseQrCanvas) return;
+            await QRCode.toCanvas(purchaseQrCanvas, String(delivery.ticketId || ''), { width: 180, margin: 1 });
+            if (purchaseQrCaption) purchaseQrCaption.textContent = `Ticket: #${String(delivery.ticketId || '').slice(0, 8)}`;
+        };
+
+        const setDeliveryMessage = (text) => {
+            if (purchaseConfirmMsg) purchaseConfirmMsg.textContent = text;
+        };
+
+        const showDeliveryModal = async (delivery) => {
+            lastTicketDelivery = delivery;
+            renderDeliverySummary(delivery);
+            await renderDeliveryQr(delivery).catch(() => {});
+            setDeliveryMessage(
+                delivery.isAuthed
+                    ? 'Guárdalo o compártelo ahora. También te enviamos una copia por correo.'
+                    : 'Como no tienes cuenta, guarda o comparte tu ticket ahora mismo. También intentaremos enviarlo por correo.'
+            );
+            if (purchaseConfirmStatus) purchaseConfirmStatus.innerHTML = '';
+            document.getElementById('purchase-btn-my-tickets')?.classList.toggle('hidden', !delivery.isAuthed);
+            purchaseConfirm?.classList.remove('hidden');
+        };
+
         const appendConfirmLine = (text, variant = 'muted') => {
             if (!purchaseConfirmStatus) return;
             const p = document.createElement('p');
@@ -581,7 +663,7 @@ const Checkout = {
             cartSnapshot,
             discountSnapshot
         }) => {
-            const line = isAuthed ? appendConfirmLine : appendInviteLine;
+            const line = appendConfirmLine;
 
             if (discountSnapshot?.id) {
                 try {
@@ -652,15 +734,22 @@ const Checkout = {
             }
 
             if (emailResult.sent) {
+                lastEmailStatus = 'sent';
                 line('Enviamos una copia a tu correo.', 'ok');
             } else {
+                lastEmailStatus = 'failed';
                 line(
-                    'No pudimos enviar el correo ahora, pero tu ticket ya está disponible en Mis tickets.',
+                    'No pudimos enviar el correo ahora, pero tu ticket ya está listo para guardarse o compartirse.',
                     'warn'
                 );
             }
 
-            line('Listo. También puedes verlo en Mis tickets.', 'muted');
+            line(
+                isAuthed
+                    ? 'Listo. También puedes verlo en Mis tickets.'
+                    : 'Listo. Como invitado, guarda ahora tu ticket (QR, PDF o WhatsApp).',
+                'muted'
+            );
         };
 
         document.getElementById('btn-go-register').addEventListener('click', () => {
@@ -679,17 +768,148 @@ const Checkout = {
             purchaseConfirm?.classList.add('hidden');
             navigateTo('/home');
         });
-        document.getElementById('purchase-btn-download')?.addEventListener('click', async () => {
-            if (!lastCheckoutPdfOpts) return;
+
+        const shareSheet = document.getElementById('ticket-share-sheet');
+        const shareSheetBackdrop = document.getElementById('ticket-share-sheet-backdrop');
+        const openShareSheet = () => {
+            shareSheet?.classList.remove('hidden');
+            shareSheetBackdrop?.classList.remove('hidden');
+        };
+        const closeShareSheet = () => {
+            shareSheet?.classList.add('hidden');
+            shareSheetBackdrop?.classList.add('hidden');
+        };
+        document.getElementById('purchase-btn-open-share-sheet')?.addEventListener('click', openShareSheet);
+        document.getElementById('ticket-share-sheet-close')?.addEventListener('click', closeShareSheet);
+        shareSheetBackdrop?.addEventListener('click', closeShareSheet);
+
+        const actionDownloadPdf = async () => {
+            if (!lastCheckoutPdfOpts || !lastTicketDelivery) return;
+            const pdfDesktopBtn = document.getElementById('purchase-btn-download');
+            const pdfSheetBtn = document.getElementById('purchase-sheet-btn-pdf');
+            const prevDesktop = pdfDesktopBtn?.textContent;
+            const prevSheet = pdfSheetBtn?.textContent;
             try {
+                if (pdfDesktopBtn) {
+                    pdfDesktopBtn.disabled = true;
+                    pdfDesktopBtn.textContent = 'Generando PDF…';
+                }
+                if (pdfSheetBtn) {
+                    pdfSheetBtn.disabled = true;
+                    pdfSheetBtn.textContent = 'Generando PDF…';
+                }
                 await downloadTicketPdfBestEffort(lastCheckoutPdfOpts);
+                appendConfirmLine('PDF descargado correctamente.', 'ok');
             } catch {
                 await showAlert(
-                    'No pudimos generar el PDF ahora. Intenta descargarlo desde Mis tickets.',
+                    'No pudimos generar el PDF. Intenta guardar la imagen QR.',
                     { title: 'PDF', variant: 'warning' }
                 );
+            } finally {
+                if (pdfDesktopBtn) {
+                    pdfDesktopBtn.disabled = false;
+                    pdfDesktopBtn.textContent = prevDesktop || 'Descargar PDF';
+                }
+                if (pdfSheetBtn) {
+                    pdfSheetBtn.disabled = false;
+                    pdfSheetBtn.textContent = prevSheet || 'Descargar PDF';
+                }
             }
-        });
+        };
+        const actionSaveQr = async () => {
+            if (!lastTicketDelivery?.ticketId) return;
+            try {
+                await saveTicketQrImage({ ticketId: lastTicketDelivery.ticketId });
+                appendConfirmLine('Imagen QR guardada en tu dispositivo.', 'ok');
+            } catch {
+                await showAlert('No se pudo guardar la imagen QR.', { title: 'QR', variant: 'warning' });
+            }
+        };
+        const actionShareWhatsApp = async () => {
+            if (!lastTicketDelivery?.ticketId) return;
+            try {
+                await shareTicketViaWhatsApp({
+                    ticket: {
+                        id: lastTicketDelivery.ticketId,
+                        precioTotal: lastTicketDelivery.precioTotal
+                    },
+                    preferQrFile: true
+                });
+                appendConfirmLine('Ticket compartido por WhatsApp (o menú de compartir).', 'ok');
+            } catch {
+                await showAlert('No se pudo compartir ahora. Intenta copiar el código y compartir manualmente.', {
+                    title: 'Compartir',
+                    variant: 'warning'
+                });
+            }
+        };
+        const actionShareGeneric = async () => {
+            if (!lastTicketDelivery?.ticketId) return;
+            try {
+                const shared = await shareTicketGeneric({
+                    ticket: { id: lastTicketDelivery.ticketId, precioTotal: lastTicketDelivery.precioTotal },
+                    preferQrFile: true
+                });
+                if (!shared.shared) {
+                    await showAlert(
+                        'No pudimos abrir el menú de compartir en este dispositivo. Usa WhatsApp o copia el código.',
+                        { title: 'Compartir', variant: 'warning' }
+                    );
+                    return;
+                }
+                appendConfirmLine('Ticket compartido correctamente.', 'ok');
+            } catch {
+                await showAlert(
+                    'No pudimos compartir desde este dispositivo. Usa WhatsApp o copia el código.',
+                    { title: 'Compartir', variant: 'warning' }
+                );
+            }
+        };
+        const actionCopyCode = async () => {
+            if (!lastTicketDelivery?.ticketId) return;
+            try {
+                await copyTicketCode(lastTicketDelivery.ticketId);
+                appendConfirmLine('Código del ticket copiado al portapapeles.', 'ok');
+            } catch {
+                await showAlert('No se pudo copiar el código.', { title: 'Copiar', variant: 'warning' });
+            }
+        };
+        const actionResendEmail = async () => {
+            if (!lastTicketDelivery?.ticketId || !lastTicketDelivery?.clienteEmail) return;
+            appendConfirmLine('Reintentando envío al correo…', 'muted');
+            try {
+                const mailRes = await sendTicketEmailBestEffort(
+                    {
+                        ticketId: lastTicketDelivery.ticketId,
+                        toEmail: lastTicketDelivery.clienteEmail,
+                        clienteNombre: lastTicketDelivery.clienteNombre
+                    },
+                    { timeoutMs: 10000 }
+                );
+                if (mailRes.sent) {
+                    lastEmailStatus = 'sent';
+                    appendConfirmLine('Correo reenviado correctamente.', 'ok');
+                } else {
+                    lastEmailStatus = 'failed';
+                    appendConfirmLine('No se pudo reenviar el correo. Usa QR/PDF/WhatsApp.', 'warn');
+                }
+            } catch {
+                lastEmailStatus = 'failed';
+                appendConfirmLine('No se pudo reenviar el correo. Usa QR/PDF/WhatsApp.', 'warn');
+            }
+        };
+
+        document.getElementById('purchase-btn-download')?.addEventListener('click', actionDownloadPdf);
+        document.getElementById('purchase-btn-save-qr')?.addEventListener('click', actionSaveQr);
+        document.getElementById('purchase-btn-share-whatsapp')?.addEventListener('click', actionShareWhatsApp);
+        document.getElementById('purchase-btn-copy-code')?.addEventListener('click', actionCopyCode);
+        document.getElementById('purchase-btn-resend-email')?.addEventListener('click', actionResendEmail);
+        document.getElementById('purchase-sheet-btn-whatsapp')?.addEventListener('click', async () => { await actionShareWhatsApp(); closeShareSheet(); });
+        document.getElementById('purchase-sheet-btn-share')?.addEventListener('click', async () => { await actionShareGeneric(); closeShareSheet(); });
+        document.getElementById('purchase-sheet-btn-save-qr')?.addEventListener('click', async () => { await actionSaveQr(); closeShareSheet(); });
+        document.getElementById('purchase-sheet-btn-pdf')?.addEventListener('click', async () => { await actionDownloadPdf(); closeShareSheet(); });
+        document.getElementById('purchase-sheet-btn-copy')?.addEventListener('click', async () => { await actionCopyCode(); closeShareSheet(); });
+        document.getElementById('purchase-sheet-btn-resend')?.addEventListener('click', async () => { await actionResendEmail(); closeShareSheet(); });
         document.getElementById('btn-download-invite-ticket')?.addEventListener('click', async () => {
             if (!lastCheckoutPdfOpts) return;
             try {
@@ -766,6 +986,7 @@ const Checkout = {
                 const totalsSnapshot = {
                     subtotal: Number(subtotalCarrito || 0),
                     discountAmount: Number(discountAmount || 0),
+                    taxAmount: Number(taxAmount || 0),
                     total: Number(totalCarrito || 0)
                 };
 
@@ -816,19 +1037,35 @@ const Checkout = {
                 };
 
                 loadingEl.classList.add('hidden');
+                const deliveryTicket = {
+                    ticketId,
+                    clienteNombre: name,
+                    clienteEmail: email,
+                    fechaCreacion: createdAtIso,
+                    precioTotal: totalCarrito,
+                    metodoPago: selectedPayment,
+                    estadoPago,
+                    metadata: metadataSnapshot,
+                    isAuthed
+                };
 
-                if (isAuthed) {
-                    if (purchaseConfirmMsg) {
-                        purchaseConfirmMsg.textContent = 'Tu ticket fue creado correctamente.';
-                    }
-                    if (purchaseConfirmStatus) purchaseConfirmStatus.innerHTML = '';
-                    purchaseConfirm?.classList.remove('hidden');
-                } else {
-                    if (modalInviteStatus) modalInviteStatus.innerHTML = '';
-                    const lead = document.getElementById('modal-invite-lead');
-                    if (lead) lead.textContent = 'Tu ticket fue creado correctamente.';
-                    modalInvite.classList.remove('hidden');
+                if (!isAuthed) {
+                    saveGuestTicket({
+                        id: ticketId,
+                        createdAt: createdAtIso,
+                        email,
+                        clienteNombre: name,
+                        qrData: ticketId,
+                        resumen: `Ticket ${String(ticketId).slice(0, 8)} · $${Number(totalCarrito).toFixed(2)} MXN`,
+                        metadataItems: metadataSnapshot.items || [],
+                        total: totalCarrito,
+                        metodoPago: selectedPayment,
+                        estadoPago,
+                        metadata: metadataSnapshot
+                    });
                 }
+
+                await showDeliveryModal(deliveryTicket);
 
                 void runCheckoutSecondaryFlow({
                     ticketId,
