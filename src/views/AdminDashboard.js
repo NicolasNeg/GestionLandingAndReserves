@@ -102,6 +102,7 @@ import {
   tryParseJsonFile,
   validateMapDocumentForSave
 } from '../lib/mapEngine/mapBackup.js';
+import { mapSidebarHint, renderMapToolAccordionsHtml } from '../lib/mapEditorViewConfig.js';
 
 const LANDING_PAGE_ID = 'main';
 const TICKET_CONFIG_ID = 'precios_base';
@@ -115,42 +116,20 @@ function escapeHtml(text) {
     .replace(/'/g, '&#039;');
 }
 
-const MAP_EDITOR_TOOL_GROUPS = [
-  { title: 'Basicos', values: ['text', 'marker', 'image'] },
-  { title: 'Formas', values: ['rect', 'circle', 'ellipse', 'polygon', 'line'] },
-  {
-    title: 'Elementos del parque',
-    values: ['area', 'alberca', 'pool', 'palapa', 'servicio', 'serviceArea', 'entrada', 'entrance', 'limitacion', 'blockedZone']
-  },
-  { title: 'Mesas', values: ['mesa', 'table'] },
-  { title: 'Parking', values: ['estacionamiento', 'parkingSpot'] }
-];
-
-function renderMapEditorToolAccordions() {
-  const byValue = new Map(MAP_ITEM_KINDS.map((k) => [k.value, k]));
-  return MAP_EDITOR_TOOL_GROUPS.map((group, gi) => {
-    const buttons = group.values
-      .map((v) => {
-        const kind = byValue.get(v);
-        if (!kind) return '';
-        return `<button type="button" class="mapa-tool-btn inline-flex w-full items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-2.5 py-2 text-left text-[11px] font-bold text-slate-200 hover:bg-white/10" data-map-tool="${kind.value}" title="${escapeHtml(kind.label)}"><span class="h-2 w-2 shrink-0 rounded-full" style="background:${kind.stroke}"></span><span class="min-w-0 truncate">${escapeHtml(kind.label)}</span></button>`;
-      })
-      .join('');
-    const openAttr = gi === 0 ? ' open' : '';
-    return `<details class="mapa-tool-accordion border-b border-white/5 pb-2 last:border-0"${openAttr}><summary class="mapa-tool-accordion-summary">${escapeHtml(group.title)}</summary><div class="mapa-tool-grid mt-2 grid grid-cols-1 gap-1">${buttons}</div></details>`;
-  }).join('');
-}
-
 function renderMapEditorPresetsSection() {
   return `<details class="mapa-tool-accordion border-b border-white/5 pb-2 open"><summary class="mapa-tool-accordion-summary">Plantillas / presets</summary><div class="mt-2 flex flex-col gap-1.5">
       <button type="button" id="mapa-preset-row" class="mapa-command-btn justify-start text-left" title="Tres piezas en fila del tipo activo">Fila x3</button>
+      <button type="button" id="mapa-preset-fila-5" class="mapa-command-btn justify-start text-left" title="Cinco piezas en fila del tipo activo">Fila x5</button>
       <button type="button" id="mapa-preset-wide" class="mapa-command-btn justify-start text-left" title="Rectangulo ancho">Bloque ancho</button>
       <button type="button" id="mapa-preset-global-kit" class="mapa-command-btn justify-start text-left" title="Alberca, palapas, servicios, entrada">Kit global</button>
       <button type="button" id="mapa-preset-mesas-grid" class="mapa-command-btn justify-start text-left" title="Bloque 4x4 mesas">Mesas 4x4</button>
       <button type="button" id="mapa-preset-mesas-row" class="mapa-command-btn justify-start text-left" title="Fila de mesas">Fila mesas</button>
       <button type="button" id="mapa-preset-mesas-vip" class="mapa-command-btn justify-start text-left" title="Zona VIP">VIP</button>
+      <button type="button" id="mapa-preset-mesas-area" class="mapa-command-btn justify-start text-left" title="Area familiar grande">Area familiar</button>
       <button type="button" id="mapa-preset-parking-row" class="mapa-command-btn justify-start text-left" title="Fila de cajones">Fila parking</button>
       <button type="button" id="mapa-preset-parking-block" class="mapa-command-btn justify-start text-left" title="Bloque de cajones">Bloque parking</button>
+      <button type="button" id="mapa-preset-parking-entrada" class="mapa-command-btn justify-start text-left" title="Entrada de estacionamiento">Entrada estacionamiento</button>
+      <button type="button" id="mapa-preset-parking-pasillo" class="mapa-command-btn justify-start text-left" title="Zona de circulacion">Pasillo circulacion</button>
       <button type="button" id="mapa-preset-parking-yard" class="mapa-command-btn justify-start text-left" title="Patios y taller">Taller/patio</button>
       <button type="button" id="mapa-add-quick" class="mapa-command-primary justify-center">+ Pieza rapida</button>
     </div></details>`;
@@ -1065,7 +1044,7 @@ const AdminDashboard = {
                     </div>
 
                     <div id="sitio-tab-mapa" class="sitio-tab-panel hidden space-y-3">
-                      <div id="mapa-editor-mobile-block" class="relative z-[8] isolate lg:hidden min-h-[320px] rounded-2xl border border-slate-200 bg-gradient-to-b from-slate-50 to-white p-8 text-center shadow-lg">
+                      <div id="mapa-editor-mobile-block" class="relative z-[8] isolate hidden max-[1023px]:flex min-h-[320px] flex-col items-center justify-center rounded-2xl border border-slate-200 bg-gradient-to-b from-slate-50 to-white p-8 text-center shadow-lg">
                         <div class="mx-auto max-w-md">
                           <span class="inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-100 text-amber-700">${icon('map', 'h-8 w-8')}</span>
                           <h2 class="mt-4 text-xl font-black text-slate-900">Vista bloqueada</h2>
@@ -1078,7 +1057,7 @@ const AdminDashboard = {
                           </div>
                         </div>
                       </div>
-                      <div id="mapa-editor-desktop" class="hidden space-y-3 lg:block">
+                      <div id="mapa-editor-desktop" class="hidden min-[1024px]:block space-y-3">
                       <div id="mapa-draft-banner" class="hidden rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950 shadow-sm">
                         <p class="font-black">Encontramos un borrador local sin guardar.</p>
                         <p id="mapa-draft-banner-detail" class="mt-1 text-xs font-semibold text-amber-900/90"></p>
@@ -1090,18 +1069,22 @@ const AdminDashboard = {
                       <p class="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">Usa <strong>Guardar cambios del sitio</strong> en la cabecera para persistir mapas y textos. El atajo Guardar del lienzo dispara el mismo guardado.</p>
                       <p id="mapa-context-usage" class="rounded-lg border border-cyan-100 bg-cyan-50/80 px-4 py-2 text-xs font-semibold text-cyan-950"></p>
                       <div id="mapa-editor-shell" class="mapa-editor-shell mapa-ws overflow-hidden rounded-2xl border border-slate-700 bg-gradient-to-b from-slate-900 via-slate-900 to-slate-950 text-slate-100 shadow-xl ring-1 ring-white/10">
-                          <header class="mapa-editor-topbar border-b border-white/10 px-4 py-3">
-                            <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                              <div class="flex min-w-0 flex-1 items-center gap-3">
+                          <header class="mapa-editor-topbar min-h-[56px] border-b border-white/10 px-3 py-2.5">
+                            <div class="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+                              <div class="flex min-w-0 flex-shrink-0 items-center gap-3">
                                 <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-cyan-500/15 text-cyan-400">${icon('map', 'h-6 w-6')}</span>
                                 <div class="min-w-0">
                                   <h2 class="text-base font-black tracking-tight text-white">Editor del parque</h2>
-                                  <p class="text-xs text-slate-400">Workspace visual para personal operativo: Global, Mesas, Estacionamiento y Albercas.</p>
+                                  <p class="mt-0.5 flex flex-wrap items-center gap-2 text-[11px] text-slate-400">
+                                    <span id="mapa-editor-save-status" class="rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-slate-300">Guardado</span>
+                                    <span class="hidden sm:inline">·</span>
+                                    <span class="hidden text-slate-500 sm:inline">Lienzo y herramientas según la vista activa</span>
+                                  </p>
                                 </div>
                               </div>
-                              <div class="flex flex-wrap items-center gap-2">
+                              <div class="flex flex-1 flex-wrap items-center justify-center gap-2 xl:px-4">
                                 <label class="sr-only" for="map-context-select">Vista del mapa</label>
-                                <div id="map-view-tabs" class="inline-flex flex-wrap items-center gap-1 rounded-xl border border-white/10 bg-white/5 p-1">
+                                <div id="map-view-tabs" class="inline-flex flex-wrap items-center justify-center gap-1 rounded-xl border border-white/10 bg-white/5 p-1">
                                   <button type="button" data-map-view-tab="parque" class="mapa-view-tab mapa-view-tab--global is-active">Global</button>
                                   <button type="button" data-map-view-tab="mesas" class="mapa-view-tab mapa-view-tab--mesas">Mesas</button>
                                   <button type="button" data-map-view-tab="estacionamiento" class="mapa-view-tab mapa-view-tab--estacionamiento">Estacionamiento</button>
@@ -1113,20 +1096,21 @@ const AdminDashboard = {
                                   <option value="estacionamiento">Mapa Estacionamiento</option>
                                   <option value="albercas">Mapa Albercas</option>
                                 </select>
+                              </div>
+                              <div class="flex flex-wrap items-center justify-end gap-2">
                                 <button type="button" id="mapa-save-shortcut" class="mapa-command-primary" title="Guardar contenido del sitio">${icon('check', 'h-4 w-4')} Guardar</button>
+                                <button type="button" id="mapa-undo" class="mapa-command-btn" title="Deshacer">${icon('undo', 'h-4 w-4')} Deshacer</button>
+                                <button type="button" id="mapa-redo" class="mapa-command-btn" title="Rehacer">${icon('redo', 'h-4 w-4')} Rehacer</button>
+                                <button type="button" id="mapa-preview-canvas" class="mapa-command-btn" title="Vista previa solo lectura. Pulsa Esc para salir.">${icon('eye', 'h-4 w-4')} Vista previa</button>
+                                <a id="mapa-preview-link" href="/home#mapa" data-link class="mapa-command-btn" title="Abrir vista publica">${icon('home', 'h-4 w-4')} Vista previa web</a>
                                 <button type="button" id="mapa-focus-toggle" class="mapa-command-btn" title="Modo enfoque">${icon('eye', 'h-4 w-4')} Modo enfoque</button>
                               </div>
                             </div>
-                            <div class="mt-3 flex flex-wrap items-center gap-2 border-t border-white/5 pt-3">
+                            <div class="mt-2 flex flex-wrap items-center gap-2 border-t border-white/5 pt-2">
                               <span class="hidden text-[10px] font-black uppercase text-slate-500 sm:inline">Herramienta</span>
                               <button type="button" data-map-mode="select" class="mapa-mode-btn mapa-command-btn is-active" title="Seleccionar">${icon('cursor', 'h-4 w-4')} Seleccionar</button>
                               <button type="button" data-map-mode="pan" class="mapa-mode-btn mapa-command-btn" title="Mano / pan">${icon('move', 'h-4 w-4')} Mano</button>
                               <span class="mx-0.5 hidden h-5 w-px bg-white/10 sm:block" aria-hidden="true"></span>
-                              <button type="button" id="mapa-undo" class="mapa-command-btn" title="Deshacer">${icon('undo', 'h-4 w-4')} Deshacer</button>
-                              <button type="button" id="mapa-redo" class="mapa-command-btn" title="Rehacer">${icon('redo', 'h-4 w-4')} Rehacer</button>
-                              <span class="mx-0.5 hidden h-5 w-px bg-white/10 lg:block" aria-hidden="true"></span>
-                              <button type="button" id="mapa-preview-canvas" class="mapa-command-btn" title="Vista previa solo lectura. Pulsa Esc para salir.">${icon('eye', 'h-4 w-4')} Vista previa</button>
-                              <a id="mapa-preview-link" href="/home#mapa" data-link class="mapa-command-btn" title="Abrir vista publica">${icon('home', 'h-4 w-4')} Abrir sitio</a>
                               <label class="mapa-command-btn cursor-pointer select-none"><input id="mapa-show-grid" type="checkbox" class="mr-1 align-middle" checked /> Grid</label>
                             </div>
                           </header>
@@ -1137,10 +1121,10 @@ const AdminDashboard = {
                             <aside class="mapa-ws-sidebar flex max-h-[min(78vh,760px)] flex-col overflow-hidden border-b border-white/10 bg-black/25 lg:max-h-none lg:border-b-0 lg:border-r lg:border-white/10">
                               <div class="border-b border-white/5 px-3 py-2">
                                 <p class="text-[10px] font-black uppercase tracking-widest text-slate-500">Herramientas</p>
-                                <p class="text-[11px] font-semibold text-slate-400">Insertar piezas y plantillas</p>
+                                <p id="mapa-sidebar-view-hint" class="mt-0.5 px-1 text-[10px] font-semibold leading-snug text-slate-400"></p>
                               </div>
                               <div class="mapa-ws-sidebar-scroll flex-1 space-y-1 overflow-y-auto px-2 py-3">
-                                ${renderMapEditorToolAccordions()}
+                                <div id="mapa-tool-accordions" class="space-y-1"></div>
                                 ${renderMapEditorPresetsSection()}
                                 ${renderMapEditorFileSection()}
                               </div>
@@ -1323,6 +1307,37 @@ const AdminDashboard = {
                                       <textarea id="mapa-meta-extras" rows="3" class="mt-1 w-full rounded-lg border border-white/10 bg-slate-950/40 px-2 py-1.5 text-sm text-white placeholder:text-slate-600" placeholder="asador | Asador portatil | 150&#10;hielera | Hielera con hielos | 120"></textarea>
                                     </label>
                                   </div>
+                                  <div id="mapa-parking-metadata" class="hidden grid grid-cols-2 gap-2">
+                                    <label class="text-[10px] font-bold uppercase text-slate-500 sm:col-span-2">Codigo del cajon
+                                      <input id="mapa-meta-parking-code" type="text" class="mt-1 w-full rounded-lg border border-white/10 bg-slate-950/40 px-2 py-1.5 text-sm text-white" placeholder="A-12" />
+                                    </label>
+                                    <label class="text-[10px] font-bold uppercase text-slate-500 sm:col-span-2">Estado base (plano)
+                                      <select id="mapa-meta-parking-status" class="mt-1 w-full rounded-lg border border-white/10 bg-slate-950/40 px-2 py-1.5 text-sm text-white">
+                                        <option value="libre">Libre</option>
+                                        <option value="ocupado">Ocupado</option>
+                                        <option value="reservado">Reservado</option>
+                                        <option value="mantenimiento">Mantenimiento</option>
+                                        <option value="taller">Taller</option>
+                                        <option value="sucio">Sucio</option>
+                                      </select>
+                                    </label>
+                                    <label class="text-[10px] font-bold uppercase text-slate-500 sm:col-span-2">Zona operativa<input id="mapa-meta-parking-zone" type="text" class="mt-1 w-full rounded-lg border border-white/10 bg-slate-950/40 px-2 py-1.5 text-sm text-white" /></label>
+                                    <label class="text-[10px] font-bold uppercase text-slate-500 sm:col-span-2">Reservado por (nota interna)<input id="mapa-meta-parking-reserved" type="text" class="mt-1 w-full rounded-lg border border-white/10 bg-slate-950/40 px-2 py-1.5 text-sm text-white" placeholder="Opcional" /></label>
+                                  </div>
+                                  <div id="mapa-pool-metadata" class="hidden grid grid-cols-2 gap-2">
+                                    <label class="text-[10px] font-bold uppercase text-slate-500 sm:col-span-2">Nombre publico<input id="mapa-meta-pool-public" type="text" class="mt-1 w-full rounded-lg border border-white/10 bg-slate-950/40 px-2 py-1.5 text-sm text-white" /></label>
+                                    <label class="text-[10px] font-bold uppercase text-slate-500 sm:col-span-2">Tipo
+                                      <select id="mapa-meta-pool-type" class="mt-1 w-full rounded-lg border border-white/10 bg-slate-950/40 px-2 py-1.5 text-sm text-white">
+                                        <option value="alberca">Alberca</option>
+                                        <option value="chapoteadero">Chapoteadero</option>
+                                        <option value="olas">Olas</option>
+                                        <option value="zona_libre">Zona libre</option>
+                                        <option value="waterarea">Area acuatica</option>
+                                      </select>
+                                    </label>
+                                    <label class="text-[10px] font-bold uppercase text-slate-500">Capacidad aprox.<input id="mapa-meta-pool-cap" type="number" min="0" class="mt-1 w-full rounded-lg border border-white/10 bg-slate-950/40 px-2 py-1.5 text-sm text-white" /></label>
+                                    <label class="text-[10px] font-bold uppercase text-slate-500 sm:col-span-2">Reglas o avisos publicos<input id="mapa-meta-pool-rules" type="text" class="mt-1 w-full rounded-lg border border-white/10 bg-slate-950/40 px-2 py-1.5 text-sm text-white" /></label>
+                                  </div>
                                   <div id="mapa-generic-metadata" class="grid grid-cols-2 gap-2">
                                     <label class="text-[10px] font-bold uppercase text-slate-500">Codigo spot<input id="mapa-meta-spot" type="text" class="mt-1 w-full rounded-lg border border-white/10 bg-slate-950/40 px-2 py-1.5 text-sm text-white" /></label>
                                     <label class="text-[10px] font-bold uppercase text-slate-500">Zona<input id="mapa-meta-generic-zone" type="text" class="mt-1 w-full rounded-lg border border-white/10 bg-slate-950/40 px-2 py-1.5 text-sm text-white" /></label>
@@ -1365,6 +1380,15 @@ const AdminDashboard = {
                                   <button type="button" id="mapa-delete" class="rounded-lg border border-rose-400/30 bg-rose-500/10 px-3 py-2 text-xs font-bold text-rose-300 hover:bg-rose-500/20">Eliminar</button>
                                   <button type="button" id="mapa-layer-back" class="rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-xs font-bold text-slate-300 hover:bg-white/10">Atras</button>
                                   <button type="button" id="mapa-layer-front" class="rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-xs font-bold text-slate-300 hover:bg-white/10">Frente</button>
+                                </div>
+                                <div class="grid grid-cols-2 gap-2 pt-1">
+                                  <button type="button" id="mapa-dup-row" class="rounded-lg border border-white/15 bg-white/5 px-2 py-2 text-[11px] font-bold text-slate-300 hover:bg-white/10" title="Duplicar seleccion hacia abajo">Dup. fila</button>
+                                  <button type="button" id="mapa-dup-col" class="rounded-lg border border-white/15 bg-white/5 px-2 py-2 text-[11px] font-bold text-slate-300 hover:bg-white/10" title="Duplicar seleccion a la derecha">Dup. columna</button>
+                                  <button type="button" id="mapa-dup-grid" class="rounded-lg border border-white/15 bg-white/5 px-2 py-2 text-[11px] font-bold text-slate-300 hover:bg-white/10" title="Cuadricula 2x2 de copias">Dup. cuadricula</button>
+                                  <button type="button" id="mapa-flip-h" class="rounded-lg border border-white/15 bg-white/5 px-2 py-2 text-[11px] font-bold text-slate-300 hover:bg-white/10" title="Voltear horizontal">Voltear H</button>
+                                  <button type="button" id="mapa-flip-v" class="rounded-lg border border-white/15 bg-white/5 px-2 py-2 text-[11px] font-bold text-slate-300 hover:bg-white/10" title="Voltear vertical">Voltear V</button>
+                                  <button type="button" id="mapa-mesa-vip" class="rounded-lg border border-white/15 bg-white/5 px-2 py-2 text-[11px] font-bold text-amber-200 hover:bg-white/10" title="Marcar mesa como VIP">VIP</button>
+                                  <button type="button" id="mapa-mesa-nores" class="rounded-lg border border-white/15 bg-white/5 px-2 py-2 text-[11px] font-bold text-slate-300 hover:bg-white/10" title="No reservable">No reservable</button>
                                 </div>
                                 <div class="grid grid-cols-3 gap-2 pt-1">
                                   <button type="button" data-map-align="left" class="rounded-lg border border-white/15 bg-white/5 px-2 py-2 text-[11px] font-bold text-slate-300 hover:bg-white/10">Izq</button>
@@ -1409,7 +1433,13 @@ const AdminDashboard = {
                             </aside>
                           </div>
 
-                          <footer class="mapa-ws-footer flex flex-wrap items-center gap-2 border-t border-white/10 bg-black/30 px-4 py-2.5">
+                          <footer class="mapa-ws-footer flex flex-wrap items-center gap-3 border-t border-white/10 bg-black/30 px-4 py-2.5">
+                            <span class="text-[10px] font-bold uppercase tracking-wide text-slate-500">Barra de estado</span>
+                            <label class="flex cursor-pointer items-center gap-2 rounded-full bg-white/5 px-2 py-1 text-[10px] font-bold text-slate-300">
+                              <input id="mapa-show-context-footer" type="checkbox" checked class="rounded border-white/30" />
+                              Mostrar contexto en lienzo
+                            </label>
+                            <span class="hidden h-4 w-px bg-white/10 sm:block" aria-hidden="true"></span>
                             <span class="text-[10px] font-bold uppercase tracking-wide text-slate-500">Atajos</span>
                             <span class="rounded-full bg-white/5 px-2 py-1 text-[10px] font-semibold text-slate-400">Ctrl+Z / Ctrl+Shift+Z</span>
                             <span class="rounded-full bg-white/5 px-2 py-1 text-[10px] font-semibold text-slate-400">Shift+clic multiseleccion</span>
@@ -2329,11 +2359,27 @@ const AdminDashboard = {
         maximumFractionDigits: 2
       });
 
+      const paintMapEditorSaveStatus = () => {
+        const st = document.getElementById('mapa-editor-save-status');
+        if (!st || !previewDirty) return;
+        const t = previewDirty.textContent || '';
+        if (t.includes('sin guardar')) {
+          st.textContent = 'Cambios sin guardar';
+          st.className =
+            'rounded-full bg-amber-500/25 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-amber-100';
+        } else {
+          st.textContent = 'Guardado';
+          st.className =
+            'rounded-full bg-emerald-500/20 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-emerald-200';
+        }
+      };
+
       const markDirty = () => {
         if (!previewDirty) return;
         previewDirty.textContent = 'Cambios sin guardar';
         previewDirty.className =
           'rounded-full bg-amber-100 px-3 py-1 text-xs font-black text-amber-900';
+        paintMapEditorSaveStatus();
       };
 
       const setDirtySaved = () => {
@@ -2341,6 +2387,7 @@ const AdminDashboard = {
         previewDirty.textContent = 'Guardado';
         previewDirty.className =
           'rounded-full bg-emerald-100 px-3 py-1 text-xs font-black text-emerald-800';
+        paintMapEditorSaveStatus();
       };
 
       const syncHeroInputsFromCe = (kind, text) => {
@@ -2710,6 +2757,12 @@ const AdminDashboard = {
             'Este mapa es el plano público del parque en /home (#mapa).';
         }
       };
+      const refreshMapComposerSidebar = () => {
+        const mount = document.getElementById('mapa-tool-accordions');
+        const hint = document.getElementById('mapa-sidebar-view-hint');
+        if (mount) mount.innerHTML = renderMapToolAccordionsHtml(mapContext, escapeHtml);
+        if (hint) hint.textContent = mapSidebarHint(mapContext);
+      };
       const updateMapEmptyOverlay = (docLike) => {
         const overlay = document.getElementById('mapa-empty-overlay');
         const title = document.getElementById('mapa-empty-title');
@@ -2786,6 +2839,8 @@ const AdminDashboard = {
         const layerCount = document.getElementById('mapa-layer-count');
         const previewLink = document.getElementById('mapa-preview-link');
         const tableMetadataWrap = document.getElementById('mapa-table-metadata');
+        const parkingMetadataWrap = document.getElementById('mapa-parking-metadata');
+        const poolMetadataWrap = document.getElementById('mapa-pool-metadata');
         const genericMetadataWrap = document.getElementById('mapa-generic-metadata');
         const fieldIds = {
           id: 'mapa-item-id',
@@ -2830,6 +2885,10 @@ const AdminDashboard = {
         };
         const isTableKind = (value) => value === 'mesa' || value === 'table';
         const isTableItem = (item) => isTableKind(item?.kind) || item?.type === 'table';
+        const isParkingKind = (value) => value === 'estacionamiento' || value === 'parkingSpot';
+        const isParkingItem = (item) => isParkingKind(item?.kind) || item?.type === 'parkingSpot';
+        const isPoolKind = (value) => value === 'alberca' || value === 'pool';
+        const isPoolItem = (item) => isPoolKind(item?.kind) || item?.type === 'pool';
         const defaultVisibilityByKind = (kindValue, typeValue = '') => {
           const k = String(kindValue || '').toLowerCase();
           const t = String(typeValue || '').toLowerCase();
@@ -2976,8 +3035,12 @@ const AdminDashboard = {
           setInspectorMode('single');
           const kind = getMapKind(item.kind);
           const tableItem = isTableItem(item);
+          const parkingItem = isParkingItem(item);
+          const poolItem = isPoolItem(item);
           tableMetadataWrap?.classList.toggle('hidden', !tableItem);
-          genericMetadataWrap?.classList.toggle('hidden', tableItem);
+          parkingMetadataWrap?.classList.toggle('hidden', !parkingItem);
+          poolMetadataWrap?.classList.toggle('hidden', !poolItem);
+          genericMetadataWrap?.classList.toggle('hidden', tableItem || parkingItem || poolItem);
           if (pill) {
             pill.textContent = kind.label;
             pill.className = 'rounded-full px-2 py-1 text-[10px] font-bold text-white';
@@ -3011,6 +3074,21 @@ const AdminDashboard = {
           el('genericZone').value = item.metadata?.zone || '';
           el('description').value = item.metadata?.description || '';
           el('genericDescription').value = item.metadata?.description || '';
+          if (parkingItem) {
+            document.getElementById('mapa-meta-parking-code').value = item.metadata?.spotCode || item.id || '';
+            document.getElementById('mapa-meta-parking-status').value = item.metadata?.baseStatus || 'libre';
+            document.getElementById('mapa-meta-parking-zone').value = item.metadata?.zone || '';
+            document.getElementById('mapa-meta-parking-reserved').value = item.metadata?.reservadoPor || '';
+          }
+          if (poolItem) {
+            document.getElementById('mapa-meta-pool-public').value = item.metadata?.publicName || item.label || '';
+            document.getElementById('mapa-meta-pool-type').value = item.metadata?.poolType || 'alberca';
+            document.getElementById('mapa-meta-pool-cap').value =
+              item.metadata?.capacidadAprox != null && item.metadata?.capacidadAprox !== ''
+                ? String(item.metadata.capacidadAprox)
+                : '';
+            document.getElementById('mapa-meta-pool-rules').value = item.metadata?.reglasPublicas || '';
+          }
           const vis = readVisibilityByView(item);
           const vg = document.getElementById('mapa-visible-global');
           const vm = document.getElementById('mapa-visible-mesas');
@@ -3028,12 +3106,20 @@ const AdminDashboard = {
           const kindValue = el('kind')?.value || 'area';
           const kind = getMapKind(kindValue);
           const tableItem = isTableKind(kindValue);
+          const parkingItem = isParkingKind(kindValue);
+          const poolItem = isPoolKind(kindValue);
           const capacity = Math.max(1, parseInt(el('capacidad')?.value || '4', 10) || 4);
           const price = Math.max(0, parseFloat(el('precio')?.value || '0') || 0);
           const metadataPatch = {
-            spotCode: el('spotCode')?.value || '',
-            zone: tableItem ? (el('zone')?.value || '') : (el('genericZone')?.value || ''),
-            description: tableItem ? (el('description')?.value || '') : (el('genericDescription')?.value || '')
+            spotCode: parkingItem
+              ? (document.getElementById('mapa-meta-parking-code')?.value || '').trim().toUpperCase()
+              : el('spotCode')?.value || '',
+            zone: tableItem
+              ? el('zone')?.value || ''
+              : parkingItem
+                ? document.getElementById('mapa-meta-parking-zone')?.value || ''
+                : el('genericZone')?.value || '',
+            description: tableItem ? el('description')?.value || '' : el('genericDescription')?.value || ''
           };
           if (tableItem) {
             Object.assign(metadataPatch, {
@@ -3048,6 +3134,22 @@ const AdminDashboard = {
               estadoVisual: el('visualState')?.value || '',
               tags: splitTags(el('tags')?.value || ''),
               extras: parseExtras(el('extras')?.value || '')
+            });
+          }
+          if (parkingItem) {
+            Object.assign(metadataPatch, {
+              baseStatus: document.getElementById('mapa-meta-parking-status')?.value || 'libre',
+              reservadoPor: document.getElementById('mapa-meta-parking-reserved')?.value || ''
+            });
+          }
+          if (poolItem) {
+            const capRaw = document.getElementById('mapa-meta-pool-cap')?.value;
+            const capN = parseInt(capRaw || '0', 10);
+            Object.assign(metadataPatch, {
+              publicName: document.getElementById('mapa-meta-pool-public')?.value || '',
+              poolType: document.getElementById('mapa-meta-pool-type')?.value || 'alberca',
+              capacidadAprox: Number.isFinite(capN) && capN > 0 ? capN : 0,
+              reglasPublicas: document.getElementById('mapa-meta-pool-rules')?.value || ''
             });
           }
           const visibilityByView = {
@@ -3144,9 +3246,19 @@ const AdminDashboard = {
             syncInspectorTabs();
           });
         });
-        document.getElementById('mapa-show-context')?.addEventListener('change', (ev) => {
-          mapShowContext = ev.currentTarget.checked !== false;
+        const applyMapShowContextToCanvas = (checked) => {
+          mapShowContext = !!checked;
+          const a = document.getElementById('mapa-show-context');
+          const b = document.getElementById('mapa-show-context-footer');
+          if (a) a.checked = mapShowContext;
+          if (b) b.checked = mapShowContext;
           mapEditor?.setRenderOptions?.({ showViewContext: mapShowContext });
+        };
+        document.getElementById('mapa-show-context')?.addEventListener('change', (ev) => {
+          applyMapShowContextToCanvas(ev.currentTarget.checked);
+        });
+        document.getElementById('mapa-show-context-footer')?.addEventListener('change', (ev) => {
+          applyMapShowContextToCanvas(ev.currentTarget.checked);
         });
         ['mapa-visible-global', 'mapa-visible-mesas', 'mapa-visible-estacionamiento', 'mapa-visible-albercas'].forEach((id) => {
           const node = document.getElementById(id);
@@ -3158,6 +3270,27 @@ const AdminDashboard = {
         });
 
         Object.values(fieldIds).forEach((id) => {
+          const node = document.getElementById(id);
+          if (!node) return;
+          node.oninput = () => {
+            if (syncing) return;
+            mapEditor?.updateSelected(collectPatch());
+          };
+          node.onchange = () => {
+            if (syncing) return;
+            mapEditor?.updateSelected(collectPatch());
+          };
+        });
+        [
+          'mapa-meta-parking-code',
+          'mapa-meta-parking-status',
+          'mapa-meta-parking-zone',
+          'mapa-meta-parking-reserved',
+          'mapa-meta-pool-public',
+          'mapa-meta-pool-type',
+          'mapa-meta-pool-cap',
+          'mapa-meta-pool-rules'
+        ].forEach((id) => {
           const node = document.getElementById(id);
           if (!node) return;
           node.oninput = () => {
@@ -3192,11 +3325,27 @@ const AdminDashboard = {
           if (!shell) return;
           const on = !shell.classList.contains('mapa-focus-mode');
           shell.classList.toggle('mapa-focus-mode', on);
+          document.querySelector('.admin-shell')?.classList.toggle('admin-shell--map-focus', on);
           const btn = document.getElementById('mapa-focus-toggle');
           if (btn) btn.innerHTML = `${icon('eye', 'h-4 w-4')} ${on ? 'Salir enfoque' : 'Modo enfoque'}`;
         });
         setClick('mapa-undo', () => mapEditor?.undo?.());
         setClick('mapa-redo', () => mapEditor?.redo?.());
+        setClick('mapa-dup-row', () => mapEditor?.duplicateSelectedRow?.(16));
+        setClick('mapa-dup-col', () => mapEditor?.duplicateSelectedColumn?.(16));
+        setClick('mapa-dup-grid', () => mapEditor?.duplicateSelectedGrid?.(2, 2, 16, 16));
+        setClick('mapa-flip-h', () => mapEditor?.flipSelectedHorizontal?.());
+        setClick('mapa-flip-v', () => mapEditor?.flipSelectedVertical?.());
+        setClick('mapa-mesa-vip', () => {
+          const sel = mapEditor?.getSelected?.();
+          if (!sel || !isTableItem(sel)) return;
+          mapEditor?.updateSelected?.({ metadata: { vip: true } });
+        });
+        setClick('mapa-mesa-nores', () => {
+          const sel = mapEditor?.getSelected?.();
+          if (!sel || !isTableItem(sel)) return;
+          mapEditor?.updateSelected?.({ metadata: { reservable: false, estadoVisual: 'no_reservable' } });
+        });
         document.querySelectorAll('[data-map-mode]').forEach((btn) => {
           btn.onclick = () => {
             const mode = btn.getAttribute('data-map-mode') || 'select';
@@ -3362,8 +3511,11 @@ const AdminDashboard = {
         bindPreset('mapa-preset-mesas-grid', MAP_QUICK_PRESETS.MESAS_GRID_4);
         bindPreset('mapa-preset-mesas-row', MAP_QUICK_PRESETS.MESAS_ROW);
         bindPreset('mapa-preset-mesas-vip', MAP_QUICK_PRESETS.MESAS_VIP);
+        bindPreset('mapa-preset-mesas-area', MAP_QUICK_PRESETS.MESAS_AREA_FAMILIAR);
         bindPreset('mapa-preset-parking-row', MAP_QUICK_PRESETS.PARKING_ROW);
         bindPreset('mapa-preset-parking-block', MAP_QUICK_PRESETS.PARKING_BLOCK);
+        bindPreset('mapa-preset-parking-entrada', MAP_QUICK_PRESETS.PARKING_ENTRANCE);
+        bindPreset('mapa-preset-parking-pasillo', MAP_QUICK_PRESETS.PARKING_PASILLO);
         bindPreset('mapa-preset-parking-yard', MAP_QUICK_PRESETS.PARKING_YARD);
         document.querySelectorAll('[data-map-nudge]').forEach((btn) => {
           btn.onclick = () => {
@@ -3390,6 +3542,7 @@ const AdminDashboard = {
           previewCanvasBtn.classList.remove('ring-2', 'ring-cyan-400/80');
         }
         renderLayers();
+        applyMapShowContextToCanvas(document.getElementById('mapa-show-context')?.checked !== false);
         fillFields(null);
       };
 
@@ -3576,6 +3729,7 @@ const AdminDashboard = {
         });
       };
 
+      refreshMapComposerSidebar();
       const canvas = document.getElementById('admin-mapa-canvas');
       if (canvas) {
         if (mapEditor) mapEditor.destroy();
@@ -3624,6 +3778,7 @@ const AdminDashboard = {
         syncMapViewTabs();
         updateMapContextUsageHint();
         checkMapDraftBanner();
+        refreshMapComposerSidebar();
       });
       syncMapViewTabs();
 
@@ -3687,10 +3842,14 @@ const AdminDashboard = {
         }
       });
 
-      document.querySelectorAll('[data-map-tool]').forEach((btn) => {
-        btn.addEventListener('click', () => {
+      const sidebarToolsRoot = document.getElementById('mapa-ws-sidebar-scroll');
+      if (sidebarToolsRoot && !sidebarToolsRoot.dataset.mapToolDelegated) {
+        sidebarToolsRoot.dataset.mapToolDelegated = '1';
+        sidebarToolsRoot.addEventListener('click', (ev) => {
+          const btn = ev.target.closest('[data-map-tool]');
+          if (!btn) return;
           activeMapKind = btn.getAttribute('data-map-tool') || 'area';
-          document.querySelectorAll('[data-map-tool]').forEach((b) => {
+          sidebarToolsRoot.querySelectorAll('[data-map-tool]').forEach((b) => {
             const on = b === btn;
             b.classList.toggle('ring-2', on);
             b.classList.toggle('ring-cyan-400/80', on);
@@ -3699,7 +3858,7 @@ const AdminDashboard = {
           mapEditor?.setAdding(true, activeMapKind);
           document.getElementById('mapa-draw-hint')?.classList.remove('hidden');
         });
-      });
+      }
 
       document.getElementById('mapa-add-quick')?.addEventListener('click', () => {
         mapEditor?.addItem(activeMapKind);
@@ -3708,6 +3867,10 @@ const AdminDashboard = {
 
       document.getElementById('mapa-preset-row')?.addEventListener('click', () => {
         mapEditor?.addPresetRow(activeMapKind, 3);
+      });
+
+      document.getElementById('mapa-preset-fila-5')?.addEventListener('click', () => {
+        mapEditor?.addPresetRow(activeMapKind, 5);
       });
 
       document.getElementById('mapa-preset-wide')?.addEventListener('click', () => {
@@ -3870,6 +4033,7 @@ const AdminDashboard = {
         const msg = document.getElementById('lp-save-msg');
         const lpSaveBtn = document.getElementById('lp-save');
         const lpDiscardBtn = document.getElementById('lp-discard');
+        const mapSavePill = document.getElementById('mapa-editor-save-status');
         const editedMapJson = mapEditor ? mapEditor.getJson() : getMapByContext();
         if (mapContext === 'parque') landing.mapaDistribucionJson = editedMapJson;
         if (mapContext === 'mesas') landing.mapaMesasJson = editedMapJson;
@@ -3928,6 +4092,11 @@ const AdminDashboard = {
           botonesJson
         };
         if (msg) msg.textContent = 'Guardando...';
+        if (mapSavePill) {
+          mapSavePill.textContent = 'Guardando…';
+          mapSavePill.className =
+            'rounded-full bg-cyan-500/25 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-cyan-100';
+        }
         if (lpSaveBtn) lpSaveBtn.disabled = true;
         if (lpDiscardBtn) lpDiscardBtn.disabled = true;
         try {
@@ -3972,6 +4141,11 @@ const AdminDashboard = {
           saveLastSavedLocal(MAP_VIEW_KEYS.estacionamiento, landing.mapaEstacionamientoJson);
         } catch (err) {
           console.error(err);
+          if (mapSavePill) {
+            mapSavePill.textContent = 'Error al guardar';
+            mapSavePill.className =
+              'rounded-full bg-rose-500/25 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-rose-100';
+          }
           if (msg) msg.textContent = '';
           const code = err?.code;
           const status = err?.status ?? err?.statusCode;
@@ -4056,7 +4230,19 @@ const AdminDashboard = {
       paintLandingCanvas();
       selectLbBlock('hero');
       switchSitioTab('landing');
-      if (mapEditorFocus) switchSitioTab('mapa');
+      if (mapEditorFocus) {
+        switchSitioTab('mapa');
+        requestAnimationFrame(() => {
+          const shell = document.getElementById('mapa-editor-shell');
+          if (shell) {
+            shell.classList.add('mapa-focus-mode');
+            document.querySelector('.admin-shell')?.classList.add('admin-shell--map-focus');
+            const btn = document.getElementById('mapa-focus-toggle');
+            if (btn) btn.innerHTML = `${icon('eye', 'h-4 w-4')} Salir enfoque`;
+          }
+          document.querySelector('.mapa-editor-shell')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        });
+      }
       setDirtySaved();
 
       sitioReady = true;
@@ -5339,11 +5525,6 @@ const AdminDashboard = {
     if (requestedInitialSection === 'ticket-types' && panelTicketTypes) await initTicketTypesPanel();
     if (requestedInitialSection === 'sitio' && panelSitio) {
       await initSitioPanel();
-      if (mapEditorFocus) {
-        requestAnimationFrame(() => {
-          document.querySelector('.mapa-editor-shell')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        });
-      }
     }
 
     const cfgAdulto = document.getElementById('cfg-precio-adulto');

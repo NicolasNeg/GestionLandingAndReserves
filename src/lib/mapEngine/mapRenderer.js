@@ -1,3 +1,4 @@
+import { getItemFocusRenderAlpha } from '../mapEditorViewConfig.js';
 import { getSortedMapItems } from './mapHitTesting.js';
 import { parseMapDocument } from './mapMigrations.js';
 import { TABLE_STATES, getMapKind } from './mapTypes.js';
@@ -48,20 +49,6 @@ function isVisibleInView(item, view) {
     if (hasAny) return false;
   }
   return fallback[activeView] || fallback.global;
-}
-
-function relevanceAlphaForView(item, view) {
-  const activeView = normalizeViewName(view);
-  if (activeView === 'global') return 1;
-  const kind = String(item?.kind || '').toLowerCase();
-  const type = String(item?.type || '').toLowerCase();
-  const isMesa = kind === 'mesa' || kind === 'table' || type === 'table';
-  const isParking = kind === 'estacionamiento' || kind === 'parkingspot' || type === 'parkingspot';
-  const isPool = kind === 'alberca' || kind === 'pool' || type === 'pool';
-  if (activeView === 'mesas') return isMesa ? 1 : 0.32;
-  if (activeView === 'estacionamiento') return isParking ? 1 : 0.32;
-  if (activeView === 'albercas') return isPool ? 1 : 0.32;
-  return 1;
 }
 
 function ensureBgImage(url, requestRedraw) {
@@ -726,9 +713,13 @@ function drawItem(ctx, item, options = {}) {
   const view = normalizeViewName(options.view || options.docView);
   if (!isVisibleInView(item, view)) return;
   ctx.save();
-  const attenuation =
-    options.editor && options.showViewContext !== false ? relevanceAlphaForView(item, view) : 1;
-  ctx.globalAlpha = Math.max(0, Number(item.opacity ?? 1) * attenuation);
+  const showCtx = options.showViewContext !== false;
+  const focusAlpha = options.editor ? getItemFocusRenderAlpha(view, item, showCtx) : 1;
+  if (focusAlpha <= 0) {
+    ctx.restore();
+    return;
+  }
+  ctx.globalAlpha = Math.max(0, Number(item.opacity ?? 1) * focusAlpha);
   applyItemTransform(ctx, item);
   const type = item.type || 'rect';
   if (type === 'table') drawTable(ctx, item, fill, stroke, options);

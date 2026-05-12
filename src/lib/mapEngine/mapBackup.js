@@ -110,6 +110,11 @@ export function validateMapDocumentForSave(jsonStr, mapContext) {
   if (!Number.isFinite(w) || w <= 0) errors.push('El ancho del lienzo debe ser mayor que 0.');
   if (!Number.isFinite(h) || h <= 0) errors.push('El alto del lienzo debe ser mayor que 0.');
 
+  const bg = doc.background && typeof doc.background === 'object' ? doc.background : {};
+  if (String(bg.type || '').toLowerCase() === 'image' && !String(bg.url || '').trim()) {
+    warnings.push('Fondo tipo imagen sin archivo cargado (sube una imagen o cambia el tipo de fondo).');
+  }
+
   const items = Array.isArray(doc.items) ? doc.items : [];
   const ids = items.map((it) => String(it?.id || '').trim()).filter(Boolean);
   const seen = new Set();

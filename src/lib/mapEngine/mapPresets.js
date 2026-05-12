@@ -9,9 +9,12 @@ export const MAP_QUICK_PRESETS = {
   MESAS_GRID_4: 'mesas-grid-4',
   MESAS_ROW: 'mesas-row',
   MESAS_VIP: 'mesas-vip',
+  MESAS_AREA_FAMILIAR: 'mesas-area-familiar',
   PARKING_ROW: 'parking-row',
   PARKING_BLOCK: 'parking-block',
-  PARKING_YARD: 'parking-yard'
+  PARKING_YARD: 'parking-yard',
+  PARKING_ENTRANCE: 'parking-entrance',
+  PARKING_PASILLO: 'parking-pasillo'
 };
 
 /**
@@ -167,6 +170,20 @@ export function buildPresetItemDefs(presetId, doc) {
         }
       ];
 
+    case MAP_QUICK_PRESETS.MESAS_AREA_FAMILIAR:
+      return [
+        {
+          id: uid('area-fam'),
+          kind: 'area',
+          x: Math.round(W * 0.1),
+          y: Math.round(H * 0.18),
+          width: Math.min(Math.round(W * 0.8), W - 80),
+          height: Math.min(Math.round(H * 0.58), H - 100),
+          label: 'Area familiar',
+          metadata: { description: 'Zona de mesas familiares', publicName: 'Area familiar' }
+        }
+      ];
+
     case MAP_QUICK_PRESETS.PARKING_ROW: {
       const count = 10;
       const gap = 12;
@@ -215,6 +232,34 @@ export function buildPresetItemDefs(presetId, doc) {
       }
       return out;
     }
+
+    case MAP_QUICK_PRESETS.PARKING_ENTRANCE:
+      return [
+        {
+          id: uid('ent-pk'),
+          kind: 'entrada',
+          x: Math.round(W * 0.34),
+          y: Math.round(H * 0.78),
+          width: Math.min(220, Math.round(W * 0.32)),
+          height: 72,
+          label: 'Entrada estacionamiento',
+          metadata: { description: 'Acceso vehicular', publicName: 'Entrada' }
+        }
+      ];
+
+    case MAP_QUICK_PRESETS.PARKING_PASILLO:
+      return [
+        {
+          id: uid('pasillo'),
+          kind: 'limitacion',
+          x: Math.round(W * 0.06),
+          y: Math.round(H * 0.08),
+          width: Math.round(W * 0.88),
+          height: 44,
+          label: 'Circulacion',
+          metadata: { description: 'No ocupar — paso de unidades' }
+        }
+      ];
 
     case MAP_QUICK_PRESETS.PARKING_YARD:
       return [

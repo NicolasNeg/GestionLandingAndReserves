@@ -2556,4 +2556,18 @@
   .mapa-viewport-outer {
     min-height: 12rem;
   }
+
+  .admin-shell.admin-shell--map-focus .admin-sidebar {
+    display: none;
+  }
+
+  .admin-shell.admin-shell--map-focus > .flex-grow {
+    padding: 0.5rem;
+  }
+
+  @media (min-width: 1024px) {
+    .admin-shell.admin-shell--map-focus > .flex-grow {
+      padding: 0.75rem 1rem;
+    }
+  }
 }

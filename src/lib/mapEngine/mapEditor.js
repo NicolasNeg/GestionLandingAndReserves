@@ -2,7 +2,7 @@ import { hitTestMapDocument, itemsIntersectRect } from './mapHitTesting.js';
 import { parseMapDocument, serializeMapDocument } from './mapMigrations.js';
 import { buildPresetItemDefs } from './mapPresets.js';
 import { drawMapCanvas } from './mapRenderer.js';
-import { alignItems, distributeItems } from './mapSelection.js';
+import { alignItems, distributeItems, getSelectionBounds } from './mapSelection.js';
 import { DEFAULT_MAP_ITEM_KIND, getMapKind } from './mapTypes.js';
 import { clamp, normalizeMapItem } from './mapSchema.js';
 
@@ -136,6 +136,99 @@ export function createMapEditor(canvas, initialJson, onChange, options = {}) {
     );
     doc.items.push(...created);
     selectedIds = created.map((item) => item.id);
+    commit();
+  };
+
+  const duplicateSelectedRow = (gap = 16) => {
+    const items = selectedItems();
+    if (!items.length) return;
+    saveHistory();
+    const box = getSelectionBounds(items);
+    if (!box) return;
+    const dy = box.height + gap;
+    const created = items.map((item, index) =>
+      makeNewItem(doc, {
+        ...item,
+        id: `${item.id}-fila-${Date.now().toString(36)}-${index}`,
+        y: clamp(Number(item.y || 0) + dy, 0, Math.max(0, doc.height - Number(item.height || 0)))
+      })
+    );
+    doc.items.push(...created);
+    selectedIds = created.map((item) => item.id);
+    commit();
+  };
+
+  const duplicateSelectedColumn = (gap = 16) => {
+    const items = selectedItems();
+    if (!items.length) return;
+    saveHistory();
+    const box = getSelectionBounds(items);
+    if (!box) return;
+    const dx = box.width + gap;
+    const created = items.map((item, index) =>
+      makeNewItem(doc, {
+        ...item,
+        id: `${item.id}-col-${Date.now().toString(36)}-${index}`,
+        x: clamp(Number(item.x || 0) + dx, 0, Math.max(0, doc.width - Number(item.width || 0)))
+      })
+    );
+    doc.items.push(...created);
+    selectedIds = created.map((item) => item.id);
+    commit();
+  };
+
+  const duplicateSelectedGrid = (rows = 2, cols = 2, gapX = 16, gapY = 16) => {
+    const items = selectedItems();
+    if (!items.length) return;
+    const r = Math.max(1, Math.min(12, Math.round(Number(rows) || 1)));
+    const c = Math.max(1, Math.min(12, Math.round(Number(cols) || 1)));
+    saveHistory();
+    const box = getSelectionBounds(items);
+    if (!box) return;
+    const rel = items.map((item) => ({
+      item,
+      ox: Number(item.x || 0) - box.x,
+      oy: Number(item.y || 0) - box.y
+    }));
+    const createdIds = [];
+    for (let row = 0; row < r; row += 1) {
+      for (let col = 0; col < c; col += 1) {
+        if (row === 0 && col === 0) continue;
+        const offX = col * (box.width + gapX);
+        const offY = row * (box.height + gapY);
+        rel.forEach(({ item }, index) => {
+          const nx = clamp(box.x + offX + (Number(item.x || 0) - box.x), 0, Math.max(0, doc.width - Number(item.width || 0)));
+          const ny = clamp(box.y + offY + (Number(item.y || 0) - box.y), 0, Math.max(0, doc.height - Number(item.height || 0)));
+          const copy = makeNewItem(doc, {
+            ...item,
+            id: `${item.id}-grid-${row}-${col}-${index}-${Date.now().toString(36)}`,
+            x: nx,
+            y: ny
+          });
+          doc.items.push(copy);
+          createdIds.push(copy.id);
+        });
+      }
+    }
+    if (createdIds.length) selectedIds = createdIds;
+    commit();
+  };
+
+  const flipSelected = (axis) => {
+    const items = selectedItems().filter((item) => item && !item.locked);
+    if (!items.length) return;
+    saveHistory();
+    const box = getSelectionBounds(items);
+    if (!box) return;
+    items.forEach((item) => {
+      if (axis === 'horizontal') {
+        const w = Number(item.width || 0);
+        item.x = Math.round(box.x + box.width - (Number(item.x || 0) - box.x) - w);
+      } else {
+        const h = Number(item.height || 0);
+        item.y = Math.round(box.y + box.height - (Number(item.y || 0) - box.y) - h);
+      }
+    });
     commit();
   };
 
@@ -531,6 +624,11 @@ export function createMapEditor(canvas, initialJson, onChange, options = {}) {
       commit();
     },
     duplicateSelected,
+    duplicateSelectedRow,
+    duplicateSelectedColumn,
+    duplicateSelectedGrid,
+    flipSelectedHorizontal: () => flipSelected('horizontal'),
+    flipSelectedVertical: () => flipSelected('vertical'),
     setPreviewMode: (on) => {
       previewMode = Boolean(on);
       if (previewMode) {

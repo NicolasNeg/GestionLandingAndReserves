@@ -75,6 +75,8 @@ export function createDefaultMapDocument(view = 'global') {
       fill: '#ecfdf5',
       stroke: '#0f766e',
       url: '',
+      storagePath: '',
+      fileName: '',
       opacity: 1,
       fit: 'cover',
       locked: true,
@@ -167,12 +169,23 @@ export function normalizeMapItem(item = {}, index = 0, options = {}) {
     metadata.spotCode = String(metadata.spotCode || item.spotCode || id).toUpperCase();
     metadata.zone = String(metadata.zone || item.zone || 'General');
     metadata.baseStatus = String(metadata.baseStatus || item.baseStatus || 'libre');
+    metadata.reservadoPor = String(metadata.reservadoPor || item.reservadoPor || '').trim();
   }
 
   if (kind === 'servicio' || kind === 'serviceArea') {
     metadata.category = String(metadata.category || item.category || 'servicio');
     metadata.icon = String(metadata.icon || item.icon || 'info');
     metadata.description = String(metadata.description || item.description || item.notes || '');
+  }
+
+  if (kind === 'alberca' || kind === 'pool') {
+    const pt = String(metadata.poolType || metadata.tipoAlberca || item.poolType || 'alberca').toLowerCase();
+    metadata.poolType = ['alberca', 'chapoteadero', 'olas', 'zona_libre', 'waterarea'].includes(pt)
+      ? pt
+      : 'alberca';
+    metadata.publicName = String(metadata.publicName || item.publicName || '').trim();
+    metadata.reglasPublicas = String(metadata.reglasPublicas || metadata.advertencias || '').trim();
+    metadata.capacidadAprox = Math.max(0, Math.round(numberOr(metadata.capacidadAprox, 0)));
   }
 
   return {
@@ -241,6 +254,8 @@ export function normalizeMapDocument(raw = {}, options = {}) {
       type: bgType,
       fill: String(rawBg.fill || rawBg.color || fallback.background.fill || '#ecfdf5'),
       url: String(rawBg.url || '').trim(),
+      storagePath: String(rawBg.storagePath || '').trim(),
+      fileName: String(rawBg.fileName || '').trim(),
       opacity: clamp(numberOr(rawBg.opacity, fallback.background.opacity ?? 1), 0, 1),
       fit: ['cover', 'contain', 'stretch'].includes(String(rawBg.fit || '').toLowerCase())
         ? String(rawBg.fit).toLowerCase()
