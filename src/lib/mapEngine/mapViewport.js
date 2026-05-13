@@ -1,6 +1,7 @@
 import { hitTestMapDocument } from './mapHitTesting.js';
 import { parseMapDocument } from './mapMigrations.js';
 import { drawMapCanvasViewport } from './mapRenderer.js';
+import { publicMapItemFilter } from './visual/mapPublicVisual.js';
 
 function clamp(num, min, max) {
   return Math.min(Math.max(num, min), max);
@@ -10,7 +11,8 @@ function distance(a, b) {
   return Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
 }
 
-export function createMapViewer(canvas, jsonOrDoc, options = {}) {
+export function createMapViewer(canvas, jsonOrDoc, initialOptions = {}) {
+  let options = { ...initialOptions };
   let doc = typeof jsonOrDoc === 'string' ? parseMapDocument(jsonOrDoc, options) : jsonOrDoc;
   const state = {
     scale: 1,
@@ -42,6 +44,29 @@ export function createMapViewer(canvas, jsonOrDoc, options = {}) {
     state.offsetX = (width - doc.width * state.scale) / 2;
     state.offsetY = (height - doc.height * state.scale) / 2;
     emitViewport();
+  };
+
+  let routeRaf = 0;
+  let routeAnimGen = 0;
+
+  const stopRouteAnim = () => {
+    routeAnimGen++;
+    if (routeRaf) cancelAnimationFrame(routeRaf);
+    routeRaf = 0;
+  };
+
+  const syncRouteAnim = () => {
+    stopRouteAnim();
+    const gen = routeAnimGen;
+    if (!Array.isArray(options.navigationPath) || options.navigationPath.length < 2) return;
+    const loop = () => {
+      if (destroyed || gen !== routeAnimGen) return;
+      if (!Array.isArray(options.navigationPath) || options.navigationPath.length < 2) return;
+      options.routeDashPhase = (Number(options.routeDashPhase) || 0) + 2.4;
+      draw();
+      routeRaf = requestAnimationFrame(loop);
+    };
+    routeRaf = requestAnimationFrame(loop);
   };
 
   const draw = () => {
@@ -82,7 +107,8 @@ export function createMapViewer(canvas, jsonOrDoc, options = {}) {
 
   const hitAtClient = (clientX, clientY) => {
     const point = clientToMap(clientX, clientY);
-    return hitTestMapDocument(doc, point.x, point.y);
+    const filterFn = publicMapItemFilter(options);
+    return hitTestMapDocument(doc, point.x, point.y, filterFn ? { itemFilter: filterFn } : {});
   };
 
   const setHoverFromClient = (ev) => {
@@ -200,6 +226,7 @@ export function createMapViewer(canvas, jsonOrDoc, options = {}) {
 
   fit();
   draw();
+  syncRouteAnim();
 
   return {
     redraw: draw,
@@ -227,18 +254,30 @@ export function createMapViewer(canvas, jsonOrDoc, options = {}) {
       draw();
     },
     setJson: (nextJson, nextOptions = {}) => {
-      doc = typeof nextJson === 'string' ? parseMapDocument(nextJson, { ...options, ...nextOptions }) : nextJson;
+      doc =
+        typeof nextJson === 'string'
+          ? parseMapDocument(nextJson, { view: options.view, ...nextOptions })
+          : nextJson;
+      Object.assign(options, nextOptions);
       hoveredId = '';
       selectedId = '';
+      stopRouteAnim();
       fit();
       draw();
+      syncRouteAnim();
     },
     getDocument: () => doc,
     getViewport: () => ({ ...state }),
     clientToMap,
     hitAtClient,
+    setDrawOptions: (patch = {}) => {
+      Object.assign(options, patch);
+      syncRouteAnim();
+      draw();
+    },
     destroy: () => {
       destroyed = true;
+      stopRouteAnim();
       resizeObserver?.disconnect();
       canvas.removeEventListener('wheel', onWheel);
       canvas.removeEventListener('pointerdown', onPointerDown);

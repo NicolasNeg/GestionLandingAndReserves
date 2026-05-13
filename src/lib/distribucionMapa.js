@@ -10,6 +10,7 @@ import {
 } from './mapEngine/mapMigrations.js';
 import { drawMapCanvas } from './mapEngine/mapRenderer.js';
 import { normalizeMapItem as normalizeEngineMapItem } from './mapEngine/mapSchema.js';
+import { itemMatchesPublicMapFilter } from './mapEngine/mapPublicFilters.js';
 import { createMapViewer } from './mapEngine/mapViewport.js';
 import {
   DEFAULT_MAP_ITEM_KIND,
@@ -46,7 +47,12 @@ export function findMapItemIndexAtClientPoint(canvas, jsonStr, clientX, clientY,
   if (rect.width <= 0 || rect.height <= 0) return -1;
   const mx = ((clientX - rect.left) / rect.width) * data.w;
   const my = ((clientY - rect.top) / rect.height) * data.h;
-  return findMapItemIndexAtPoint(jsonStr, mx, my, options);
+  let itemFilter = options.itemFilter;
+  if (!itemFilter && options.publicMapFilter && options.publicMapFilter !== 'all') {
+    const fid = options.publicMapFilter;
+    itemFilter = (item) => itemMatchesPublicMapFilter(item, fid);
+  }
+  return findMapItemIndexAtPoint(jsonStr, mx, my, { ...options, itemFilter });
 }
 
 export function createDistribucionEditor(canvas, initialJson, onChange, options = {}) {

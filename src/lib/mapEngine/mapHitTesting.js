@@ -87,17 +87,20 @@ export function getSortedMapItems(doc) {
     });
 }
 
-export function hitTestMapDocument(doc, x, y) {
+export function hitTestMapDocument(doc, x, y, options = {}) {
   const sorted = getSortedMapItems(doc);
+  const itemFilter = options.itemFilter;
   for (let i = sorted.length - 1; i >= 0; i--) {
-    if (pointInMapItem(sorted[i].item, x, y)) return sorted[i];
+    const row = sorted[i];
+    if (itemFilter && !itemFilter(row.item)) continue;
+    if (pointInMapItem(row.item, x, y)) return row;
   }
   return { item: null, index: -1 };
 }
 
 export function findMapItemIndexAtPoint(jsonStr, x, y, options = {}) {
   const doc = parseMapDocument(jsonStr, options);
-  return hitTestMapDocument(doc, x, y).index;
+  return hitTestMapDocument(doc, x, y, { itemFilter: options.itemFilter }).index;
 }
 
 export function itemsIntersectRect(items, rect) {

@@ -21,6 +21,8 @@ import { showAlert } from '../lib/appDialog.js';
 import { subscribeParkingSpots } from '../lib/parkingRealtime.js';
 import { parseScheduleConfig, scheduleDays } from '../lib/schedule.js';
 import { splitBotonesJson, filterPublicBotones } from '../lib/landingBotonesHero.js';
+import { computeRouteToMapItem } from '../lib/mapEngine/mapPathfinding.js';
+import { buildPublicMapFilterChips } from '../lib/mapEngine/mapPublicFilters.js';
 
 const LANDING_PAGE_ID = 'main';
 
@@ -698,7 +700,7 @@ export default {
                     </p>
                   </div>
                 </div>
-                <div class="public-map-card mt-8 ring-1 ring-cyan-100/70 shadow-[0_20px_45px_-28px_rgba(14,116,144,0.35)]">
+                <div class="public-map-card relative mt-8 ring-1 ring-cyan-100/70 shadow-[0_20px_45px_-28px_rgba(14,116,144,0.35)]">
                   <div class="flex flex-col gap-3 border-b border-slate-100 bg-white/92 p-4 sm:flex-row sm:items-center sm:justify-between">
                     <div>
                       <p class="text-sm font-black text-slate-900">Mapa del parque</p>
@@ -706,6 +708,7 @@ export default {
                     </div>
                     <div class="flex flex-wrap gap-2">${renderMapLegend()}</div>
                   </div>
+                  <div id="landing-map-filters" class="public-map-filters flex flex-wrap gap-2 border-b border-slate-100 bg-white/95 px-4 py-2"></div>
                   <div class="public-map-stage relative h-[420px] overflow-hidden sm:h-[540px]">
                     <canvas id="landing-mapa-canvas" width="1000" height="620" class="absolute inset-0 h-full w-full cursor-grab"></canvas>
                     <div id="landing-map-tooltip" class="map-tooltip hidden"></div>
@@ -718,6 +721,13 @@ export default {
                       <button type="button" id="landing-map-reset" class="map-reset-btn" title="Resetear zoom y posición" aria-label="Resetear zoom y posición">Reset</button>
                       <button type="button" id="landing-map-zoom-in" class="map-icon-btn" title="Acercar" aria-label="Acercar mapa">+</button>
                     </div>
+                    <div id="landing-map-sheet" class="public-map-sheet" aria-hidden="true">
+                      <button type="button" id="landing-map-sheet-backdrop" class="public-map-sheet__backdrop" aria-label="Cerrar panel del mapa"></button>
+                      <div class="public-map-sheet__panel" role="dialog" aria-modal="true" aria-labelledby="landing-map-sheet-title">
+                        <div class="public-map-sheet__handle" aria-hidden="true"></div>
+                        <div id="landing-map-sheet-body" class="public-map-sheet__body"></div>
+                      </div>
+                    </div>
                   </div>
                   <div id="landing-map-info" class="public-map-info">
                     <div>
@@ -725,7 +735,7 @@ export default {
                       <p class="mt-1 text-sm font-semibold text-slate-600">Toca una zona del mapa para ver su descripcion publica.</p>
                     </div>
                   </div>
-                  <div id="landing-map-info-mobile" class="public-map-info public-map-info--mobile sm:hidden"></div>
+                  <div id="landing-map-info-mobile" class="hidden" aria-hidden="true"></div>
                 </div>
               </div>
             </section>
@@ -887,6 +897,28 @@ export default {
     const mapInfo = document.getElementById('landing-map-info');
     const mapInfoMobile = document.getElementById('landing-map-info-mobile');
     const mapTooltip = document.getElementById('landing-map-tooltip');
+    const mapFiltersEl = document.getElementById('landing-map-filters');
+    const mapSheet = document.getElementById('landing-map-sheet');
+    const mapSheetBody = document.getElementById('landing-map-sheet-body');
+    const mapSheetBackdrop = document.getElementById('landing-map-sheet-backdrop');
+    let publicMapFilter = 'all';
+
+    const closeMapSheet = () => {
+      mapSheet?.classList.remove('public-map-sheet--open');
+      mapSheet?.setAttribute('aria-hidden', 'true');
+    };
+
+    const openMapSheetIfMobile = () => {
+      if (window.matchMedia('(max-width: 640px)').matches) {
+        mapSheet?.classList.add('public-map-sheet--open');
+        mapSheet?.setAttribute('aria-hidden', 'false');
+      } else {
+        closeMapSheet();
+      }
+    };
+
+    mapSheetBackdrop?.addEventListener('click', closeMapSheet);
+
     const setMapInfo = (item) => {
       const emptyHtml = `
         <div>
@@ -897,6 +929,8 @@ export default {
       if (!item) {
         if (mapInfo) mapInfo.innerHTML = emptyHtml;
         if (mapInfoMobile) mapInfoMobile.innerHTML = emptyHtml;
+        if (mapSheetBody) mapSheetBody.innerHTML = emptyHtml;
+        closeMapSheet();
         return;
       }
       const publicDetail =
@@ -921,7 +955,9 @@ export default {
         </div>
       `;
       if (mapInfo) mapInfo.innerHTML = html;
-      if (mapInfoMobile) mapInfoMobile.innerHTML = html;
+      if (mapInfoMobile) mapInfoMobile.innerHTML = '';
+      if (mapSheetBody) mapSheetBody.innerHTML = html;
+      openMapSheetIfMobile();
     };
     const setMapTooltip = (item, _index, _point, pointer) => {
       if (!mapTooltip) return;
@@ -962,9 +998,42 @@ export default {
           showKindBadge: false,
           viewerUi: true,
           viewerSelectionStyle: 'simple',
+          semiReal: true,
+          publicMapFilter: 'all',
           onHover: setMapTooltip,
-          onSelect: (item) => setMapInfo(item)
+          onSelect: (item) => {
+            setMapInfo(item);
+            if (!globalMapViewer) return;
+            const pts = item ? computeRouteToMapItem(globalMapViewer.getDocument(), item) : [];
+            globalMapViewer.setDrawOptions({
+              navigationPath: pts.length >= 2 ? pts : []
+            });
+          }
         });
+        const renderMapFilterChips = () => {
+          if (!mapFiltersEl || !globalMapViewer) return;
+          const chips = buildPublicMapFilterChips(globalMapViewer.getDocument());
+          if (chips.length <= 1) {
+            mapFiltersEl.innerHTML = '';
+            return;
+          }
+          mapFiltersEl.innerHTML = chips
+            .map(
+              (c) => `
+            <button type="button" data-map-filter="${escapeHtml(c.id)}" class="public-map-filter-chip ${
+                c.id === publicMapFilter ? 'is-active' : ''
+              }">${escapeHtml(c.label)}</button>`
+            )
+            .join('');
+          mapFiltersEl.querySelectorAll('[data-map-filter]').forEach((btn) => {
+            btn.addEventListener('click', () => {
+              publicMapFilter = btn.getAttribute('data-map-filter') || 'all';
+              globalMapViewer.setDrawOptions({ publicMapFilter });
+              renderMapFilterChips();
+            });
+          });
+        };
+        renderMapFilterChips();
       }
       document.getElementById('landing-map-zoom-in')?.addEventListener('click', () => globalMapViewer?.zoomIn());
       document.getElementById('landing-map-zoom-out')?.addEventListener('click', () => globalMapViewer?.zoomOut());

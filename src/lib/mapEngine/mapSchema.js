@@ -64,12 +64,47 @@ export function sanitizeId(text, fallback) {
   return clean || fallback;
 }
 
+function normalizeNavGraph(raw) {
+  if (!raw || typeof raw !== 'object') return { nodes: [], edges: [] };
+  const nodes = (Array.isArray(raw.nodes) ? raw.nodes : [])
+    .map((n, i) => ({
+      id: sanitizeId(n?.id, `n${i}`),
+      x: Math.round(numberOr(n?.x, 0)),
+      y: Math.round(numberOr(n?.y, 0)),
+      label: String(n?.label || '').trim()
+    }))
+    .filter((n) => n.id);
+  const nodeIds = new Set(nodes.map((n) => n.id));
+  const edges = (Array.isArray(raw.edges) ? raw.edges : [])
+    .map((e) => ({
+      from: sanitizeId(e?.from, ''),
+      to: sanitizeId(e?.to, ''),
+      weight: clamp(numberOr(e?.weight, 1), 0.01, 9999)
+    }))
+    .filter((e) => e.from && e.to && nodeIds.has(e.from) && nodeIds.has(e.to));
+  return { nodes, edges };
+}
+
+function normalizePublicMapUi(raw) {
+  if (!raw || typeof raw !== 'object') return { filters: [] };
+  const filters = (Array.isArray(raw.filters) ? raw.filters : [])
+    .map((f) => ({
+      id: sanitizeId(f?.id, ''),
+      label: String(f?.label || f?.id || '').trim()
+    }))
+    .filter((f) => f.id && f.id !== 'all');
+  return { filters };
+}
+
 export function createDefaultMapDocument(view = 'global') {
   return {
     version: MAP_SCHEMA_VERSION,
     view: normalizeMapView(view),
     width: DEFAULT_MAP_WIDTH,
     height: DEFAULT_MAP_HEIGHT,
+    renderProfile: 'semiReal',
+    navGraph: { nodes: [], edges: [] },
+    publicMapUi: { filters: [] },
     background: {
       type: 'park',
       fill: '#ecfdf5',
@@ -241,11 +276,17 @@ export function normalizeMapDocument(raw = {}, options = {}) {
       ? bgTypeRaw
       : fallback.background.type || 'park';
 
+  const renderRaw = String(raw.renderProfile || '').toLowerCase();
+  const renderProfile = renderRaw === 'semiReal' ? 'semiReal' : 'flat';
+
   return {
     version: MAP_SCHEMA_VERSION,
     view,
     width,
     height,
+    renderProfile,
+    navGraph: normalizeNavGraph(raw.navGraph),
+    publicMapUi: normalizePublicMapUi(raw.publicMapUi),
     w: undefined,
     h: undefined,
     background: {

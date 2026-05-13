@@ -2,6 +2,12 @@ import { getItemFocusRenderAlpha } from '../mapEditorViewConfig.js';
 import { getSortedMapItems } from './mapHitTesting.js';
 import { parseMapDocument } from './mapMigrations.js';
 import { TABLE_STATES, getMapKind } from './mapTypes.js';
+import {
+  drawNavigationRoute,
+  drawSemiRealParkOverlay,
+  isSemiRealRender,
+  publicMapItemFilter
+} from './visual/mapPublicVisual.js';
 
 const bgImageCache = new Map();
 
@@ -256,6 +262,7 @@ function drawBackground(ctx, doc, options = {}) {
   } else {
     drawParkGradient(ctx, doc, bg, view);
     drawParkDecor(ctx, doc, options, view);
+    if (isSemiRealRender(doc, options)) drawSemiRealParkOverlay(ctx, doc, options, view);
   }
 
   drawGrid(ctx, doc, { ...options, view });
@@ -383,10 +390,11 @@ function drawRectLike(ctx, item, options, fill, stroke) {
   const w = Number(item.width || 0);
   const h = Number(item.height || 0);
   const dashed = getMapKind(item.kind).dashed || item.kind === 'limitacion' || item.kind === 'blockedZone';
+  const sr = Boolean(options.semiRealActive) && !options.editor;
   ctx.save();
-  ctx.shadowColor = options.editor ? 'transparent' : 'rgba(15, 23, 42, 0.16)';
-  ctx.shadowBlur = options.editor ? 0 : 16;
-  ctx.shadowOffsetY = options.editor ? 0 : 7;
+  ctx.shadowColor = options.editor ? 'transparent' : sr ? 'rgba(15, 23, 42, 0.24)' : 'rgba(15, 23, 42, 0.16)';
+  ctx.shadowBlur = options.editor ? 0 : sr ? 22 : 16;
+  ctx.shadowOffsetY = options.editor ? 0 : sr ? 11 : 7;
   ctx.fillStyle = fill;
   roundRect(ctx, x, y, w, h, item.kind === 'area' ? 16 : 10);
   ctx.fill();
@@ -453,10 +461,11 @@ function drawTable(ctx, item, fill, stroke, options = {}) {
   const cx = x + w / 2;
   const cy = y + h / 2;
   const r = Math.max(Math.min(w, h) * 0.34, 14);
+  const sr = Boolean(options.semiRealActive) && !options.editor;
   ctx.save();
   ctx.shadowColor = 'rgba(15, 23, 42, 0.18)';
-  ctx.shadowBlur = 12;
-  ctx.shadowOffsetY = 5;
+  ctx.shadowBlur = sr ? 20 : 12;
+  ctx.shadowOffsetY = sr ? 8 : 5;
   ctx.fillStyle = 'rgba(15, 23, 42, 0.12)';
   const chairs = Math.max(2, Math.min(10, Number(item.metadata?.capacidad || 4)));
   for (let i = 0; i < chairs; i++) {
@@ -764,22 +773,30 @@ function drawEmptyState(ctx, doc) {
 }
 
 export function drawMapDocument(ctx, doc, options = {}) {
+  const viewName = normalizeViewName(options.view || doc.view);
   const renderOptions = {
     ...options,
-    view: normalizeViewName(options.view || doc.view),
-    docView: normalizeViewName(doc.view)
+    view: viewName,
+    docView: normalizeViewName(doc.view),
+    semiRealActive: isSemiRealRender(doc, { ...options, view: viewName })
   };
   drawBackground(ctx, doc, renderOptions);
   const selectedIds = new Set(options.selectedIds || []);
   const sorted = getSortedMapItems(doc).filter(({ item }) => isVisibleInView(item, renderOptions.view));
-  sorted.forEach(({ item }) => drawItem(ctx, item, renderOptions));
+  const filterFn = publicMapItemFilter(renderOptions);
+  const sortedDraw = filterFn ? sorted.filter(({ item }) => filterFn(item)) : sorted;
+  sortedDraw.forEach(({ item }) => drawItem(ctx, item, renderOptions));
   if (!doc.items.length) drawEmptyState(ctx, doc);
   const hovered = options.hoveredId ? doc.items.find((item) => item.id === options.hoveredId) : null;
-  if (hovered && hovered.visible !== false && !selectedIds.has(hovered.id)) drawHover(ctx, hovered, renderOptions);
+  const hoverOk = hovered && hovered.visible !== false && (!filterFn || filterFn(hovered));
+  if (hoverOk && !selectedIds.has(hovered.id)) drawHover(ctx, hovered, renderOptions);
   if (selectedIds.size) {
-    const selected = sorted.filter(({ item }) => selectedIds.has(item.id)).map(({ item }) => item);
+    const selected = sortedDraw.filter(({ item }) => selectedIds.has(item.id)).map(({ item }) => item);
     if (selected.length > 1) drawSelectionBounds(ctx, selected);
     selected.forEach((item) => drawSelection(ctx, item, selectedIds.size > 1, renderOptions));
+  }
+  if (Array.isArray(options.navigationPath) && options.navigationPath.length >= 2) {
+    drawNavigationRoute(ctx, options.navigationPath, Number(options.routeDashPhase) || 0);
   }
   if (options.marqueeRect) {
     const r = options.marqueeRect;
