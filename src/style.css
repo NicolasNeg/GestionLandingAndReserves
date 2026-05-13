@@ -187,10 +187,12 @@
     background: rgb(15 23 42 / 0.48);
   }
 
-  @media (min-width: 1025px) {
-    .app-user-menu-backdrop {
-      display: none !important;
-    }
+  .app-user-menu-backdrop--portaled {
+    z-index: 210;
+  }
+
+  .app-user-menu--portaled {
+    z-index: 220;
   }
 
   .app-route-loading-spinner {
@@ -231,8 +233,11 @@
     transform: none;
   }
 
-  /* Panel de perfil: en tablet/móvil (≤1024px) anclado abajo tipo sheet; en PC dropdown sin cambios. */
-  @media (max-width: 1024px) {
+  /*
+   * Panel de perfil en sheet inferior: pantallas ≤1024px o táctil sin hover (Android aunque el viewport sea ancho).
+   * El menú se mueve a document.body (layout.js) para no quedar atrapado por backdrop-filter del header.
+   */
+  @media (max-width: 1024px), (hover: none) and (pointer: coarse) {
     .app-user-menu:not(.hidden),
     .app-user-menu:not(.hidden).app-user-menu--up {
       position: fixed;
@@ -248,6 +253,10 @@
       box-shadow: 0 -12px 48px rgb(15 23 42 / 0.2);
       max-height: min(84vh, 36rem);
       overflow-y: auto;
+    }
+
+    .app-user-menu:not(.hidden).app-user-menu--portaled {
+      z-index: 220;
     }
 
     .app-user-menu-mobile-head {
@@ -1868,8 +1877,17 @@
 
   .mapa-viewport-outer {
     background:
+      radial-gradient(ellipse 120% 80% at 50% 0%, rgb(94 179 69 / 0.14), transparent 42%),
       radial-gradient(circle at 50% 0%, rgb(34 211 238 / 0.08), transparent 28%),
       linear-gradient(180deg, rgb(2 6 23), rgb(15 23 42));
+  }
+
+  .mapa-editor-canvas-surface {
+    border-radius: 1rem;
+    box-shadow:
+      0 0 0 3px #4a8f35,
+      10px 12px 0 rgb(61 122 45 / 0.72),
+      18px 24px 44px rgb(0 0 0 / 0.55);
   }
 
   .mapa-inspector-section {

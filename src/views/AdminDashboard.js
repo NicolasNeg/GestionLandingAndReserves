@@ -1138,7 +1138,7 @@ const AdminDashboard = {
                               </div>
                               <div id="mapa-viewport-outer" class="mapa-viewport-outer relative max-h-[min(70vh,680px)] overflow-auto bg-slate-950/80 p-4">
                                 <div id="mapa-viewport-inner" class="inline-block origin-top-left transition-transform duration-150">
-                                  <canvas id="admin-mapa-canvas" width="800" height="440" class="block rounded-lg shadow-2xl ring-1 ring-white/10"></canvas>
+                                  <canvas id="admin-mapa-canvas" width="800" height="440" class="mapa-editor-canvas-surface block rounded-xl shadow-2xl ring-1 ring-white/10"></canvas>
                                 </div>
                                 <div id="mapa-empty-overlay" class="pointer-events-none absolute inset-0 z-[25] hidden flex-col items-center justify-center gap-3 rounded-lg bg-slate-950/88 p-5 text-center">
                                   <p id="mapa-empty-title" class="pointer-events-auto text-sm font-black text-white">Aún no hay elementos en esta vista.</p>

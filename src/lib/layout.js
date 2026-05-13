@@ -298,7 +298,43 @@ function closeCartDrawer() {
   aside?.classList.add('translate-x-full', 'opacity-0');
 }
 
+/** Sheet inferior: pantallas estrechas o dispositivo táctil sin hover (Android, etc.). */
+function useBottomSheetUserMenu() {
+  return (
+    window.matchMedia('(max-width: 1024px)').matches ||
+    (window.matchMedia('(hover: none)').matches && window.matchMedia('(pointer: coarse)').matches)
+  );
+}
+
+function portalUserMenuLayersToBody() {
+  const wrap = document.querySelector('.app-user-wrap');
+  const backdrop = document.getElementById('app-user-menu-backdrop');
+  const menu = document.getElementById('app-user-menu');
+  if (!wrap || !backdrop || !menu || backdrop.dataset.portaled === '1') return;
+  document.body.appendChild(backdrop);
+  document.body.appendChild(menu);
+  backdrop.dataset.portaled = '1';
+  backdrop.classList.add('app-user-menu-backdrop--portaled');
+  menu.classList.add('app-user-menu--portaled');
+}
+
+function restoreUserMenuLayersToHeader() {
+  const wrap = document.querySelector('.app-user-wrap');
+  const backdrop = document.getElementById('app-user-menu-backdrop');
+  const menu = document.getElementById('app-user-menu');
+  if (!wrap || !backdrop || !menu) return;
+  if (backdrop.dataset.portaled !== '1') return;
+  const btn = wrap.querySelector('[data-app-user-menu-toggle]');
+  if (btn) wrap.insertBefore(backdrop, btn);
+  else wrap.insertBefore(backdrop, wrap.firstChild);
+  wrap.appendChild(menu);
+  delete backdrop.dataset.portaled;
+  backdrop.classList.remove('app-user-menu-backdrop--portaled');
+  menu.classList.remove('app-user-menu--portaled');
+}
+
 export function closeUserMenu() {
+  restoreUserMenuLayersToHeader();
   const menu = document.getElementById('app-user-menu');
   const toggle = document.querySelector('[data-app-user-menu-toggle]');
   const backdrop = document.getElementById('app-user-menu-backdrop');
@@ -321,6 +357,8 @@ export async function updateAppShell(path = window.location.pathname) {
   if (token !== renderToken) return;
 
   themeCache = applyTheme(theme);
+  // Evita menú/backdrop portaled en body con ids duplicados al reemplazar el header.
+  closeUserMenu();
   header.innerHTML = renderHeader(access, themeCache);
   renderCartDrawer();
 }
@@ -399,21 +437,32 @@ export function initAppShell(options = {}) {
       const isOpen = menu && !menu.classList.contains('hidden');
       menu?.classList.toggle('hidden', isOpen);
       const nowOpen = Boolean(menu && !menu.classList.contains('hidden'));
-      const isNarrowShell = window.matchMedia('(max-width: 1024px)').matches;
-      if (backdrop) {
-        if (nowOpen && isNarrowShell) backdrop.removeAttribute('hidden');
-        else backdrop.setAttribute('hidden', '');
+      const sheet = useBottomSheetUserMenu();
+
+      if (!nowOpen) {
+        restoreUserMenuLayersToHeader();
+        backdrop?.setAttribute('hidden', '');
+        document.body.classList.remove('overflow-hidden');
+        menuToggle.setAttribute('aria-expanded', 'false');
+        return;
       }
-      if (nowOpen && isNarrowShell) document.body.classList.add('overflow-hidden');
-      else document.body.classList.remove('overflow-hidden');
-      if (menu) {
-        menu.classList.remove('app-user-menu--up');
-        if (nowOpen && !isNarrowShell) {
+
+      if (sheet) {
+        portalUserMenuLayersToBody();
+        backdrop?.removeAttribute('hidden');
+        document.body.classList.add('overflow-hidden');
+        menu?.classList.remove('app-user-menu--up');
+      } else {
+        restoreUserMenuLayersToHeader();
+        backdrop?.setAttribute('hidden', '');
+        document.body.classList.remove('overflow-hidden');
+        if (menu) {
+          menu.classList.remove('app-user-menu--up');
           const rect = menu.getBoundingClientRect();
           if (rect.bottom > window.innerHeight - 8) menu.classList.add('app-user-menu--up');
         }
       }
-      menuToggle.setAttribute('aria-expanded', nowOpen ? 'true' : 'false');
+      menuToggle.setAttribute('aria-expanded', 'true');
       return;
     }
 
@@ -453,6 +502,27 @@ export function initAppShell(options = {}) {
   window.addEventListener('cart:changed', () => {
     renderCartDrawer();
     updateAppShell(lastPath);
+  });
+
+  let resizeMenuTimer = 0;
+  window.addEventListener('resize', () => {
+    window.clearTimeout(resizeMenuTimer);
+    resizeMenuTimer = window.setTimeout(() => {
+      const menu = document.getElementById('app-user-menu');
+      if (!menu || menu.classList.contains('hidden')) return;
+      if (useBottomSheetUserMenu()) {
+        portalUserMenuLayersToBody();
+        document.getElementById('app-user-menu-backdrop')?.removeAttribute('hidden');
+        document.body.classList.add('overflow-hidden');
+        menu.classList.remove('app-user-menu--up');
+      } else {
+        restoreUserMenuLayersToHeader();
+        document.getElementById('app-user-menu-backdrop')?.setAttribute('hidden', '');
+        document.body.classList.remove('overflow-hidden');
+        const rect = menu.getBoundingClientRect();
+        menu.classList.toggle('app-user-menu--up', rect.bottom > window.innerHeight - 8);
+      }
+    }, 120);
   });
 
   updateAppShell(lastPath);
