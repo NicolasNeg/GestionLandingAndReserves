@@ -38,8 +38,9 @@
     top: 0;
     z-index: 60;
     border-bottom: 1px solid rgb(226 232 240);
-    background: rgb(255 255 255 / 0.96);
-    backdrop-filter: blur(14px);
+    /* Sin backdrop-filter: en varios navegadores crea bloque de contención y `position:fixed`
+       del menú de usuario queda anclado al header en lugar del viewport. */
+    background: rgb(255 255 255 / 0.97);
   }
 
   .app-promo-strip {
@@ -234,43 +235,53 @@
   }
 
   /*
-   * Panel de perfil en sheet inferior: pantallas ≤1024px o táctil sin hover (Android aunque el viewport sea ancho).
-   * El menú se mueve a document.body (layout.js) para no quedar atrapado por backdrop-filter del header.
+   * Modo sheet vs dropdown lo fija layout.js con data-user-menu-mode (menú portaled a body).
+   * Así el aspecto coincide con la lógica JS y no depende solo del ancho del viewport.
    */
-  @media (max-width: 1024px), (hover: none) and (pointer: coarse) {
-    .app-user-menu:not(.hidden),
-    .app-user-menu:not(.hidden).app-user-menu--up {
-      position: fixed;
-      right: 0;
-      bottom: 0;
-      left: 0;
-      top: auto !important;
-      z-index: 180;
-      width: 100%;
-      max-width: none;
-      border-radius: 1.1rem 1.1rem 0 0;
-      padding-bottom: max(0.5rem, env(safe-area-inset-bottom));
-      box-shadow: 0 -12px 48px rgb(15 23 42 / 0.2);
-      max-height: min(84vh, 36rem);
-      overflow-y: auto;
-    }
+  .app-user-menu[data-user-menu-mode='sheet'] {
+    position: fixed;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    top: auto !important;
+    z-index: 220;
+    width: 100%;
+    max-width: none;
+    border-radius: 1.1rem 1.1rem 0 0;
+    padding-bottom: max(0.5rem, env(safe-area-inset-bottom));
+    box-shadow: 0 -12px 48px rgb(15 23 42 / 0.2);
+    max-height: min(84vh, 36rem);
+    overflow-y: auto;
+  }
 
-    .app-user-menu:not(.hidden).app-user-menu--portaled {
-      z-index: 220;
-    }
+  .app-user-menu[data-user-menu-mode='sheet'] .app-user-menu-mobile-head {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.85rem 1rem;
+    background: white;
+    border-bottom: 1px solid rgb(226 232 240);
+  }
 
-    .app-user-menu-mobile-head {
-      position: sticky;
-      top: 0;
-      z-index: 2;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 0.75rem;
-      padding: 0.85rem 1rem;
-      background: white;
-      border-bottom: 1px solid rgb(226 232 240);
-    }
+  .app-user-menu[data-user-menu-mode='dropdown'] {
+    position: fixed;
+    right: var(--app-user-menu-right, 1rem);
+    top: var(--app-user-menu-top, 5rem);
+    bottom: auto;
+    left: auto;
+    z-index: 220;
+    width: min(19rem, calc(100vw - 1.5rem));
+    max-height: min(86vh, 36rem);
+    overflow-y: auto;
+  }
+
+  .app-user-menu[data-user-menu-mode='dropdown'].app-user-menu--up {
+    top: auto !important;
+    bottom: var(--app-user-menu-bottom, 1rem);
   }
 
   @media (max-width: 640px) {
@@ -1717,6 +1728,14 @@
     z-index: 35;
   }
 
+  .mapa-editor-shell.mapa-ws {
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.07),
+      0 28px 64px rgb(0 0 0 / 0.5);
+    outline: 1px solid rgb(74 143 53 / 0.4);
+    outline-offset: -1px;
+  }
+
   .mapa-editor-shell.mapa-focus-mode {
     position: fixed;
     inset: 0.6rem;
@@ -1862,6 +1881,30 @@
     transform: translateY(-1px);
   }
 
+  .mapa-editor-shell.mapa-shell--react {
+    display: flex;
+    flex-direction: column;
+    min-height: min(76vh, 760px);
+  }
+
+  .mapa-editor-shell.mapa-shell--react .mapa-editor-topbar {
+    display: none !important;
+  }
+
+  .mapa-editor-shell.mapa-shell--react .mapa-ws-main {
+    display: none !important;
+  }
+
+  .mapa-editor-shell.mapa-shell--react .mapa-editor-react-host {
+    display: block !important;
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+
+  .mapa-editor-shell.mapa-shell--react #mapa-draw-hint {
+    display: none !important;
+  }
+
   .mapa-tool-strip {
     align-items: center;
   }
@@ -1876,6 +1919,7 @@
   }
 
   .mapa-viewport-outer {
+    min-height: 12rem;
     background:
       radial-gradient(ellipse 120% 80% at 50% 0%, rgb(94 179 69 / 0.14), transparent 42%),
       radial-gradient(circle at 50% 0%, rgb(34 211 238 / 0.08), transparent 28%),
@@ -2674,10 +2718,6 @@
 
   .exec-dash-act-link:hover {
     text-decoration: underline;
-  }
-
-  .mapa-viewport-outer {
-    min-height: 12rem;
   }
 
   .admin-shell.admin-shell--map-focus .admin-sidebar {

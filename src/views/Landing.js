@@ -23,6 +23,7 @@ import { splitBotonesJson, filterPublicBotones } from '../lib/landingBotonesHero
 import { createAquaMapStage } from '../lib/mapPresentation/aquaMapStage.js';
 import { computeRouteToMapItem } from '../lib/mapEngine/mapPathfinding.js';
 import { buildPublicMapFilterChips } from '../lib/mapEngine/mapPublicFilters.js';
+import { useReactKonvaPublicMap } from '../lib/mapFlags.js';
 
 const LANDING_PAGE_ID = 'main';
 
@@ -994,20 +995,38 @@ export default {
           </div>`
         );
       } else {
-        globalMapViewer = createAquaMapStage(mapStageRoot, landing.mapaDistribucionJson, {
-          view: 'global',
-          camera: 'client',
-          publicMapFilter: 'all',
-          onHover: setMapTooltip,
-          onSelect: (item) => {
-            setMapInfo(item);
-            if (!globalMapViewer) return;
-            const pts = item ? computeRouteToMapItem(globalMapViewer.getDocument(), item) : [];
-            globalMapViewer.setDrawOptions({
-              navigationPath: pts.length >= 2 ? pts : []
-            });
-          }
-        });
+        if (useReactKonvaPublicMap()) {
+          const { mountPublicParkMap } = await import('../react/publicParkMapMount.tsx');
+          globalMapViewer = mountPublicParkMap(mapStageRoot, landing.mapaDistribucionJson, {
+            view: 'global',
+            camera: 'client',
+            publicMapFilter: 'all',
+            onHover: setMapTooltip,
+            onSelect: (item) => {
+              setMapInfo(item);
+              if (!globalMapViewer) return;
+              const pts = item ? computeRouteToMapItem(globalMapViewer.getDocument(), item) : [];
+              globalMapViewer.setDrawOptions({
+                navigationPath: pts.length >= 2 ? pts : []
+              });
+            }
+          });
+        } else {
+          globalMapViewer = createAquaMapStage(mapStageRoot, landing.mapaDistribucionJson, {
+            view: 'global',
+            camera: 'client',
+            publicMapFilter: 'all',
+            onHover: setMapTooltip,
+            onSelect: (item) => {
+              setMapInfo(item);
+              if (!globalMapViewer) return;
+              const pts = item ? computeRouteToMapItem(globalMapViewer.getDocument(), item) : [];
+              globalMapViewer.setDrawOptions({
+                navigationPath: pts.length >= 2 ? pts : []
+              });
+            }
+          });
+        }
         const renderMapFilterChips = () => {
           if (!mapFiltersEl || !globalMapViewer) return;
           const chips = buildPublicMapFilterChips(globalMapViewer.getDocument());

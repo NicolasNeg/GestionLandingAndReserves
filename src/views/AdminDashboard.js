@@ -54,6 +54,8 @@ import {
   getMapKind,
   parseDistribucionJson
 } from '../lib/distribucionMapa.js';
+import { useReactKonvaMapEditor } from '../lib/mapFlags.js';
+import { mountReactMapEditor } from '../react/mapEditorMount.tsx';
 import { MAP_QUICK_PRESETS } from '../lib/mapEngine/mapPresets.js';
 import { getUserAccess } from '../lib/accessControl.js';
 import { icon } from '../lib/icons.js';
@@ -1067,6 +1069,7 @@ const AdminDashboard = {
                         </div>
                       </div>
                       <p class="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">Usa <strong>Guardar cambios del sitio</strong> en la cabecera para persistir mapas y textos. El atajo Guardar del lienzo dispara el mismo guardado.</p>
+                      <p class="rounded-lg border border-violet-100 bg-violet-50/90 px-4 py-2 text-xs font-semibold text-violet-950">Editor visual Konva (beta): en consola ejecuta <code class="rounded bg-white px-1">localStorage.setItem('USE_REACT_KONVA_MAP','1')</code> y recarga. Desactiva con removeItem o valor distinto de <code class="rounded bg-white px-1">1</code>.</p>
                       <p id="mapa-context-usage" class="rounded-lg border border-cyan-100 bg-cyan-50/80 px-4 py-2 text-xs font-semibold text-cyan-950"></p>
                       <div id="mapa-editor-shell" class="mapa-editor-shell mapa-ws overflow-hidden rounded-2xl border border-slate-700 bg-gradient-to-b from-slate-900 via-slate-900 to-slate-950 text-slate-100 shadow-xl ring-1 ring-white/10">
                           <header class="mapa-editor-topbar min-h-[56px] border-b border-white/10 px-3 py-2.5">
@@ -1114,6 +1117,8 @@ const AdminDashboard = {
                               <label class="mapa-command-btn cursor-pointer select-none"><input id="mapa-show-grid" type="checkbox" class="mr-1 align-middle" checked /> Grid</label>
                             </div>
                           </header>
+
+                          <div id="mapa-editor-react-host" class="mapa-editor-react-host hidden min-h-[min(64vh,600px)] w-full shrink-0 bg-white"></div>
 
                           <p id="mapa-draw-hint" class="hidden border-b border-amber-500/20 bg-amber-500/10 px-4 py-2 text-center text-[11px] font-semibold text-amber-200">Modo dibujo activo: arrastra sobre el lienzo para crear el rectangulo.</p>
 
@@ -2740,6 +2745,35 @@ const AdminDashboard = {
             : mapContext === 'albercas'
               ? 'albercas'
             : 'global';
+      const mountAdminMapEditor = (canvasEl, json) => {
+        if (useReactKonvaMapEditor()) {
+          const shell = document.getElementById('mapa-editor-shell');
+          const host = document.getElementById('mapa-editor-react-host');
+          if (shell && host) {
+            shell.classList.add('mapa-shell--react');
+            host.classList.remove('hidden');
+            return mountReactMapEditor(host, {
+              initialJson: json || DEFAULT_MAPA_JSON,
+              view: mapViewForContext(),
+              onChangeJson: handleMapEditorChange,
+              onSaveSite: () => document.getElementById('lp-save')?.click(),
+              onPreviewPublic: () => {
+                const a = document.getElementById('mapa-preview-link');
+                if (a) a.click();
+                else window.location.assign('/home#mapa');
+              }
+            });
+          }
+        }
+        const shell = document.getElementById('mapa-editor-shell');
+        const host = document.getElementById('mapa-editor-react-host');
+        shell?.classList.remove('mapa-shell--react');
+        host?.classList.add('hidden');
+        if (!canvasEl) return null;
+        return createDistribucionEditor(canvasEl, json || DEFAULT_MAPA_JSON, handleMapEditorChange, {
+          view: mapViewForContext()
+        });
+      };
       const updateMapContextUsageHint = () => {
         const el = document.getElementById('mapa-context-usage');
         if (!el) return;
@@ -3647,7 +3681,7 @@ const AdminDashboard = {
                 mapEditor?.destroy?.();
                 const canvasEl = document.getElementById('admin-mapa-canvas');
                 if (canvasEl) {
-                  mapEditor = createDistribucionEditor(canvasEl, next, handleMapEditorChange, { view: mapViewForContext() });
+                  mapEditor = mountAdminMapEditor(canvasEl, next);
                   wireMapEditorUi();
                 }
                 bumpLandingUi();
@@ -3681,7 +3715,7 @@ const AdminDashboard = {
                 mapEditor?.destroy?.();
                 const canvasEl = document.getElementById('admin-mapa-canvas');
                 if (canvasEl) {
-                  mapEditor = createDistribucionEditor(canvasEl, next, handleMapEditorChange, { view: mapViewForContext() });
+                  mapEditor = mountAdminMapEditor(canvasEl, next);
                   wireMapEditorUi();
                 }
                 bumpLandingUi();
@@ -3733,7 +3767,7 @@ const AdminDashboard = {
       const canvas = document.getElementById('admin-mapa-canvas');
       if (canvas) {
         if (mapEditor) mapEditor.destroy();
-        mapEditor = createDistribucionEditor(canvas, getMapByContext(), handleMapEditorChange, { view: mapViewForContext() });
+        mapEditor = mountAdminMapEditor(canvas, getMapByContext());
         wireMapEditorUi();
         wireMapImportExportAndDraft();
         updateMapContextUsageHint();
@@ -3769,7 +3803,7 @@ const AdminDashboard = {
         mapEditor?.destroy();
         const canvas = document.getElementById('admin-mapa-canvas');
         if (canvas) {
-          mapEditor = createDistribucionEditor(canvas, nextJson, handleMapEditorChange, { view: mapViewForContext() });
+          mapEditor = mountAdminMapEditor(canvas, nextJson);
           wireMapEditorUi();
           const dims = parseDistribucionJson(nextJson);
           setVal('mapa-doc-w', dims.w);
@@ -4192,7 +4226,7 @@ const AdminDashboard = {
         const nextJson = getMapByContext();
         mapEditor?.destroy?.();
         if (canvasEl) {
-          mapEditor = createDistribucionEditor(canvasEl, nextJson, handleMapEditorChange, { view: mapViewForContext() });
+          mapEditor = mountAdminMapEditor(canvasEl, nextJson);
           wireMapEditorUi();
           const dims = parseDistribucionJson(nextJson);
           setVal('mapa-doc-w', dims.w);

@@ -298,12 +298,41 @@ function closeCartDrawer() {
   aside?.classList.add('translate-x-full', 'opacity-0');
 }
 
-/** Sheet inferior: pantallas estrechas o dispositivo táctil sin hover (Android, etc.). */
+/**
+ * Sheet inferior salvo “escritorio clásico”: viewport ancho + puntero fino + hover.
+ * Así tablets en horizontal o Android con viewport grande siguen en sheet.
+ */
 function useBottomSheetUserMenu() {
-  return (
-    window.matchMedia('(max-width: 1024px)').matches ||
-    (window.matchMedia('(hover: none)').matches && window.matchMedia('(pointer: coarse)').matches)
-  );
+  return !window.matchMedia('(min-width: 1025px) and (pointer: fine) and (hover: hover)').matches;
+}
+
+function clearUserMenuPositionStyles(menu) {
+  if (!menu) return;
+  menu.classList.remove('app-user-menu--up');
+  menu.style.removeProperty('--app-user-menu-right');
+  menu.style.removeProperty('--app-user-menu-top');
+  menu.style.removeProperty('--app-user-menu-bottom');
+}
+
+/** Menú anclado al botón avatar (siempre en document.body + position:fixed). */
+function positionDropdownUserMenu(menu, toggleBtn) {
+  clearUserMenuPositionStyles(menu);
+  const rect = toggleBtn.getBoundingClientRect();
+  const gap = 8;
+  const right = Math.max(window.innerWidth - rect.right, 12);
+  menu.style.setProperty('--app-user-menu-right', `${right}px`);
+  menu.style.setProperty('--app-user-menu-top', `${rect.bottom + gap}px`);
+
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      const mrect = menu.getBoundingClientRect();
+      if (mrect.bottom <= window.innerHeight - gap) return;
+      menu.classList.add('app-user-menu--up');
+      menu.style.removeProperty('--app-user-menu-top');
+      menu.style.setProperty('--app-user-menu-bottom', `${window.innerHeight - rect.top + gap}px`);
+      menu.style.setProperty('--app-user-menu-right', `${right}px`);
+    });
+  });
 }
 
 function portalUserMenuLayersToBody() {
@@ -334,10 +363,14 @@ function restoreUserMenuLayersToHeader() {
 }
 
 export function closeUserMenu() {
-  restoreUserMenuLayersToHeader();
   const menu = document.getElementById('app-user-menu');
   const toggle = document.querySelector('[data-app-user-menu-toggle]');
   const backdrop = document.getElementById('app-user-menu-backdrop');
+  if (menu) {
+    delete menu.dataset.userMenuMode;
+    clearUserMenuPositionStyles(menu);
+  }
+  restoreUserMenuLayersToHeader();
   menu?.classList.add('hidden');
   backdrop?.setAttribute('hidden', '');
   document.body.classList.remove('overflow-hidden');
@@ -434,34 +467,27 @@ export function initAppShell(options = {}) {
       event.preventDefault();
       const menu = document.getElementById('app-user-menu');
       const backdrop = document.getElementById('app-user-menu-backdrop');
-      const isOpen = menu && !menu.classList.contains('hidden');
-      menu?.classList.toggle('hidden', isOpen);
-      const nowOpen = Boolean(menu && !menu.classList.contains('hidden'));
-      const sheet = useBottomSheetUserMenu();
-
-      if (!nowOpen) {
-        restoreUserMenuLayersToHeader();
-        backdrop?.setAttribute('hidden', '');
-        document.body.classList.remove('overflow-hidden');
+      if (!menu) return;
+      const isOpen = !menu.classList.contains('hidden');
+      if (isOpen) {
+        closeUserMenu();
         menuToggle.setAttribute('aria-expanded', 'false');
         return;
       }
 
+      portalUserMenuLayersToBody();
+      clearUserMenuPositionStyles(menu);
+      const sheet = useBottomSheetUserMenu();
+      menu.dataset.userMenuMode = sheet ? 'sheet' : 'dropdown';
       if (sheet) {
-        portalUserMenuLayersToBody();
         backdrop?.removeAttribute('hidden');
         document.body.classList.add('overflow-hidden');
-        menu?.classList.remove('app-user-menu--up');
       } else {
-        restoreUserMenuLayersToHeader();
         backdrop?.setAttribute('hidden', '');
         document.body.classList.remove('overflow-hidden');
-        if (menu) {
-          menu.classList.remove('app-user-menu--up');
-          const rect = menu.getBoundingClientRect();
-          if (rect.bottom > window.innerHeight - 8) menu.classList.add('app-user-menu--up');
-        }
       }
+      menu.classList.remove('hidden');
+      if (!sheet) positionDropdownUserMenu(menu, menuToggle);
       menuToggle.setAttribute('aria-expanded', 'true');
       return;
     }
@@ -509,18 +535,20 @@ export function initAppShell(options = {}) {
     window.clearTimeout(resizeMenuTimer);
     resizeMenuTimer = window.setTimeout(() => {
       const menu = document.getElementById('app-user-menu');
-      if (!menu || menu.classList.contains('hidden')) return;
-      if (useBottomSheetUserMenu()) {
-        portalUserMenuLayersToBody();
-        document.getElementById('app-user-menu-backdrop')?.removeAttribute('hidden');
+      const toggle = document.querySelector('[data-app-user-menu-toggle]');
+      if (!menu || menu.classList.contains('hidden') || !toggle) return;
+      portalUserMenuLayersToBody();
+      const sheet = useBottomSheetUserMenu();
+      menu.dataset.userMenuMode = sheet ? 'sheet' : 'dropdown';
+      const backdrop = document.getElementById('app-user-menu-backdrop');
+      if (sheet) {
+        clearUserMenuPositionStyles(menu);
+        backdrop?.removeAttribute('hidden');
         document.body.classList.add('overflow-hidden');
-        menu.classList.remove('app-user-menu--up');
       } else {
-        restoreUserMenuLayersToHeader();
-        document.getElementById('app-user-menu-backdrop')?.setAttribute('hidden', '');
+        backdrop?.setAttribute('hidden', '');
         document.body.classList.remove('overflow-hidden');
-        const rect = menu.getBoundingClientRect();
-        menu.classList.toggle('app-user-menu--up', rect.bottom > window.innerHeight - 8);
+        positionDropdownUserMenu(menu, toggle);
       }
     }, 120);
   });
