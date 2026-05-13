@@ -399,16 +399,16 @@ export function initAppShell(options = {}) {
       const isOpen = menu && !menu.classList.contains('hidden');
       menu?.classList.toggle('hidden', isOpen);
       const nowOpen = Boolean(menu && !menu.classList.contains('hidden'));
-      const isMobile = window.matchMedia('(max-width: 640px)').matches;
+      const isNarrowShell = window.matchMedia('(max-width: 1024px)').matches;
       if (backdrop) {
-        if (nowOpen && isMobile) backdrop.removeAttribute('hidden');
+        if (nowOpen && isNarrowShell) backdrop.removeAttribute('hidden');
         else backdrop.setAttribute('hidden', '');
       }
-      if (nowOpen && isMobile) document.body.classList.add('overflow-hidden');
+      if (nowOpen && isNarrowShell) document.body.classList.add('overflow-hidden');
       else document.body.classList.remove('overflow-hidden');
       if (menu) {
         menu.classList.remove('app-user-menu--up');
-        if (nowOpen && !isMobile) {
+        if (nowOpen && !isNarrowShell) {
           const rect = menu.getBoundingClientRect();
           if (rect.bottom > window.innerHeight - 8) menu.classList.add('app-user-menu--up');
         }

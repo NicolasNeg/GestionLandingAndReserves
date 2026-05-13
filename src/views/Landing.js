@@ -10,7 +10,6 @@ import {
   DEFAULT_MAPA_JSON,
   MAP_ITEM_KINDS,
   createMapViewer,
-  findMapItemIndexAtClientPoint,
   parseDistribucionJson
 } from '../lib/distribucionMapa.js';
 import { getUserAccess, waitForAuthUser } from '../lib/accessControl.js';
@@ -21,6 +20,7 @@ import { showAlert } from '../lib/appDialog.js';
 import { subscribeParkingSpots } from '../lib/parkingRealtime.js';
 import { parseScheduleConfig, scheduleDays } from '../lib/schedule.js';
 import { splitBotonesJson, filterPublicBotones } from '../lib/landingBotonesHero.js';
+import { createAquaMapStage } from '../lib/mapPresentation/aquaMapStage.js';
 import { computeRouteToMapItem } from '../lib/mapEngine/mapPathfinding.js';
 import { buildPublicMapFilterChips } from '../lib/mapEngine/mapPublicFilters.js';
 
@@ -710,7 +710,7 @@ export default {
                   </div>
                   <div id="landing-map-filters" class="public-map-filters flex flex-wrap gap-2 border-b border-slate-100 bg-white/95 px-4 py-2"></div>
                   <div class="public-map-stage relative h-[420px] overflow-hidden sm:h-[540px]">
-                    <canvas id="landing-mapa-canvas" width="1000" height="620" class="absolute inset-0 h-full w-full cursor-grab"></canvas>
+                    <div id="landing-aqua-map-root" class="absolute inset-0"></div>
                     <div id="landing-map-tooltip" class="map-tooltip hidden"></div>
                     <div class="absolute left-3 top-3 z-10 hidden rounded-full border border-white/25 bg-slate-950/70 px-3 py-1.5 text-xs font-black uppercase tracking-wide text-white shadow-lg backdrop-blur sm:block">
                       ${icon('map', 'h-3.5 w-3.5 inline-block')} Arrastra para explorar
@@ -892,7 +892,7 @@ export default {
     const est = document.getElementById('landing-estacionamiento');
     if (est) est.textContent = landing.estacionamientoTexto;
 
-    const mapCanvas = document.getElementById('landing-mapa-canvas');
+    const mapStageRoot = document.getElementById('landing-aqua-map-root');
     let globalMapViewer = null;
     const mapInfo = document.getElementById('landing-map-info');
     const mapInfoMobile = document.getElementById('landing-map-info-mobile');
@@ -959,13 +959,15 @@ export default {
       if (mapSheetBody) mapSheetBody.innerHTML = html;
       openMapSheetIfMobile();
     };
+    const mapHitSurface = () => globalMapViewer?.getViewportElement?.() || mapStageRoot;
+
     const setMapTooltip = (item, _index, _point, pointer) => {
       if (!mapTooltip) return;
       if (!item || !pointer || window.matchMedia('(max-width: 640px)').matches) {
         mapTooltip.classList.add('hidden');
         return;
       }
-      const rect = mapCanvas?.getBoundingClientRect();
+      const rect = mapHitSurface()?.getBoundingClientRect();
       if (!rect) return;
       const tipTitle = String(item.metadata?.publicName || item.label || getPublicKindLabel(item.kind) || 'Zona').trim();
       mapTooltip.innerHTML = `
@@ -976,12 +978,12 @@ export default {
       mapTooltip.style.top = `${Math.min(rect.height - 74, Math.max(10, pointer.clientY - rect.top + 14))}px`;
       mapTooltip.classList.remove('hidden');
     };
-    if (mapCanvas) {
+    if (mapStageRoot) {
       const parsedPublicMap = parseDistribucionJson(landing.mapaDistribucionJson);
       if (!parsedPublicMap.items.length) {
-        mapCanvas.classList.add('hidden');
+        mapStageRoot.classList.add('hidden');
         setMapInfo(null);
-        const stage = mapCanvas.closest('.public-map-stage');
+        const stage = mapStageRoot.closest('.public-map-stage');
         stage?.insertAdjacentHTML(
           'beforeend',
           `<div class="absolute inset-3 grid place-items-center rounded-2xl border border-dashed border-slate-300 bg-white/90 p-6 text-center">
@@ -992,13 +994,9 @@ export default {
           </div>`
         );
       } else {
-        globalMapViewer = createMapViewer(mapCanvas, landing.mapaDistribucionJson, {
+        globalMapViewer = createAquaMapStage(mapStageRoot, landing.mapaDistribucionJson, {
           view: 'global',
-          showItemIds: false,
-          showKindBadge: false,
-          viewerUi: true,
-          viewerSelectionStyle: 'simple',
-          semiReal: true,
+          camera: 'client',
           publicMapFilter: 'all',
           onHover: setMapTooltip,
           onSelect: (item) => {
@@ -1326,20 +1324,6 @@ export default {
           parkingSummary.textContent = 'No fue posible cargar estacionamiento en tiempo real.';
         }
       );
-    }
-
-    if (mapCanvas && !globalMapViewer) {
-      mapCanvas.addEventListener('click', (ev) => {
-        const idx = findMapItemIndexAtClientPoint(mapCanvas, landing.mapaDistribucionJson, ev.clientX, ev.clientY);
-        const item = parseDistribucionJson(landing.mapaDistribucionJson).items[idx];
-        if (!item) {
-          if (mapInfo) mapInfo.textContent = 'Toca una zona del mapa para ver su descripción.';
-          return;
-        }
-        const title = item.label || 'Zona';
-        const detail = item.notes || `Tipo: ${item.kind}`;
-        if (mapInfo) mapInfo.innerHTML = `<strong class="text-slate-900">${escapeHtml(title)}</strong> · ${escapeHtml(detail)}`;
-      });
     }
 
     const drawer = document.getElementById('home-nav-drawer');
