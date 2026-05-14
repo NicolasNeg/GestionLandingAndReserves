@@ -1,6 +1,5 @@
 /** Fachada compatible del mapa editable en admin y solo lectura en vistas publicas. */
 
-import { createMapEditor } from './mapEngine/mapEditor.js';
 import { findMapItemIndexAtPoint } from './mapEngine/mapHitTesting.js';
 import {
   defaultMapJson,
@@ -53,8 +52,4 @@ export function findMapItemIndexAtClientPoint(canvas, jsonStr, clientX, clientY,
     itemFilter = (item) => itemMatchesPublicMapFilter(item, fid);
   }
   return findMapItemIndexAtPoint(jsonStr, mx, my, { ...options, itemFilter });
-}
-
-export function createDistribucionEditor(canvas, initialJson, onChange, options = {}) {
-  return createMapEditor(canvas, initialJson || DEFAULT_MAPA_JSON, onChange, options);
 }

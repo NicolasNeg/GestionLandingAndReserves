@@ -1,10 +1,15 @@
 import { itemMatchesPublicMapFilter } from '../mapPublicFilters.js';
 
+/** Solo el documento (p. ej. vista previa del editor), sin la ruta `options.editor` del lienzo público. */
+export function docUsesSemiRealProfile(doc) {
+  return String(doc?.renderProfile || '').toLowerCase() === 'semireal';
+}
+
 export function isSemiRealRender(doc, options = {}) {
   if (options.editor) return false;
   if (options.semiReal === false) return false;
   if (options.semiReal === true) return true;
-  return String(doc?.renderProfile || '').toLowerCase() === 'semiReal';
+  return docUsesSemiRealProfile(doc);
 }
 
 export function drawSemiRealParkOverlay(ctx, doc, options, view) {

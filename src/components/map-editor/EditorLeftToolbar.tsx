@@ -2,18 +2,18 @@ import { MAP_ITEM_KINDS_V2 } from '../../lib/mapEngine/mapTypes.js';
 import { useMapEditorStore } from '../../store/map-editor-store';
 
 const TOOLS = [
-  { kind: 'area', label: 'Area' },
+  { kind: 'area', label: 'Área' },
   { kind: 'mesa', label: 'Mesa' },
   { kind: 'estacionamiento', label: 'Parking' },
-  { kind: 'limitacion', label: 'Zona bloqueada' },
+  { kind: 'limitacion', label: 'Bloqueo' },
   { kind: 'alberca', label: 'Alberca' },
   { kind: 'palapa', label: 'Palapa' },
   { kind: 'servicio', label: 'Servicio' },
-  { kind: 'entrada', label: 'Entrada / salida' },
+  { kind: 'entrada', label: 'Entrada' },
   { kind: 'text', label: 'Texto' },
   { kind: 'marker', label: 'Marcador' },
-  { kind: 'rect', label: 'Rectangulo' },
-  { kind: 'polygon', label: 'Poligono' },
+  { kind: 'rect', label: 'Rectángulo' },
+  { kind: 'polygon', label: 'Polígono' },
   { kind: 'ellipse', label: 'Elipse' }
 ];
 
@@ -22,20 +22,27 @@ export function EditorLeftToolbar() {
   const doc = useMapEditorStore((s) => s.doc);
 
   return (
-    <aside className="flex w-[220px] shrink-0 flex-col border-r border-cyan-100/80 bg-white/95">
-      <div className="border-b border-cyan-50 px-3 py-2">
-        <p className="text-[10px] font-black uppercase tracking-widest text-teal-800">Elementos</p>
-        <p className="text-[11px] text-slate-500">Clic para colocar en el centro del lienzo.</p>
+    <aside className="flex w-[196px] shrink-0 flex-col border-r border-[color:var(--af-line)] bg-[color:var(--af-rail)]">
+      <div
+        className="border-b border-[color:var(--af-line)] px-3 py-3"
+        style={{
+          background: 'linear-gradient(180deg, var(--af-rail-edge) 0%, var(--af-rail) 100%)'
+        }}
+      >
+        <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-teal-800/80">Biblioteca</p>
+        <p className="mt-1 text-[11px] leading-snug text-[color:var(--af-muted)]">
+          Clic: coloca en el centro del lienzo.
+        </p>
       </div>
-      <div className="flex-1 space-y-1 overflow-y-auto p-2">
+      <div className="flex-1 space-y-0.5 overflow-y-auto p-2">
         {TOOLS.map((t) => {
           const meta = MAP_ITEM_KINDS_V2.find((k) => k.value === t.kind);
-          const stroke = meta?.stroke || '#0f766e';
+          const stroke = meta?.stroke || '#0ea5e9';
           return (
             <button
               key={t.kind}
               type="button"
-              className="flex w-full items-center gap-2 rounded-xl border border-slate-100 bg-white px-2 py-2 text-left text-xs font-bold text-slate-800 shadow-sm transition hover:border-teal-200 hover:bg-teal-50/50"
+              className="group flex w-full items-center gap-2.5 rounded-lg border border-transparent px-2 py-1.5 text-left text-[12px] font-medium text-[color:var(--af-text)] transition hover:border-[color:var(--af-line-strong)] hover:bg-[color:var(--af-panel)]"
               onClick={() =>
                 addItem(t.kind, {
                   x: Math.max(24, doc.width / 2 - 60),
@@ -44,10 +51,10 @@ export function EditorLeftToolbar() {
               }
             >
               <span
-                className="h-8 w-8 shrink-0 rounded-lg ring-1 ring-slate-100"
-                style={{ background: `${stroke}22` }}
+                className="size-6 shrink-0 rounded-md border border-[color:var(--af-line)] shadow-inner transition group-hover:border-teal-400/50"
+                style={{ background: `${String(stroke)}33` }}
               />
-              {t.label}
+              <span className="truncate">{t.label}</span>
             </button>
           );
         })}

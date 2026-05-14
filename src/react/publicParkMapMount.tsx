@@ -7,7 +7,7 @@ import {
 } from '../components/park-map/PublicParkMapApp';
 
 /**
- * Vista pública del mapa (Landing) con React + Konva. Misma API que createAquaMapStage donde aplica.
+ * Vista pública del mapa (Landing) con React + Konva.
  */
 export function mountPublicParkMap(
   host: HTMLElement,

@@ -77,7 +77,7 @@ function roundRect(ctx, x, y, w, h, r = 10) {
 
 function drawGrid(ctx, doc, options = {}) {
   if (doc.grid?.visible === false) return;
-  const size = Math.max(10, Number(doc.grid?.size || 40));
+  const size = Math.max(10, Number(doc.grid?.size || 20));
   const view = options.view || doc.view;
   const dark = view === 'estacionamiento';
   ctx.save();

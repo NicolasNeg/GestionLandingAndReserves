@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:bootstrap": "node scripts/dev-bootstrap.mjs",
     "build": "vite build",
     "preview": "vite preview"
   },

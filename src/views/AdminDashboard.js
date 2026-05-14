@@ -47,14 +47,12 @@ import {
 } from '../lib/dataLayer.js';
 import { listPendingScans } from '../lib/offlineScannerStore.js';
 import {
-  createDistribucionEditor,
   DEFAULT_MAPA_JSON,
   MAP_ITEM_KINDS,
   drawDistribucionCanvas,
   getMapKind,
   parseDistribucionJson
 } from '../lib/distribucionMapa.js';
-import { useReactKonvaMapEditor } from '../lib/mapFlags.js';
 import { mountReactMapEditor } from '../react/mapEditorMount.tsx';
 import { MAP_QUICK_PRESETS } from '../lib/mapEngine/mapPresets.js';
 import { getUserAccess } from '../lib/accessControl.js';
@@ -1069,7 +1067,7 @@ const AdminDashboard = {
                         </div>
                       </div>
                       <p class="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">Usa <strong>Guardar cambios del sitio</strong> en la cabecera para persistir mapas y textos. El atajo Guardar del lienzo dispara el mismo guardado.</p>
-                      <p class="rounded-lg border border-violet-100 bg-violet-50/90 px-4 py-2 text-xs font-semibold text-violet-950">Editor visual Konva (beta): en consola ejecuta <code class="rounded bg-white px-1">localStorage.setItem('USE_REACT_KONVA_MAP','1')</code> y recarga. Desactiva con removeItem o valor distinto de <code class="rounded bg-white px-1">1</code>.</p>
+                      <p class="rounded-lg border border-cyan-100 bg-cyan-50/90 px-4 py-2 text-xs font-semibold text-cyan-950">Editor de mapa: lienzo React + Konva (única versión). Guarda con <strong>Guardar cambios del sitio</strong> en la cabecera.</p>
                       <p id="mapa-context-usage" class="rounded-lg border border-cyan-100 bg-cyan-50/80 px-4 py-2 text-xs font-semibold text-cyan-950"></p>
                       <div id="mapa-editor-shell" class="mapa-editor-shell mapa-ws overflow-hidden rounded-2xl border border-slate-700 bg-gradient-to-b from-slate-900 via-slate-900 to-slate-950 text-slate-100 shadow-xl ring-1 ring-white/10">
                           <header class="mapa-editor-topbar min-h-[56px] border-b border-white/10 px-3 py-2.5">
@@ -2745,34 +2743,27 @@ const AdminDashboard = {
             : mapContext === 'albercas'
               ? 'albercas'
             : 'global';
-      const mountAdminMapEditor = (canvasEl, json) => {
-        if (useReactKonvaMapEditor()) {
-          const shell = document.getElementById('mapa-editor-shell');
-          const host = document.getElementById('mapa-editor-react-host');
-          if (shell && host) {
-            shell.classList.add('mapa-shell--react');
-            host.classList.remove('hidden');
-            return mountReactMapEditor(host, {
-              initialJson: json || DEFAULT_MAPA_JSON,
-              view: mapViewForContext(),
-              onChangeJson: handleMapEditorChange,
-              onSaveSite: () => document.getElementById('lp-save')?.click(),
-              onPreviewPublic: () => {
-                const a = document.getElementById('mapa-preview-link');
-                if (a) a.click();
-                else window.location.assign('/home#mapa');
-              }
-            });
-          }
-        }
+      const mountAdminMapEditor = (_canvasEl, json) => {
         const shell = document.getElementById('mapa-editor-shell');
         const host = document.getElementById('mapa-editor-react-host');
+        if (shell && host) {
+          shell.classList.add('mapa-shell--react');
+          host.classList.remove('hidden');
+          return mountReactMapEditor(host, {
+            initialJson: json || DEFAULT_MAPA_JSON,
+            view: mapViewForContext(),
+            onChangeJson: handleMapEditorChange,
+            onSaveSite: () => document.getElementById('lp-save')?.click(),
+            onPreviewPublic: () => {
+              const a = document.getElementById('mapa-preview-link');
+              if (a) a.click();
+              else window.location.assign('/home#mapa');
+            }
+          });
+        }
         shell?.classList.remove('mapa-shell--react');
         host?.classList.add('hidden');
-        if (!canvasEl) return null;
-        return createDistribucionEditor(canvasEl, json || DEFAULT_MAPA_JSON, handleMapEditorChange, {
-          view: mapViewForContext()
-        });
+        return null;
       };
       const updateMapContextUsageHint = () => {
         const el = document.getElementById('mapa-context-usage');

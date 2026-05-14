@@ -119,7 +119,7 @@ export function createDefaultMapDocument(view = 'global') {
     },
     grid: {
       visible: true,
-      size: 40,
+      size: 20,
       snap: true
     },
     layers: MAP_LAYERS.map((layer) => ({ ...layer })),

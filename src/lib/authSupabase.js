@@ -2,6 +2,7 @@
  * Adaptador Auth sobre Supabase Auth (preparado para Fase 5B+).
  * Requiere VITE_SUPABASE_URL + VITE_SUPABASE_ANON_KEY y VITE_AUTH_PROVIDER=supabase.
  */
+import { getSyntheticDevAuthUser, isDevBootstrapActive } from './devBootstrap.js';
 import { supabase } from '../supabase/client.js';
 
 const AUTH_WAIT_MS = 6000;
@@ -78,7 +79,15 @@ function normalizeAuthError(err, context = 'signin') {
 }
 
 function setSessionCache(session) {
-  sessionCache = session?.user ? mapUser(session.user) : null;
+  if (session?.user) {
+    sessionCache = mapUser(session.user);
+    return;
+  }
+  if (isDevBootstrapActive()) {
+    sessionCache = getSyntheticDevAuthUser();
+    return;
+  }
+  sessionCache = null;
 }
 
 function ensureAuthListener() {
@@ -103,38 +112,54 @@ export function getAuthBackendName() {
 }
 
 export function getCurrentUser() {
-  if (!supabase) return null;
+  if (!supabase) {
+    if (isDevBootstrapActive()) return getSyntheticDevAuthUser();
+    return null;
+  }
   ensureAuthListener();
-  return sessionCache;
+  if (sessionCache) return sessionCache;
+  if (isDevBootstrapActive()) return getSyntheticDevAuthUser();
+  return null;
 }
 
 export function onAuthChange(callback) {
   const sb = requireClient();
   ensureAuthListener();
   const { data } = sb.auth.onAuthStateChange((_event, session) => {
-    callback(session?.user ? mapUser(session.user) : null);
+    callback(
+      session?.user ? mapUser(session.user) : isDevBootstrapActive() ? getSyntheticDevAuthUser() : null
+    );
   });
   return () => data.subscription.unsubscribe();
 }
 
 export function waitForAuthUser(timeoutMs = AUTH_WAIT_MS) {
   const sb = requireClient();
-  return new Promise((resolve) => {
-    let done = false;
-    let unsub = () => {};
-    const finish = (u) => {
-      if (done) return;
-      done = true;
-      clearTimeout(tid);
-      unsub();
-      resolve(u);
-    };
-    const tid = globalThis.setTimeout(() => finish(sessionCache), timeoutMs);
-    unsub = onAuthChange((u) => finish(u));
-    sb.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) finish(mapUser(session.user));
-    });
-  });
+  return ensureAuthListener().then(
+    () =>
+      new Promise((resolve) => {
+        let done = false;
+        let unsub = () => {};
+        const finish = (u) => {
+          if (done) return;
+          done = true;
+          clearTimeout(tid);
+          unsub();
+          resolve(u);
+        };
+        const tid = globalThis.setTimeout(() => {
+          if (isDevBootstrapActive() && !sessionCache) {
+            sessionCache = getSyntheticDevAuthUser();
+          }
+          finish(sessionCache);
+        }, timeoutMs);
+        unsub = onAuthChange((u) => finish(u));
+        sb.auth.getSession().then(({ data: { session } }) => {
+          if (session?.user) finish(mapUser(session.user));
+          else if (isDevBootstrapActive()) finish(getSyntheticDevAuthUser());
+        });
+      })
+  );
 }
 
 export async function signInWithGoogle() {

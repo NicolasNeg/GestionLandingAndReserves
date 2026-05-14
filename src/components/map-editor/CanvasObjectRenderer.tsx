@@ -1,6 +1,6 @@
 import Konva from 'konva';
 import type { MutableRefObject } from 'react';
-import { Circle, Ellipse, Line, Rect, Text } from 'react-konva';
+import { Circle, Ellipse, Group, Line, Rect, Text } from 'react-konva';
 
 function isBlockedKind(kind: string) {
   const k = String(kind || '').toLowerCase();
@@ -45,8 +45,8 @@ export function CanvasObjectRenderer(props: CanvasObjectRendererProps) {
             patchItemById(item.id, { x: n.x(), y: n.y() });
           }
         };
-        const stroke = sel ? '#0ea5e9' : String(item.stroke || '#0f766e');
-        const strokeW = sel ? 3 : 2;
+        const stroke = sel ? '#94a3b8' : String(item.stroke || '#0f766e');
+        const strokeW = sel ? 2.5 : 2;
         if (item.type === 'polygon' || item.type === 'line') {
           const pts = (item.points || []).flatMap((p: any) => [p.x, p.y]);
           return (
@@ -59,6 +59,81 @@ export function CanvasObjectRenderer(props: CanvasObjectRendererProps) {
               stroke={stroke}
               strokeWidth={strokeW / fit}
             />
+          );
+        }
+        if (item.type === 'table') {
+          const w = Number(item.width);
+          const h = Number(item.height);
+          const cx = w / 2;
+          const cy = h / 2;
+          const r = Math.max(Math.min(w, h) * 0.34, 14);
+          const chairs = Math.max(2, Math.min(10, Number(item.metadata?.capacidad || 4)));
+          const rot = Number(item.rotation || 0);
+          const fill = String(item.fill || 'rgba(16, 185, 129, 0.30)');
+          const sw = strokeW / fit;
+          return (
+            <Group
+              key={item.id}
+              id={item.id}
+              name="map-item-table"
+              ref={(node: Konva.Group | null) => {
+                if (node) nodeRefs.current[item.id] = node;
+                else delete nodeRefs.current[item.id];
+              }}
+              x={Number(item.x) + cx}
+              y={Number(item.y) + cy}
+              offsetX={cx}
+              offsetY={cy}
+              rotation={rot}
+              onMouseDown={(e: Konva.KonvaEventObject<MouseEvent>) => {
+                if (previewMode) return;
+                if (tool !== 'select') return;
+                e.cancelBubble = true;
+                selectItemById(item.id, e.evt.shiftKey);
+              }}
+              draggable={tool === 'select' && !item.locked && !previewMode}
+              onDragEnd={(e: Konva.KonvaEventObject<DragEvent>) => {
+                const n = e.target as Konva.Group;
+                patchItemById(item.id, {
+                  x: n.x() - w / 2,
+                  y: n.y() - h / 2,
+                  rotation: n.rotation()
+                });
+              }}
+            >
+              <Rect
+                name="map-item-bounds"
+                x={0}
+                y={0}
+                width={w}
+                height={h}
+                opacity={0}
+                listening={false}
+              />
+              {Array.from({ length: chairs }, (_, i) => {
+                const a = (Math.PI * 2 * i) / chairs;
+                return (
+                  <Circle
+                    key={`ch-${i}`}
+                    x={cx + Math.cos(a) * (r + 9)}
+                    y={cy + Math.sin(a) * (r + 9)}
+                    radius={5}
+                    fill="rgba(15, 23, 42, 0.12)"
+                    listening={false}
+                  />
+                );
+              })}
+              <Ellipse
+                x={cx}
+                y={cy}
+                radiusX={r}
+                radiusY={r}
+                fill={fill}
+                stroke={stroke}
+                strokeWidth={sw}
+                listening={false}
+              />
+            </Group>
           );
         }
         if (item.type === 'ellipse' || item.type === 'circle') {
@@ -75,6 +150,86 @@ export function CanvasObjectRenderer(props: CanvasObjectRendererProps) {
               stroke={stroke}
               strokeWidth={strokeW / fit}
             />
+          );
+        }
+        if (item.type === 'pool') {
+          const x = Number(item.x);
+          const y = Number(item.y);
+          const w = Number(item.width);
+          const h = Number(item.height);
+          const cx = w / 2;
+          const cy = h / 2;
+          const rot = Number(item.rotation || 0);
+          const fill = String(item.fill || 'rgba(14, 165, 233, 0.26)');
+          const sw = strokeW / fit;
+          const waves: JSX.Element[] = [];
+          for (let ly = h * 0.32; ly <= h * 0.72; ly += 16) {
+            const pts: number[] = [];
+            for (let lx = w * 0.16; lx <= w * 0.84; lx += 10) {
+              const wave = Math.sin((lx + ly + x + y) / 18) * 3;
+              pts.push(lx, ly + wave);
+            }
+            waves.push(
+              <Line
+                key={`wv-${ly}`}
+                points={pts}
+                stroke="rgba(255,255,255,0.72)"
+                strokeWidth={2 / fit}
+                listening={false}
+              />
+            );
+          }
+          return (
+            <Group
+              key={item.id}
+              id={item.id}
+              name="map-item-pool"
+              ref={(node: Konva.Group | null) => {
+                if (node) nodeRefs.current[item.id] = node;
+                else delete nodeRefs.current[item.id];
+              }}
+              x={x + cx}
+              y={y + cy}
+              offsetX={cx}
+              offsetY={cy}
+              rotation={rot}
+              onMouseDown={(e: Konva.KonvaEventObject<MouseEvent>) => {
+                if (previewMode) return;
+                if (tool !== 'select') return;
+                e.cancelBubble = true;
+                selectItemById(item.id, e.evt.shiftKey);
+              }}
+              draggable={tool === 'select' && !item.locked && !previewMode}
+              onDragEnd={(e: Konva.KonvaEventObject<DragEvent>) => {
+                const n = e.target as Konva.Group;
+                patchItemById(item.id, {
+                  x: n.x() - w / 2,
+                  y: n.y() - h / 2,
+                  rotation: n.rotation()
+                });
+              }}
+            >
+              <Rect
+                name="map-item-bounds"
+                x={0}
+                y={0}
+                width={w}
+                height={h}
+                opacity={0}
+                listening={false}
+              />
+              <Ellipse
+                x={cx}
+                y={cy}
+                radiusX={Math.max(w / 2, 1)}
+                radiusY={Math.max(h / 2, 1)}
+                fill={fill}
+                stroke={stroke}
+                strokeWidth={sw}
+                listening={false}
+              />
+              {waves}
+            </Group>
           );
         }
         if (item.type === 'text') {

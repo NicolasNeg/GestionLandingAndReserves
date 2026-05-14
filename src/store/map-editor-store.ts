@@ -47,6 +47,9 @@ export type MapEditorStore = {
   zoom: number;
   panX: number;
   panY: number;
+  /** Último tamaño del lienzo (stage); para zoom anclado desde botones y rueda. */
+  editorViewportW: number;
+  editorViewportH: number;
   gridVisible: boolean;
   snap: boolean;
   previewMode: boolean;
@@ -97,6 +100,8 @@ export type MapEditorStore = {
   emitDocument: () => void;
   setZoom: (z: number) => void;
   setPan: (x: number, y: number) => void;
+  setEditorViewport: (w: number, h: number) => void;
+  setZoomAnchored: (newZoom: number, anchorStageX: number, anchorStageY: number) => void;
   patchItemById: (id: string, patch: Record<string, unknown>) => void;
 };
 
@@ -115,6 +120,39 @@ function emitDoc(state: MapEditorStore) {
   state.documentListeners.forEach((fn) => fn(d));
 }
 
+const FIT_PAD = 0.94;
+const ZOOM_MIN = 0.25;
+const ZOOM_MAX = 3;
+
+/** Mantiene fijo el punto del documento que estaba bajo (ax, ay) en coords del stage al cambiar zoom. */
+function computeAnchoredZoomPan(
+  state: Pick<MapEditorStore, 'doc' | 'zoom' | 'panX' | 'panY'>,
+  vw: number,
+  vh: number,
+  newZoom: number,
+  ax: number,
+  ay: number
+) {
+  const doc = state.doc;
+  const dw = Math.max(1, Number(doc.width) || 1);
+  const dh = Math.max(1, Number(doc.height) || 1);
+  const oldZoom = state.zoom;
+  const newZ = clamp(Number(newZoom) || 1, ZOOM_MIN, ZOOM_MAX);
+  const fitOld = Math.min(vw / dw, vh / dh) * FIT_PAD * oldZoom;
+  const fitNew = Math.min(vw / dw, vh / dh) * FIT_PAD * newZ;
+  const baseXo = (vw - dw * fitOld) / 2;
+  const baseYo = (vh - dh * fitOld) / 2;
+  const mapX = (ax - baseXo - state.panX) / fitOld;
+  const mapY = (ay - baseYo - state.panY) / fitOld;
+  const baseXn = (vw - dw * fitNew) / 2;
+  const baseYn = (vh - dh * fitNew) / 2;
+  return {
+    zoom: newZ,
+    panX: ax - mapX * fitNew - baseXn,
+    panY: ay - mapY * fitNew - baseYn
+  };
+}
+
 const initialDoc = parseMapDocument('', { view: 'global' });
 const initialSnap = serializeMapDocument(initialDoc);
 
@@ -128,6 +166,8 @@ export const useMapEditorStore = create<MapEditorStore>((set, get) => ({
   zoom: 1,
   panX: 0,
   panY: 0,
+  editorViewportW: 900,
+  editorViewportH: 520,
   gridVisible: true,
   snap: true,
   previewMode: false,
@@ -172,7 +212,10 @@ export const useMapEditorStore = create<MapEditorStore>((set, get) => ({
       redoStack: [],
       tool: 'select',
       adding: false,
-      previewMode: false
+      previewMode: false,
+      zoom: 1,
+      panX: 0,
+      panY: 0
     });
     emitDoc(get());
     emitSel(get());
@@ -527,11 +570,24 @@ export const useMapEditorStore = create<MapEditorStore>((set, get) => ({
   },
 
   setZoom(z) {
-    set({ zoom: clamp(Number(z) || 1, 0.25, 3) });
+    set({ zoom: clamp(Number(z) || 1, ZOOM_MIN, ZOOM_MAX) });
   },
 
   setPan(x, y) {
     set({ panX: x, panY: y });
+  },
+
+  setEditorViewport(w, h) {
+    const rw = Math.max(1, Math.round(Number(w) || 1));
+    const rh = Math.max(1, Math.round(Number(h) || 1));
+    set({ editorViewportW: rw, editorViewportH: rh });
+  },
+
+  setZoomAnchored(newZoom, ax, ay) {
+    const s = get();
+    const next = computeAnchoredZoomPan(s, s.editorViewportW, s.editorViewportH, newZoom, ax, ay);
+    if (Math.abs(next.zoom - s.zoom) < 1e-9) return;
+    set({ zoom: next.zoom, panX: next.panX, panY: next.panY });
   }
 }));
 

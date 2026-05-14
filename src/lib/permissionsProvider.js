@@ -1,6 +1,11 @@
 /**
  * Permisos desde Postgres (public.users, role_permissions, RLS).
  */
+import {
+  buildDevSuperAccess,
+  getSyntheticDevAuthUser,
+  isDevBootstrapActive
+} from './devBootstrap.js';
 import { getUserAccessSupabase } from './permissionsSupabase.js';
 
 function guestAccess() {
@@ -26,6 +31,10 @@ export function resolvePermissionsProvider() {
 }
 
 export async function getUserAccessResolved(user) {
+  if (isDevBootstrapActive()) {
+    const u = user || getSyntheticDevAuthUser();
+    return buildDevSuperAccess(u);
+  }
   if (!user) return guestAccess();
   return getUserAccessSupabase(user);
 }

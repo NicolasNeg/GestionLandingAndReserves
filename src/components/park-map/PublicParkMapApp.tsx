@@ -297,14 +297,23 @@ export const PublicParkMapApp = forwardRef<PublicParkMapAppHandle, Props>(functi
         height={doc.height}
         fillLinearGradientStartPoint={{ x: 0, y: 0 }}
         fillLinearGradientEndPoint={{ x: doc.width, y: doc.height }}
-        fillLinearGradientColorStops={[0, '#ecfeff', 0.45, '#cffafe', 1, '#a5f3fc']}
+        fillLinearGradientColorStops={[
+          0,
+          '#0c4a6e',
+          0.35,
+          '#38bdf8',
+          0.65,
+          '#7dd3fc',
+          1,
+          '#bae6fd'
+        ]}
       />
     ) : null;
 
   return (
     <div
       ref={wrapRef}
-      className="public-konva-map-viewport relative h-full w-full cursor-grab overflow-hidden bg-gradient-to-b from-sky-50 via-white to-teal-50/90 active:cursor-grabbing"
+      className="public-konva-map-viewport relative h-full w-full cursor-grab overflow-hidden rounded-lg bg-[#0f172a] font-sans ring-1 ring-cyan-500/15 active:cursor-grabbing"
     >
       <Stage
         ref={stageRef}
@@ -356,10 +365,10 @@ export const PublicParkMapApp = forwardRef<PublicParkMapAppHandle, Props>(functi
             {itemsRender.map(({ item, index }) => {
               const it = item as Record<string, any>;
               const dimmed = filterActive && !itemMatchesPublicMapFilter(it, publicMapFilter);
-              const opacity = dimmed ? 0.38 : Math.min(1, Math.max(0.06, Number(it.opacity ?? 1)));
+              const opacity = dimmed ? 0.28 : Math.min(1, Math.max(0.06, Number(it.opacity ?? 1)));
               const sel = selectedId && it.id === selectedId;
-              const stroke = sel ? '#0ea5e9' : String(it.stroke || '#0f766e');
-              const strokeW = sel ? 3.5 : 2;
+              const stroke = sel ? '#38bdf8' : String(it.stroke || '#0f766e');
+              const strokeW = sel ? 3.2 : 2;
 
               const common = {
                 opacity,
@@ -418,17 +427,31 @@ export const PublicParkMapApp = forwardRef<PublicParkMapAppHandle, Props>(functi
                 );
               }
               if (it.type === 'marker') {
+                const cx = Number(it.x) + Number(it.width) / 2;
+                const cy = Number(it.y) + Number(it.height) / 2;
+                const rPin = Math.max(8, 11 / worldScale);
+                const stem = 18 / worldScale;
                 return (
-                  <Circle
-                    key={it.id}
-                    {...common}
-                    x={Number(it.x) + Number(it.width) / 2}
-                    y={Number(it.y) + Number(it.height) / 2}
-                    radius={Math.max(6, Number(it.width) / 2)}
-                    fill={String(it.fill || '#f97316')}
-                    stroke={stroke}
-                    strokeWidth={strokeW / worldScale}
-                  />
+                  <Group key={it.id} opacity={opacity}>
+                    <Line
+                      points={[cx, cy + stem * 0.35, cx, cy - stem]}
+                      stroke="#9a3412"
+                      strokeWidth={3 / worldScale}
+                      lineCap="round"
+                      listening={false}
+                    />
+                    <Circle
+                      x={cx}
+                      y={cy - stem}
+                      radius={rPin}
+                      fill="#f97316"
+                      stroke="rgba(255,255,255,0.92)"
+                      strokeWidth={2.2 / worldScale}
+                      shadowBlur={6 / worldScale}
+                      shadowColor="rgba(0,0,0,0.25)"
+                      {...common}
+                    />
+                  </Group>
                 );
               }
               return (
@@ -447,7 +470,9 @@ export const PublicParkMapApp = forwardRef<PublicParkMapAppHandle, Props>(functi
                     }
                     stroke={stroke}
                     strokeWidth={strokeW / worldScale}
-                    cornerRadius={it.metadata?.cornerRadius ? Number(it.metadata.cornerRadius) : 0}
+                    cornerRadius={
+                      it.metadata?.cornerRadius != null ? Number(it.metadata.cornerRadius) : 8
+                    }
                   />
                   <Text
                     x={Number(it.x) + 4}

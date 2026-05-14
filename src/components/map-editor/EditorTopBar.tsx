@@ -4,7 +4,7 @@ import { useMapEditorStore } from '../../store/map-editor-store';
 const MAP_VIEWS = [
   { id: 'parque', label: 'Global' },
   { id: 'mesas', label: 'Mesas' },
-  { id: 'estacionamiento', label: 'Estacionamiento' },
+  { id: 'estacionamiento', label: 'Parking' },
   { id: 'albercas', label: 'Albercas' }
 ] as const;
 
@@ -18,6 +18,24 @@ function dispatchMapViewChange(value: string) {
   if (!sel) return;
   sel.value = value;
   sel.dispatchEvent(new Event('change', { bubbles: true }));
+}
+
+/** Marca suave alineada con la landing (teal + sol). */
+function ParkMark({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 32 32" fill="none" aria-hidden>
+      <rect width="32" height="32" rx="9" fill="#ecfdf5" stroke="#99f6e4" strokeWidth="1" />
+      <circle cx="22" cy="10" r="4" fill="#fcd34d" opacity="0.95" />
+      <path
+        d="M6 22c3.5-2.5 7-2.5 10 0s6.5 2.5 10 0"
+        stroke="#0f766e"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        opacity="0.85"
+      />
+      <path d="M6 25h20" stroke="#d6d3d1" strokeWidth="1" strokeLinecap="round" />
+    </svg>
+  );
 }
 
 export function EditorTopBar(props: {
@@ -53,71 +71,28 @@ export function EditorTopBar(props: {
     document.getElementById('mapa-focus-toggle')?.click();
   };
 
+  const btn =
+    'inline-flex h-8 items-center justify-center rounded-lg border px-3 text-[12px] font-medium tracking-tight transition-colors';
+  const btnGhost =
+    'border-[color:var(--af-line)] bg-[color:var(--af-panel)] text-[color:var(--af-text)] hover:border-[color:var(--af-line-strong)] hover:bg-stone-50';
+  const btnQuiet = 'border-transparent bg-transparent text-[color:var(--af-muted)] hover:text-[color:var(--af-text)]';
+
   return (
-    <header className="flex flex-col gap-3 border-b border-cyan-100/80 bg-white/95 px-4 py-3 shadow-sm backdrop-blur">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+    <header className="shrink-0 border-b border-[color:var(--af-line)] bg-[color:var(--af-panel)] px-4 py-3 shadow-sm shadow-stone-900/5">
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
         <div className="flex min-w-0 items-center gap-3">
-          <div className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-teal-500 to-sky-600 text-lg text-white shadow-md">
-            🗺
-          </div>
-          <div className="min-w-0">
-            <h2 className="truncate text-lg font-black tracking-tight text-slate-900">Editor del mapa</h2>
-            <p className="text-[11px] font-bold uppercase tracking-wide text-teal-700">{props.saveStatus}</p>
+          <ParkMark className="h-9 w-9 shrink-0" />
+          <div className="min-w-0 leading-tight">
+            <p className="text-[10px] font-medium tracking-wide text-[color:var(--af-muted)]">Mapa del parque</p>
+            <h1 className="truncate text-[15px] font-semibold tracking-tight text-[color:var(--af-text)]">
+              Editor del plano
+            </h1>
+            <p className="truncate text-[11px] text-[color:var(--af-muted)]">{props.saveStatus}</p>
           </div>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-700 shadow-sm hover:bg-slate-50"
-            onClick={() => undo()}
-          >
-            Deshacer
-          </button>
-          <button
-            type="button"
-            className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-700 shadow-sm hover:bg-slate-50"
-            onClick={() => redo()}
-          >
-            Rehacer
-          </button>
-          <button
-            type="button"
-            className={`rounded-xl border px-3 py-2 text-xs font-black shadow-sm ${
-              previewMode
-                ? 'border-amber-300 bg-amber-50 text-amber-900'
-                : 'border-sky-200 bg-sky-50 text-sky-900 hover:bg-sky-100'
-            }`}
-            onClick={togglePreviewCanvas}
-          >
-            {previewMode ? 'Salir preview' : 'Vista previa lienzo'}
-          </button>
-          <button
-            type="button"
-            className="rounded-xl border border-sky-200 bg-white px-3 py-2 text-xs font-black text-sky-900 hover:bg-sky-50"
-            onClick={props.onPreviewPublic}
-          >
-            Vista previa web
-          </button>
-          <button
-            type="button"
-            className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-700 hover:bg-slate-50"
-            onClick={toggleFocusMode}
-            title="Igual que Modo enfoque del panel"
-          >
-            Modo enfoque
-          </button>
-          <button
-            type="button"
-            className="rounded-xl bg-gradient-to-r from-teal-600 to-cyan-600 px-4 py-2 text-xs font-black text-white shadow-md hover:from-teal-500 hover:to-cyan-500"
-            onClick={props.onSaveSite}
-          >
-            Guardar sitio
-          </button>
-        </div>
-      </div>
-      <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+
         <nav
-          className="inline-flex flex-wrap items-center gap-1 rounded-xl border border-slate-100 bg-slate-50/80 p-1"
+          className="flex flex-wrap items-center gap-1 rounded-lg border border-[color:var(--af-line)] bg-[color:var(--af-panel)] p-1"
           aria-label="Vista del mapa"
         >
           {MAP_VIEWS.map((v) => (
@@ -129,45 +104,60 @@ export function EditorTopBar(props: {
                 dispatchMapViewChange(v.id);
                 setMapView(v.id);
               }}
-              className={`rounded-lg px-3 py-1.5 text-xs font-black transition ${
-                mapView === v.id ? 'bg-white text-teal-800 shadow-sm' : 'text-slate-500 hover:text-slate-800'
+              className={`rounded-md px-2.5 py-1 text-[12px] font-medium ${
+                mapView === v.id
+                  ? 'bg-[color:var(--af-accent-soft)] text-[color:var(--af-accent)] ring-1 ring-[color:var(--af-line-strong)]'
+                  : 'text-[color:var(--af-muted)] hover:bg-stone-100 hover:text-[color:var(--af-text)]'
               }`}
             >
               {v.label}
             </button>
           ))}
         </nav>
-        <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 pt-2 sm:border-t-0 sm:pt-0">
-          <span className="hidden text-[10px] font-black uppercase text-slate-400 sm:inline">Herramienta</span>
-          <button
-            type="button"
-            data-map-mode="select"
-            onClick={() => setTool('select')}
-            className={`rounded-lg px-3 py-1.5 text-xs font-black ${
-              tool === 'select' ? 'bg-teal-600 text-white shadow' : 'bg-white text-slate-700 ring-1 ring-slate-200'
-            }`}
-          >
+
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          <div className="mr-1 hidden h-6 w-px bg-[color:var(--af-line)] sm:block" aria-hidden />
+          <button type="button" data-map-mode="select" className={`${btn} ${tool === 'select' ? btnGhost + ' ring-1 ring-[color:var(--af-accent)]' : btnGhost}`} onClick={() => setTool('select')}>
             Seleccionar
           </button>
-          <button
-            type="button"
-            data-map-mode="pan"
-            onClick={() => setTool('pan')}
-            className={`rounded-lg px-3 py-1.5 text-xs font-black ${
-              tool === 'pan' ? 'bg-teal-600 text-white shadow' : 'bg-white text-slate-700 ring-1 ring-slate-200'
-            }`}
-          >
+          <button type="button" data-map-mode="pan" className={`${btn} ${tool === 'pan' ? btnGhost + ' ring-1 ring-[color:var(--af-accent)]' : btnGhost}`} onClick={() => setTool('pan')}>
             Mano
           </button>
-          <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-black text-slate-700">
+          <label className={`${btn} ${btnGhost} cursor-pointer gap-2`}>
             <input
               type="checkbox"
-              className="rounded border-slate-300"
+              className="size-3.5 rounded border-[color:var(--af-line)] bg-white text-teal-600"
               checked={gridVisible}
               onChange={(e) => setGridVisible(e.target.checked)}
             />
-            Grid
+            <span>Cuadrícula</span>
           </label>
+          <button type="button" className={`${btn} ${btnGhost}`} onClick={() => undo()}>
+            Deshacer
+          </button>
+          <button type="button" className={`${btn} ${btnGhost}`} onClick={() => redo()}>
+            Rehacer
+          </button>
+          <button
+            type="button"
+            className={`${btn} ${previewMode ? btnGhost + ' ring-1 ring-amber-400/50' : btnGhost}`}
+            onClick={togglePreviewCanvas}
+          >
+            {previewMode ? 'Salir preview' : 'Preview lienzo'}
+          </button>
+          <button type="button" className={`${btn} ${btnGhost}`} onClick={props.onPreviewPublic}>
+            Preview web
+          </button>
+          <button type="button" className={`${btn} ${btnQuiet}`} onClick={toggleFocusMode} title="Modo enfoque del panel">
+            Enfoque
+          </button>
+          <button
+            type="button"
+            className="inline-flex h-8 items-center rounded-lg bg-teal-600 px-4 text-[12px] font-semibold text-white shadow-sm transition hover:bg-teal-700"
+            onClick={props.onSaveSite}
+          >
+            Guardar sitio
+          </button>
         </div>
       </div>
     </header>
