@@ -6,9 +6,11 @@ import { TABLE_STATES, getMapKind } from './mapTypes.js';
 import {
   drawNavigationRoute,
   drawSemiRealParkOverlay,
+  drawSemiRealTerrainTexture,
   isSemiRealRender,
   publicMapItemFilter
 } from './visual/mapPublicVisual.js';
+import { ISO_GROUP_ROTATION_DEG, ISO_GROUP_SCALE_Y } from './isoProjection.js';
 
 const bgImageCache = new Map();
 
@@ -163,6 +165,15 @@ function drawParkDecor(ctx, doc, options, view) {
   ctx.restore();
 }
 
+function applyIsoCanvasTransform(ctx, doc) {
+  const w = doc.width;
+  const h = doc.height;
+  ctx.translate(w / 2, h / 2);
+  ctx.rotate((ISO_GROUP_ROTATION_DEG * Math.PI) / 180);
+  ctx.scale(1, ISO_GROUP_SCALE_Y);
+  ctx.translate(-w / 2, -h / 2);
+}
+
 function drawBackground(ctx, doc, options = {}) {
   const bg = doc.background || {};
   const view = options.view || doc.view;
@@ -217,7 +228,10 @@ function drawBackground(ctx, doc, options = {}) {
   } else {
     drawParkGradient(ctx, doc, bg, view);
     drawParkDecor(ctx, doc, options, view);
-    if (isSemiRealRender(doc, options)) drawSemiRealParkOverlay(ctx, doc, options, view);
+    if (isSemiRealRender(doc, options)) {
+      drawSemiRealTerrainTexture(ctx, doc, view);
+      drawSemiRealParkOverlay(ctx, doc, options, view);
+    }
   }
 
   drawGrid(ctx, doc, { ...options, view });
@@ -346,14 +360,45 @@ function drawRectLike(ctx, item, options, fill, stroke) {
   const h = Number(item.height || 0);
   const dashed = getMapKind(item.kind).dashed || item.kind === 'limitacion' || item.kind === 'blockedZone';
   const sr = Boolean(options.semiRealActive) && !options.editor;
+  const r = item.kind === 'area' ? 16 : 10;
+
+  if (sr && !dashed) {
+    ctx.save();
+    ctx.shadowColor = 'transparent';
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.12)';
+    const drop = Math.min(h, w) * 0.05;
+    const skew = Math.min(w, h) * 0.04;
+    ctx.beginPath();
+    ctx.moveTo(x + skew, y + h);
+    ctx.lineTo(x + w + skew * 0.5, y + h);
+    ctx.lineTo(x + w + skew * 0.35, y + h + drop);
+    ctx.lineTo(x + skew * 0.2, y + h + drop);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
+
   ctx.save();
   ctx.shadowColor = options.editor ? 'transparent' : sr ? 'rgba(15, 23, 42, 0.24)' : 'rgba(15, 23, 42, 0.16)';
   ctx.shadowBlur = options.editor ? 0 : sr ? 22 : 16;
   ctx.shadowOffsetY = options.editor ? 0 : sr ? 11 : 7;
   ctx.fillStyle = fill;
-  roundRect(ctx, x, y, w, h, item.kind === 'area' ? 16 : 10);
+  roundRect(ctx, x, y, w, h, r);
   ctx.fill();
+  if (sr && !dashed) {
+    ctx.save();
+    roundRect(ctx, x, y, w, h, r);
+    ctx.clip();
+    const lg = ctx.createLinearGradient(x, y, x + w, y + h);
+    lg.addColorStop(0, 'rgba(255,255,255,0.26)');
+    lg.addColorStop(0.42, 'rgba(255,255,255,0.02)');
+    lg.addColorStop(1, 'rgba(15,23,42,0.14)');
+    ctx.fillStyle = lg;
+    ctx.fillRect(x, y, w, h);
+    ctx.restore();
+  }
   if (dashed) {
+    roundRect(ctx, x, y, w, h, r);
     ctx.clip();
     ctx.globalAlpha = 0.28;
     ctx.strokeStyle = stroke;
@@ -369,6 +414,7 @@ function drawRectLike(ctx, item, options, fill, stroke) {
   ctx.strokeStyle = stroke;
   ctx.lineWidth = 2.2;
   if (dashed) ctx.setLineDash([9, 6]);
+  roundRect(ctx, x, y, w, h, r);
   ctx.stroke();
   ctx.setLineDash([]);
 }
@@ -736,10 +782,15 @@ export function drawMapDocument(ctx, doc, options = {}) {
     semiRealActive: isSemiRealRender(doc, { ...options, view: viewName })
   };
   drawBackground(ctx, doc, renderOptions);
+  const iso = Boolean(doc?.publicMapUi?.isometric);
   const selectedIds = new Set(options.selectedIds || []);
   const sorted = getSortedMapItems(doc).filter(({ item }) => isMapItemVisibleInView(item, renderOptions.view));
   const filterFn = publicMapItemFilter(renderOptions);
   const sortedDraw = filterFn ? sorted.filter(({ item }) => filterFn(item)) : sorted;
+  if (iso) {
+    ctx.save();
+    applyIsoCanvasTransform(ctx, doc);
+  }
   sortedDraw.forEach(({ item }) => drawItem(ctx, item, renderOptions));
   if (!doc.items.length) drawEmptyState(ctx, doc);
   const hovered = options.hoveredId ? doc.items.find((item) => item.id === options.hoveredId) : null;
@@ -753,6 +804,7 @@ export function drawMapDocument(ctx, doc, options = {}) {
   if (Array.isArray(options.navigationPath) && options.navigationPath.length >= 2) {
     drawNavigationRoute(ctx, options.navigationPath, Number(options.routeDashPhase) || 0);
   }
+  if (iso) ctx.restore();
   if (options.marqueeRect) {
     const r = options.marqueeRect;
     ctx.save();

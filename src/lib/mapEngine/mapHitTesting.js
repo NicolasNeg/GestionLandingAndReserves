@@ -1,4 +1,5 @@
 import { parseMapDocument } from './mapMigrations.js';
+import { compareIsoDrawDepth, inverseIsoCanvasPoint } from './isoProjection.js';
 
 export function rotatePoint(x, y, cx, cy, degrees) {
   const rad = (Number(degrees) || 0) * Math.PI / 180;
@@ -77,10 +78,15 @@ function layerVisible(doc, layerId) {
 }
 
 export function getSortedMapItems(doc) {
+  const iso = Boolean(doc?.publicMapUi?.isometric);
   return [...(doc.items || [])]
     .map((item, index) => ({ item, index }))
     .filter(({ item }) => item.visible !== false && layerVisible(doc, item.layerId))
     .sort((a, b) => {
+      if (iso) {
+        const d = compareIsoDrawDepth(a.item, b.item);
+        if (d !== 0) return d;
+      }
       const az = Number(a.item.zIndex ?? a.index);
       const bz = Number(b.item.zIndex ?? b.index);
       return az === bz ? a.index - b.index : az - bz;
@@ -90,10 +96,19 @@ export function getSortedMapItems(doc) {
 export function hitTestMapDocument(doc, x, y, options = {}) {
   const sorted = getSortedMapItems(doc);
   const itemFilter = options.itemFilter;
+  const iso = Boolean(doc?.publicMapUi?.isometric);
+  const pointerItemSpace = options.pointerItemSpace === true;
+  let lx = x;
+  let ly = y;
+  if (iso && !pointerItemSpace) {
+    const inv = inverseIsoCanvasPoint(doc, x, y);
+    lx = inv.x;
+    ly = inv.y;
+  }
   for (let i = sorted.length - 1; i >= 0; i--) {
     const row = sorted[i];
     if (itemFilter && !itemFilter(row.item)) continue;
-    if (pointInMapItem(row.item, x, y)) return row;
+    if (pointInMapItem(row.item, lx, ly)) return row;
   }
   return { item: null, index: -1 };
 }

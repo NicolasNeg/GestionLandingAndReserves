@@ -77,6 +77,7 @@ export type MapEditorStore = {
   setPreviewMode: (on: boolean) => void;
   updateDocumentBackground: (patch: Record<string, unknown>) => void;
   setRenderOptions: (patch: Record<string, unknown>) => void;
+  setPublicMapUi: (patch: Record<string, unknown>) => void;
   applyMapPreset: (_presetId: string) => void;
   moveSelectedLayer: (dir: number) => void;
   bringToFront: () => void;
@@ -410,6 +411,15 @@ export const useMapEditorStore = create<MapEditorStore>((set, get) => ({
 
   setRenderOptions(patch) {
     set((s) => ({ runtimeRenderOptions: { ...s.runtimeRenderOptions, ...patch } }));
+  },
+
+  setPublicMapUi(patch) {
+    const { doc, saveHistoryBefore, commit } = get();
+    saveHistoryBefore();
+    const next = cloneDoc(doc);
+    next.publicMapUi = { ...(next.publicMapUi || {}), ...patch };
+    set({ doc: next });
+    commit();
   },
 
   applyMapPreset() {},

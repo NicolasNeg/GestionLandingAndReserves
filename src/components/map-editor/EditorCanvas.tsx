@@ -3,6 +3,8 @@ import { Group, Image, Layer, Line, Rect, Stage } from 'react-konva';
 import Konva from 'konva';
 import { docUsesSemiRealProfile } from '../../lib/mapEngine/visual/mapPublicVisual.js';
 import { normalizeMapViewName } from '../../lib/mapEngine/mapViewVisibility.js';
+import { getSortedMapItems } from '../../lib/mapEngine/mapHitTesting.js';
+import { ISO_GROUP_ROTATION_DEG, ISO_GROUP_SCALE_Y } from '../../lib/mapEngine/isoProjection.js';
 import { useMapEditorStore } from '../../store/map-editor-store';
 import { CanvasObjectRenderer } from './CanvasObjectRenderer';
 import { SelectionHandles } from './SelectionHandles';
@@ -155,8 +157,8 @@ export function MapEditorCanvas() {
   }, [size.w, size.h]);
 
   const itemsSorted = useMemo(() => {
-    return [...(doc.items || [])].sort((a: any, b: any) => (Number(a.zIndex) || 0) - (Number(b.zIndex) || 0));
-  }, [doc.items]);
+    return getSortedMapItems(doc).map(({ item }) => item);
+  }, [doc, doc.items, doc.publicMapUi?.isometric]);
 
   const primarySelected = selectedIds[0];
   const primaryNode = primarySelected ? nodeRefs.current[primarySelected] : null;
@@ -344,6 +346,47 @@ export function MapEditorCanvas() {
     />
   );
 
+  const isometric = Boolean(doc.publicMapUi?.isometric);
+  const isoSnapEnabled = isometric && doc.grid?.snap !== false;
+  const gridSnapStep = Number(doc.grid?.size) || 20;
+
+  const mapWorldContent = (
+    <>
+      {gridLines}
+      <CanvasObjectRenderer
+        itemsSorted={itemsSorted}
+        selectedIds={selectedIds}
+        fit={fit}
+        tool={tool}
+        previewMode={previewMode}
+        nodeRefs={nodeRefs}
+        selectItemById={selectItemById}
+        patchItemById={patchItemById}
+        isoSnapEnabled={isoSnapEnabled}
+        gridSnapStep={gridSnapStep}
+      />
+      {docFrame}
+      <SelectionHandles ref={trRef} previewMode={previewMode} onTransformEnd={handleTransformEnd} />
+    </>
+  );
+
+  const mapWorldLayer =
+    isometric && doc.width > 0 && doc.height > 0 ? (
+      <Group
+        x={doc.width / 2}
+        y={doc.height / 2}
+        offsetX={doc.width / 2}
+        offsetY={doc.height / 2}
+        rotation={ISO_GROUP_ROTATION_DEG}
+        scaleX={1}
+        scaleY={ISO_GROUP_SCALE_Y}
+      >
+        {mapWorldContent}
+      </Group>
+    ) : (
+      mapWorldContent
+    );
+
   const bgImageLayer =
     bgImg && bgLayout && bgUrl ? (
       <Group
@@ -443,19 +486,7 @@ export function MapEditorCanvas() {
             {baseBackground}
             {bgImageLayer}
             {semiRealOverlay}
-            {gridLines}
-            <CanvasObjectRenderer
-              itemsSorted={itemsSorted}
-              selectedIds={selectedIds}
-              fit={fit}
-              tool={tool}
-              previewMode={previewMode}
-              nodeRefs={nodeRefs}
-              selectItemById={selectItemById}
-              patchItemById={patchItemById}
-            />
-            {docFrame}
-            <SelectionHandles ref={trRef} previewMode={previewMode} onTransformEnd={handleTransformEnd} />
+            {mapWorldLayer}
           </Group>
         </Layer>
       </Stage>

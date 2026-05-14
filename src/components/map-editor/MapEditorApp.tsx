@@ -66,6 +66,7 @@ export function MapEditorApp(props: MapEditorAppProps) {
       setPreviewMode: (on) => useMapEditorStore.getState().setPreviewMode(on),
       getPreviewMode: () => useMapEditorStore.getState().previewMode,
       updateDocumentBackground: (patch) => useMapEditorStore.getState().updateDocumentBackground(patch),
+      setPublicMapUi: (patch) => useMapEditorStore.getState().setPublicMapUi(patch),
       setRenderOptions: (patch) => useMapEditorStore.getState().setRenderOptions(patch),
       applyMapPreset: (id) => useMapEditorStore.getState().applyMapPreset(id),
       moveSelectedLayer: (dir) => useMapEditorStore.getState().moveSelectedLayer(dir),

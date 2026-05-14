@@ -25,6 +25,7 @@ export type MapEditorBridgeApi = {
   setPreviewMode(on: boolean): void;
   getPreviewMode(): boolean;
   updateDocumentBackground(patch: Record<string, unknown>): void;
+  setPublicMapUi(patch: Record<string, unknown>): void;
   setRenderOptions(patch: Record<string, unknown>): void;
   applyMapPreset(presetId: string): void;
   moveSelectedLayer(dir: number): void;

@@ -40,6 +40,7 @@ export function EditorInspector() {
   const selectedIds = useMapEditorStore((s) => s.selectedIds);
   const updateSelected = useMapEditorStore((s) => s.updateSelected);
   const selectItemById = useMapEditorStore((s) => s.selectItemById);
+  const setPublicMapUi = useMapEditorStore((s) => s.setPublicMapUi);
   const item = doc.items.find((it: any) => it.id === selectedIds[0]);
 
   const itemsSorted = [...(doc.items || [])].sort(
@@ -47,6 +48,7 @@ export function EditorInspector() {
   );
 
   const multi = selectedIds.length > 1;
+  const isoOn = Boolean(doc.publicMapUi?.isometric);
 
   const supportsLayoutFields =
     item && item.type !== 'polygon' && item.type !== 'line';
@@ -165,7 +167,25 @@ export function EditorInspector() {
             </div>
           )
         ) : !item ? (
-          <p className="text-[11px] text-[color:var(--af-muted)]">Selecciona un objeto.</p>
+          <div className="space-y-3">
+            <div className="space-y-2 rounded-md border border-[color:var(--af-line)] bg-[color:var(--af-canvas-void)] p-2">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-teal-800/80">Mapa público</p>
+              <label className="flex cursor-pointer items-start gap-2 text-[11px] font-medium text-[color:var(--af-text)]">
+                <input
+                  type="checkbox"
+                  className="mt-0.5 h-3.5 w-3.5 shrink-0 rounded border-[color:var(--af-line-strong)]"
+                  checked={isoOn}
+                  onChange={(e) => setPublicMapUi({ isometric: e.target.checked })}
+                />
+                <span>Vista isométrica (2.5D): inclina el lienzo y ordena piezas por profundidad.</span>
+              </label>
+              <p className="text-[10px] leading-snug text-[color:var(--af-muted)]">
+                Con cuadrícula y ajuste activos en la barra, al soltar una pieza se alinea a una rejilla oblicua (útil
+                para PNG en perspectiva).
+              </p>
+            </div>
+            <p className="text-[11px] text-[color:var(--af-muted)]">Selecciona un objeto en el lienzo.</p>
+          </div>
         ) : (
           <div className="space-y-2">
             {supportsLayoutFields ? (

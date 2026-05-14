@@ -14,6 +14,7 @@ import { itemMatchesPublicMapFilter } from '../../lib/mapEngine/mapPublicFilters
 import { parseMapDocument } from '../../lib/mapEngine/mapMigrations.js';
 import { getMapKind } from '../../lib/mapEngine/mapTypes.js';
 import { isMapItemVisibleInView } from '../../lib/mapEngine/mapViewVisibility.js';
+import { ISO_GROUP_ROTATION_DEG, ISO_GROUP_SCALE_Y } from '../../lib/mapEngine/isoProjection.js';
 
 export type PublicParkMapMountOptions = {
   view?: string;
@@ -91,6 +92,7 @@ export const PublicParkMapApp = forwardRef<PublicParkMapAppHandle, Props>(functi
 ) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const groupRef = useRef<Konva.Group>(null);
+  const mapContentRef = useRef<Konva.Group>(null);
   const stageRef = useRef<Konva.Stage>(null);
   const hoverIdRef = useRef<string>('');
 
@@ -145,20 +147,19 @@ export const PublicParkMapApp = forwardRef<PublicParkMapAppHandle, Props>(functi
     return { gx, gy };
   }, [size, doc.width, doc.height, worldScale, pan]);
 
-  const clientToMap = useCallback(
-    (clientX: number, clientY: number) => {
-      const stage = stageRef.current;
-      const group = groupRef.current;
-      if (!stage || !group) return null;
-      const rect = stage.container().getBoundingClientRect();
-      const px = clientX - rect.left;
-      const py = clientY - rect.top;
-      const t = group.getAbsoluteTransform().copy();
-      t.invert();
-      return t.point({ x: px, y: py });
-    },
-    []
-  );
+  const clientToMap = useCallback((clientX: number, clientY: number) => {
+    const stage = stageRef.current;
+    const content = mapContentRef.current;
+    const group = groupRef.current;
+    const node = content || group;
+    if (!stage || !node) return null;
+    const rect = stage.container().getBoundingClientRect();
+    const px = clientX - rect.left;
+    const py = clientY - rect.top;
+    const t = node.getAbsoluteTransform().copy();
+    t.invert();
+    return t.point({ x: px, y: py });
+  }, []);
 
   const applyFit = useCallback(() => {
     setZoomMul(1);
@@ -189,7 +190,60 @@ export const PublicParkMapApp = forwardRef<PublicParkMapAppHandle, Props>(functi
     [baseFit, zoomMul, pan, size, doc.width, doc.height]
   );
 
-  const dragRef = useRef<{ sx: number; sy: number; px: number; py: number } | null>(null);
+  const zoomAtClientRef = useRef(zoomAtClient);
+  zoomAtClientRef.current = zoomAtClient;
+
+  const zoomMulRef = useRef(zoomMul);
+  useEffect(() => {
+    zoomMulRef.current = zoomMul;
+  }, [zoomMul]);
+
+  useEffect(() => {
+    const stage = stageRef.current;
+    if (!stage) return;
+    const el = stage.container();
+    el.style.touchAction = 'none';
+    const pointers = new Map<number, PointerEvent>();
+    let pinch0: { dist: number; zoomMul: number } | null = null;
+
+    const dist2 = (a: PointerEvent, b: PointerEvent) =>
+      Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+
+    const onDown = (e: PointerEvent) => {
+      pointers.set(e.pointerId, e);
+      if (pointers.size === 2) {
+        const [a, b] = [...pointers.values()];
+        pinch0 = { dist: dist2(a, b), zoomMul: zoomMulRef.current };
+      }
+    };
+    const onMove = (e: PointerEvent) => {
+      if (!pointers.has(e.pointerId)) return;
+      pointers.set(e.pointerId, e);
+      if (pointers.size !== 2 || !pinch0) return;
+      const [a, b] = [...pointers.values()];
+      const d = dist2(a, b);
+      const ratio = d / Math.max(8, pinch0.dist);
+      const nextZm = Math.min(2.4, Math.max(0.35, pinch0.zoomMul * ratio));
+      const cx = (a.clientX + b.clientX) / 2;
+      const cy = (a.clientY + b.clientY) / 2;
+      zoomAtClientRef.current(cx, cy, nextZm);
+      pinch0 = { dist: d, zoomMul: nextZm };
+    };
+    const onUp = (e: PointerEvent) => {
+      pointers.delete(e.pointerId);
+      if (pointers.size < 2) pinch0 = null;
+    };
+    el.addEventListener('pointerdown', onDown);
+    el.addEventListener('pointermove', onMove);
+    el.addEventListener('pointerup', onUp);
+    el.addEventListener('pointercancel', onUp);
+    return () => {
+      el.removeEventListener('pointerdown', onDown);
+      el.removeEventListener('pointermove', onMove);
+      el.removeEventListener('pointerup', onUp);
+      el.removeEventListener('pointercancel', onUp);
+    };
+  }, [size.w, size.h, baseFit, doc.width, doc.height]);
 
   useEffect(() => {
     const end = () => {
@@ -216,7 +270,7 @@ export const PublicParkMapApp = forwardRef<PublicParkMapAppHandle, Props>(functi
     }
     const p = clientToMap(e.evt.clientX, e.evt.clientY);
     if (!p) return;
-    const { item, index } = hitTestMapDocument(doc, p.x, p.y);
+    const { item, index } = hitTestMapDocument(doc, p.x, p.y, { pointerItemSpace: true });
     const nextId = item?.id || '';
     if (nextId !== hoverIdRef.current) {
       hoverIdRef.current = nextId;
@@ -245,7 +299,9 @@ export const PublicParkMapApp = forwardRef<PublicParkMapAppHandle, Props>(functi
   const itemsRender = useMemo(() => {
     const sorted = getSortedMapItems(doc).filter(({ item }) => isMapItemVisibleInView(item, view));
     return sorted.map(({ item, index }) => ({ item, index }));
-  }, [doc, view]);
+  }, [doc, view, doc.publicMapUi?.isometric]);
+
+  const isometric = Boolean(doc.publicMapUi?.isometric);
 
   const filterActive = publicMapFilter && publicMapFilter !== 'all';
 
@@ -289,6 +345,11 @@ export const PublicParkMapApp = forwardRef<PublicParkMapAppHandle, Props>(functi
     [doc, applyFit, zoomAtClient, zoomMul]
   );
 
+  const renderSemiReal = useMemo(
+    () => String(doc.renderProfile || '').toLowerCase() === 'semireal',
+    [doc.renderProfile]
+  );
+
   const parkBg =
     String(doc.background?.type || '') === 'park' && !bgImg ? (
       <Rect
@@ -297,23 +358,18 @@ export const PublicParkMapApp = forwardRef<PublicParkMapAppHandle, Props>(functi
         height={doc.height}
         fillLinearGradientStartPoint={{ x: 0, y: 0 }}
         fillLinearGradientEndPoint={{ x: doc.width, y: doc.height }}
-        fillLinearGradientColorStops={[
-          0,
-          '#0c4a6e',
-          0.35,
-          '#38bdf8',
-          0.65,
-          '#7dd3fc',
-          1,
-          '#bae6fd'
-        ]}
+        fillLinearGradientColorStops={
+          renderSemiReal
+            ? [0, '#ecfccb', 0.15, '#d9f99d', 0.4, '#a7f3d0', 0.65, '#99f6e4', 0.88, '#ccfbf1', 1, '#f0fdf4']
+            : [0, '#f0fdfa', 0.45, '#f8fafc', 1, '#e0f2fe']
+        }
       />
     ) : null;
 
   return (
     <div
       ref={wrapRef}
-      className="public-konva-map-viewport relative h-full w-full cursor-grab overflow-hidden rounded-lg bg-[#0f172a] font-sans ring-1 ring-cyan-500/15 active:cursor-grabbing"
+      className="public-konva-map-viewport touch-none relative h-full w-full cursor-grab overflow-hidden rounded-xl bg-stone-100 font-sans ring-1 ring-stone-200/90 active:cursor-grabbing"
     >
       <Stage
         ref={stageRef}
@@ -352,6 +408,16 @@ export const PublicParkMapApp = forwardRef<PublicParkMapAppHandle, Props>(functi
                 opacity={Number(doc.background?.opacity ?? 1)}
               />
             ) : null}
+            <Group
+              ref={mapContentRef}
+              x={isometric && doc.width > 0 ? doc.width / 2 : 0}
+              y={isometric && doc.height > 0 ? doc.height / 2 : 0}
+              offsetX={isometric && doc.width > 0 ? doc.width / 2 : 0}
+              offsetY={isometric && doc.height > 0 ? doc.height / 2 : 0}
+              rotation={isometric ? ISO_GROUP_ROTATION_DEG : 0}
+              scaleX={1}
+              scaleY={isometric ? ISO_GROUP_SCALE_Y : 1}
+            >
             {routePoints.length >= 4 ? (
               <Line
                 points={routePoints}
@@ -487,6 +553,7 @@ export const PublicParkMapApp = forwardRef<PublicParkMapAppHandle, Props>(functi
                 </Group>
               );
             })}
+            </Group>
           </Group>
         </Layer>
       </Stage>

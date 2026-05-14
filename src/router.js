@@ -18,8 +18,14 @@ import { setRouteLoading } from './lib/routeLoading.js';
 import { showAlert } from './lib/appDialog.js';
 import { initRealtimeSync } from './lib/realtimeSync.js';
 
+import AquaMapEditorPage from './views/AquaMapEditorPage.js';
+
+/** Limpieza de la vista anterior (p. ej. desmontar React) antes de reemplazar `#app`. */
+let routeViewUnmount = null;
+
 // Listado de rutas mapeadas a componentes/funciones
 const routes = {
+    '/aquamap-editor': AquaMapEditorPage,
     '/home': Landing,
     '/login': Login,
     '/reservar': Reservar,
@@ -184,13 +190,26 @@ const router = async () => {
 
         const appElement = document.getElementById('app');
         if (appElement) {
+            if (typeof routeViewUnmount === 'function') {
+                try {
+                    routeViewUnmount();
+                } catch (_) {
+                    /* ignore */
+                }
+                routeViewUnmount = null;
+            }
             // Soporte para funciones simples o para objetos con render() y mount()
             if (typeof view === 'function') {
                 appElement.innerHTML = await view();
             } else if (typeof view === 'object' && view.render) {
                 appElement.innerHTML = await view.render();
                 if (view.mount) {
-                    setTimeout(() => view.mount(), 0); // Ejecutar después del renderizado del DOM
+                    setTimeout(() => {
+                        view.mount();
+                        if (typeof view.unmount === 'function') {
+                            routeViewUnmount = () => view.unmount();
+                        }
+                    }, 0);
                 }
             }
         }

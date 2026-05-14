@@ -53,22 +53,67 @@ function registerServiceWorker() {
 
 function registerInstallPrompt() {
   let deferredPrompt = null;
+
+  const ensureInstallFab = () => {
+    let fab = document.getElementById('pwa-install-fab');
+    if (fab) return fab;
+    fab = document.createElement('button');
+    fab.id = 'pwa-install-fab';
+    fab.type = 'button';
+    fab.className = 'pwa-install-fab';
+    fab.setAttribute('aria-label', 'Instalar aplicación en este dispositivo');
+    fab.hidden = true;
+    fab.textContent = 'Instalar app';
+    document.body.appendChild(fab);
+    return fab;
+  };
+
+  const wireFabClick = (fab) => {
+    fab.onclick = async () => {
+      if (!deferredPrompt) return;
+      try {
+        deferredPrompt.prompt();
+        await deferredPrompt.userChoice.catch(() => {});
+      } catch (_) {
+        /* ignore */
+      }
+      deferredPrompt = null;
+      fab.hidden = true;
+    };
+  };
+
   window.addEventListener('beforeinstallprompt', (event) => {
     event.preventDefault();
     deferredPrompt = event;
-    showPwaNotice('App lista para instalar en este dispositivo.', 'Instalar app', async () => {
+    const fab = ensureInstallFab();
+    wireFabClick(fab);
+    fab.hidden = false;
+    showPwaNotice('Puedes instalar la app como acceso directo.', 'Instalar ahora', async () => {
       if (!deferredPrompt) return;
-      deferredPrompt.prompt();
-      await deferredPrompt.userChoice;
+      try {
+        deferredPrompt.prompt();
+        await deferredPrompt.userChoice.catch(() => {});
+      } catch (_) {
+        /* ignore */
+      }
       deferredPrompt = null;
+      const f = document.getElementById('pwa-install-fab');
+      if (f) f.hidden = true;
     });
   });
+
+  window.addEventListener('appinstalled', () => {
+    deferredPrompt = null;
+    const fab = document.getElementById('pwa-install-fab');
+    if (fab) fab.hidden = true;
+  });
 }
+
+registerInstallPrompt();
 
 // Inicializar el router SPA cuando el DOM esté listo
 document.addEventListener('DOMContentLoaded', () => {
   initAppDialog();
   registerServiceWorker();
-  registerInstallPrompt();
   initRouter();
 });

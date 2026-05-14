@@ -86,14 +86,15 @@ function normalizeNavGraph(raw) {
 }
 
 function normalizePublicMapUi(raw) {
-  if (!raw || typeof raw !== 'object') return { filters: [] };
+  if (!raw || typeof raw !== 'object') return { filters: [], isometric: false };
   const filters = (Array.isArray(raw.filters) ? raw.filters : [])
     .map((f) => ({
       id: sanitizeId(f?.id, ''),
       label: String(f?.label || f?.id || '').trim()
     }))
     .filter((f) => f.id && f.id !== 'all');
-  return { filters };
+  const isometric = raw.isometric === true || raw.isometric === 'true';
+  return { filters, isometric };
 }
 
 export function createDefaultMapDocument(view = 'global') {
@@ -104,7 +105,7 @@ export function createDefaultMapDocument(view = 'global') {
     height: DEFAULT_MAP_HEIGHT,
     renderProfile: 'semiReal',
     navGraph: { nodes: [], edges: [] },
-    publicMapUi: { filters: [] },
+    publicMapUi: { filters: [], isometric: false },
     background: {
       type: 'park',
       fill: '#ecfdf5',

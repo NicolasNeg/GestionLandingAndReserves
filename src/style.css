@@ -60,6 +60,32 @@
     box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.75);
   }
 
+  .pwa-install-fab {
+    position: fixed;
+    right: 1rem;
+    bottom: 1rem;
+    z-index: 99990;
+    max-width: min(12rem, 92vw);
+    border-radius: 9999px;
+    border: 1px solid rgb(15 118 110 / 0.35);
+    background: linear-gradient(180deg, rgb(20 184 166), rgb(15 118 110));
+    color: white;
+    font-size: 0.8125rem;
+    font-weight: 700;
+    padding: 0.55rem 1.1rem;
+    box-shadow: 0 10px 28px rgb(15 118 110 / 0.35);
+    cursor: pointer;
+  }
+
+  .pwa-install-fab:hover {
+    filter: brightness(1.05);
+  }
+
+  .pwa-install-fab:focus-visible {
+    outline: 2px solid rgb(45 212 191);
+    outline-offset: 2px;
+  }
+
   .balneario-page-bg {
     background:
       linear-gradient(135deg, rgb(14 116 144 / 0.18), rgb(20 184 166 / 0.12)),

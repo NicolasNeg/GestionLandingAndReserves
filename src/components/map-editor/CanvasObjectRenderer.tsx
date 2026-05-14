@@ -1,10 +1,37 @@
 import Konva from 'konva';
 import type { MutableRefObject } from 'react';
 import { Circle, Ellipse, Group, Line, Rect, Text } from 'react-konva';
+import { snapMapPositionToIsoGrid } from '../../lib/mapEngine/isoProjection.js';
 
 function isBlockedKind(kind: string) {
   const k = String(kind || '').toLowerCase();
   return k === 'limitacion' || k === 'blockedzone' || k === 'blocked-zone';
+}
+
+function snapDragTopLeft(
+  item: { type?: string; width?: number; height?: number },
+  x: number,
+  y: number,
+  isoSnapEnabled: boolean,
+  step: number
+): { x: number; y: number } {
+  if (!isoSnapEnabled) return { x, y };
+  const s = Math.max(4, Number(step) || 20);
+  const t = String(item.type || '');
+  if (t === 'polygon' || t === 'line') return { x, y };
+  if (t === 'ellipse' || t === 'circle') {
+    const rx = Number(item.width) / 2;
+    const ry = Number(item.height) / 2;
+    const tl = snapMapPositionToIsoGrid(x - rx, y - ry, s);
+    return { x: tl.x + rx, y: tl.y + ry };
+  }
+  if (t === 'marker') {
+    const w = Number(item.width) || 0;
+    const h = Number(item.height) || 0;
+    const tl = snapMapPositionToIsoGrid(x - w / 2, y - h / 2, s);
+    return { x: tl.x + w / 2, y: tl.y + h / 2 };
+  }
+  return snapMapPositionToIsoGrid(x, y, s);
 }
 
 export type CanvasObjectRendererProps = {
@@ -16,11 +43,24 @@ export type CanvasObjectRendererProps = {
   nodeRefs: MutableRefObject<Record<string, Konva.Node | undefined>>;
   selectItemById: (id: string, additive?: boolean) => void;
   patchItemById: (id: string, patch: Record<string, unknown>) => void;
+  isoSnapEnabled?: boolean;
+  gridSnapStep?: number;
 };
 
 /** Piezas del mapa en coordenadas de documento (dentro del Group escalado). */
 export function CanvasObjectRenderer(props: CanvasObjectRendererProps) {
-  const { itemsSorted, selectedIds, fit, tool, previewMode, nodeRefs, selectItemById, patchItemById } = props;
+  const {
+    itemsSorted,
+    selectedIds,
+    fit,
+    tool,
+    previewMode,
+    nodeRefs,
+    selectItemById,
+    patchItemById,
+    isoSnapEnabled = false,
+    gridSnapStep = 20
+  } = props;
 
   return (
     <>
@@ -42,7 +82,8 @@ export function CanvasObjectRenderer(props: CanvasObjectRendererProps) {
           draggable: tool === 'select' && !item.locked && !previewMode,
           onDragEnd: (e: Konva.KonvaEventObject<DragEvent>) => {
             const n = e.target;
-            patchItemById(item.id, { x: n.x(), y: n.y() });
+            const p = snapDragTopLeft(item, n.x(), n.y(), isoSnapEnabled, gridSnapStep);
+            patchItemById(item.id, { x: p.x, y: p.y });
           }
         };
         const stroke = sel ? '#94a3b8' : String(item.stroke || '#0f766e');
@@ -94,9 +135,12 @@ export function CanvasObjectRenderer(props: CanvasObjectRendererProps) {
               draggable={tool === 'select' && !item.locked && !previewMode}
               onDragEnd={(e: Konva.KonvaEventObject<DragEvent>) => {
                 const n = e.target as Konva.Group;
+                const nx = n.x() - w / 2;
+                const ny = n.y() - h / 2;
+                const p = snapDragTopLeft(item, nx, ny, isoSnapEnabled, gridSnapStep);
                 patchItemById(item.id, {
-                  x: n.x() - w / 2,
-                  y: n.y() - h / 2,
+                  x: p.x,
+                  y: p.y,
                   rotation: n.rotation()
                 });
               }}
@@ -202,9 +246,12 @@ export function CanvasObjectRenderer(props: CanvasObjectRendererProps) {
               draggable={tool === 'select' && !item.locked && !previewMode}
               onDragEnd={(e: Konva.KonvaEventObject<DragEvent>) => {
                 const n = e.target as Konva.Group;
+                const nx = n.x() - w / 2;
+                const ny = n.y() - h / 2;
+                const p = snapDragTopLeft(item, nx, ny, isoSnapEnabled, gridSnapStep);
                 patchItemById(item.id, {
-                  x: n.x() - w / 2,
-                  y: n.y() - h / 2,
+                  x: p.x,
+                  y: p.y,
                   rotation: n.rotation()
                 });
               }}

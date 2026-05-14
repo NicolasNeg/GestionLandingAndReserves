@@ -12,6 +12,46 @@ export function isSemiRealRender(doc, options = {}) {
   return docUsesSemiRealProfile(doc);
 }
 
+/**
+ * Micro-textura (césped / firme) para semi-real sin assets pesados.
+ */
+export function drawSemiRealTerrainTexture(ctx, doc, view) {
+  const w = Math.max(1, Number(doc.width) || 1);
+  const h = Math.max(1, Number(doc.height) || 1);
+  ctx.save();
+  if (view === 'estacionamiento') {
+    ctx.globalAlpha = 0.045;
+    for (let i = 0; i < 700; i++) {
+      const x = ((i * 7919) % w + (i * 13) % 17) % w;
+      const y = ((i * 6151) % h + (i * 7) % 19) % h;
+      ctx.fillStyle = i % 2 ? '#e2e8f0' : '#94a3b8';
+      ctx.fillRect(x, y, 1.2, 1.2);
+    }
+  } else {
+    ctx.globalAlpha = 0.055;
+    for (let i = 0; i < 1100; i++) {
+      const x = ((i * 11003) % w + (i * 17) % 23) % w;
+      const y = ((i * 9109) % h + (i * 11) % 29) % h;
+      ctx.fillStyle = i % 3 === 0 ? '#166534' : i % 3 === 1 ? '#15803d' : '#22c55e';
+      ctx.fillRect(x, y, 1.2, 1.2);
+    }
+    ctx.globalAlpha = 0.035;
+    ctx.strokeStyle = 'rgba(120, 113, 108, 0.35)';
+    ctx.lineWidth = 0.6;
+    for (let i = 0; i < 28; i++) {
+      const y0 = (h / 28) * i + 6;
+      ctx.beginPath();
+      for (let x = 0; x <= w; x += 14) {
+        const yy = y0 + Math.sin((x + i * 40) / 22) * 2.2;
+        if (x === 0) ctx.moveTo(x, yy);
+        else ctx.lineTo(x, yy);
+      }
+      ctx.stroke();
+    }
+  }
+  ctx.restore();
+}
+
 export function drawSemiRealParkOverlay(ctx, doc, options, view) {
   ctx.save();
   ctx.globalCompositeOperation = 'multiply';

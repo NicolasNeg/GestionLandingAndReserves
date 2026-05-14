@@ -1,3 +1,4 @@
+import { marqueeRectToLogicalAabb } from './isoProjection.js';
 import { hitTestMapDocument, itemsIntersectRect } from './mapHitTesting.js';
 import { parseMapDocument, serializeMapDocument } from './mapMigrations.js';
 import { buildPresetItemDefs } from './mapPresets.js';
@@ -388,7 +389,7 @@ export function createMapEditor(canvas, initialJson, onChange, options = {}) {
       return;
     }
     if (dragMode === 'marquee' && marqueeRect) {
-      const indices = itemsIntersectRect(doc.items, marqueeRect);
+      const indices = itemsIntersectRect(doc.items, marqueeRectToLogicalAabb(doc, marqueeRect));
       const ids = indices.map((index) => doc.items[index]?.id).filter(Boolean);
       marqueeRect = null;
       dragMode = '';
