@@ -1,4 +1,5 @@
 import { parseMapDocument } from '../lib/mapEngine/mapMigrations.js';
+import { clampElementDimensions, presetSizeForType } from './elementDefaults';
 import type { ElementType, MapElement } from './types';
 import { defaultSpriteForType } from './spriteUrls';
 import { AQUAMAP_WORLD_H, AQUAMAP_WORLD_W } from './world';
@@ -21,11 +22,22 @@ export function isAquamapSiteJson(jsonStr: string | null | undefined): boolean {
   }
 }
 
-function migrateElement(raw: unknown): MapElement | null {
+function migrateElement(raw: unknown, world = { w: AQUAMAP_WORLD_W, h: AQUAMAP_WORLD_H }): MapElement | null {
   if (!raw || typeof raw !== 'object') return null;
   const o = raw as Partial<MapElement>;
   if (!o.id || !o.type) return null;
-  const type = o.type as ElementType;
+  const rawType = String(o.type);
+  const valid: ElementType[] = ['pool', 'slide', 'service', 'tree', 'mesa', 'parking'];
+  const type = valid.includes(rawType as ElementType) ? (rawType as ElementType) : 'service';
+  const preset = presetSizeForType(type);
+  const dims = clampElementDimensions(
+    {
+      type,
+      width: Number(o.width) || preset.width,
+      height: Number(o.height) || preset.height
+    },
+    world
+  );
   return {
     id: String(o.id),
     type,
@@ -33,8 +45,8 @@ function migrateElement(raw: unknown): MapElement | null {
     description: String(o.description ?? ''),
     x: Number(o.x) || 0,
     y: Number(o.y) || 0,
-    width: Math.max(16, Number(o.width) || 100),
-    height: Math.max(16, Number(o.height) || 84),
+    width: dims.width,
+    height: dims.height,
     color: String(o.color || '#0ea5e9'),
     imgSrc: o.imgSrc?.trim() || defaultSpriteForType(type)
   };
@@ -52,7 +64,7 @@ export function parseAquamapSiteEnvelope(jsonStr: string | null | undefined): Aq
     }
     const w = o.world && typeof o.world === 'object' ? Number((o.world as { w?: number }).w) : world.w;
     const h = o.world && typeof o.world === 'object' ? Number((o.world as { h?: number }).h) : world.h;
-    const els = o.elements.map(migrateElement).filter((x): x is MapElement => x != null);
+    const els = o.elements.map((raw) => migrateElement(raw, { w, h })).filter((x): x is MapElement => x != null);
     return {
       format: AQUAMAP_FORMAT,
       world: {
@@ -82,18 +94,50 @@ export function emptyAquamapJson(): string {
   });
 }
 
+/** Validación ligera al guardar desde el panel (formato aquamap-v1). */
+export function validateAquamapSiteForSave(jsonStr: string | null | undefined): {
+  errors: string[];
+  warnings: string[];
+} {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+  if (!isAquamapSiteJson(jsonStr)) {
+    errors.push('El JSON del mapa no tiene formato aquamap-v1 válido.');
+    return { errors, warnings };
+  }
+  const env = parseAquamapSiteEnvelope(jsonStr);
+  if (env.world.w < 400 || env.world.h < 280) {
+    errors.push('El lienzo debe medir al menos 400×280 px.');
+  }
+  const seen = new Set<string>();
+  env.elements.forEach((el, i) => {
+    const label = el.name || el.type || `#${i + 1}`;
+    if (!String(el.id || '').trim()) warnings.push(`Pieza "${label}": sin ID estable.`);
+    else if (seen.has(el.id)) errors.push(`ID duplicado: "${el.id}".`);
+    else seen.add(el.id);
+    if (el.width < 16 || el.height < 16) errors.push(`Pieza "${label}": tamaño inválido.`);
+    if (!String(el.name || '').trim()) warnings.push(`Pieza "${el.id || i}": sin nombre.`);
+  });
+  return { errors, warnings };
+}
+
 function kindToAquamapType(kind: string): ElementType {
   const k = String(kind || '').toLowerCase();
   if (k.includes('pool') || k === 'alberca') return 'pool';
   if (k.includes('slide') || k.includes('tobog')) return 'slide';
   if (k.includes('tree') || k.includes('arbol')) return 'tree';
+  if (k === 'mesa' || k === 'table') return 'mesa';
+  if (k.includes('parking') || k === 'estacionamiento' || k.includes('cajon')) return 'parking';
   return 'service';
 }
 
 /**
  * Carga JSON de sitio: si ya es aquamap-v1 lo parsea; si es el mapa legacy (Konva) convierte piezas a elementos isometricos.
  */
-export function ensureAquamapEnvelopeFromSiteJson(jsonStr: string | null | undefined): AquamapSiteEnvelope {
+export function ensureAquamapEnvelopeFromSiteJson(
+  jsonStr: string | null | undefined,
+  options: { view?: string } = {}
+): AquamapSiteEnvelope {
   if (!jsonStr || !String(jsonStr).trim()) {
     return parseAquamapSiteEnvelope(emptyAquamapJson());
   }
@@ -101,8 +145,9 @@ export function ensureAquamapEnvelopeFromSiteJson(jsonStr: string | null | undef
     return parseAquamapSiteEnvelope(jsonStr);
   }
   try {
-    const doc = parseMapDocument(jsonStr, { view: 'global' });
+    const doc = parseMapDocument(jsonStr, { view: options.view ?? 'global' });
     const rawItems = Array.isArray(doc.items) ? doc.items : [];
+    const world = { w, h };
     const elements: MapElement[] = rawItems.map((item: Record<string, unknown>, index: number) => {
       const type = kindToAquamapType(String(item.kind || 'area'));
       const id = String(item.id || `legacy-${index}`).trim() || `legacy-${index}`;
@@ -110,6 +155,15 @@ export function ensureAquamapEnvelopeFromSiteJson(jsonStr: string | null | undef
         string,
         unknown
       >;
+      const preset = presetSizeForType(type);
+      const dims = clampElementDimensions(
+        {
+          type,
+          width: Number(item.width) || preset.width,
+          height: Number(item.height) || preset.height
+        },
+        world
+      );
       return {
         id,
         type,
@@ -117,8 +171,8 @@ export function ensureAquamapEnvelopeFromSiteJson(jsonStr: string | null | undef
         description: String(meta.description || item.notes || '').slice(0, 4000),
         x: Number(item.x) || 0,
         y: Number(item.y) || 0,
-        width: Math.max(16, Number(item.width) || 80),
-        height: Math.max(16, Number(item.height) || 72),
+        width: dims.width,
+        height: dims.height,
         color: String(item.fill || item.stroke || '#0ea5e9').slice(0, 40),
         imgSrc: defaultSpriteForType(type)
       };

@@ -1,16 +1,16 @@
 const ROWS: { label: string; color: string }[] = [
   { label: 'Alberca', color: '#0ea5e9' },
-  { label: 'Tobogan', color: '#f97316' },
+  { label: 'Tobogán', color: '#f97316' },
   { label: 'Servicio', color: '#a855f7' },
-  { label: 'Arbol', color: '#22c55e' },
-  { label: 'Mesa', color: '#94a3b8' },
-  { label: 'Cajon', color: '#64748b' }
+  { label: 'Árbol', color: '#22c55e' },
+  { label: 'Mesa', color: '#10b981' },
+  { label: 'Cajón', color: '#f59e0b' }
 ];
 
 export function AquaMapLegend() {
   return (
-    <div className="pointer-events-none absolute left-3 top-3 z-10 max-w-[11rem] rounded-xl border border-white/10 bg-slate-900/55 px-3 py-2.5 text-[10px] text-slate-100 shadow-lg backdrop-blur-md">
-      <p className="mb-1.5 font-bold uppercase tracking-wide text-slate-300">Leyenda</p>
+    <div className="pointer-events-none absolute left-3 top-3 z-10 max-w-[11rem] rounded-md border border-[#1f1f1f] bg-[#3c3c3c]/90 px-2.5 py-2 font-mono text-[9px] text-[#d4d4d4] shadow-[0_6px_20px_rgba(0,0,0,0.35)] backdrop-blur-sm">
+      <p className="mb-1.5 text-[9px] font-bold uppercase tracking-[0.12em] text-[#a3a3a3]">Leyenda</p>
       <ul className="space-y-1">
         {ROWS.map((r) => (
           <li key={r.label} className="flex items-center gap-2">

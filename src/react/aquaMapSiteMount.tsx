@@ -4,8 +4,11 @@ import { flushSync } from 'react-dom';
 import { AquaMapSiteEditor, type AquaMapSiteEditorHandle } from '../aquamap/AquaMapSiteEditor';
 import { createAquamapMapEditorBridgeProxy } from '../aquamap/createAquamapMapEditorBridgeProxy';
 
+import type { MapLayerContext } from '../aquamap/mapLayers';
+
 export type MountAquaMapSiteEditorOptions = {
   initialJson: string;
+  mapContext?: MapLayerContext;
   onChangeJson: (json: string) => void;
   onSaveSite: () => void;
   onPreviewPublic: () => void;
@@ -39,6 +42,7 @@ export function mountAquaMapSiteEditor(host: HTMLElement, options: MountAquaMapS
         <AquaMapSiteEditor
           ref={editorRef}
           initialJson={options.initialJson}
+          mapContext={options.mapContext ?? 'parque'}
           onChangeJson={options.onChangeJson}
           onSaveSite={options.onSaveSite}
           onPreviewPublic={options.onPreviewPublic}

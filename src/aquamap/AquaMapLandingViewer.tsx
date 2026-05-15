@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, forwardRef } from 'react';
+import { AquaMapBootOverlay } from './AquaMapBootOverlay';
 import { AquaMapCanvas } from './AquaMapCanvas';
 import { AquaMapLegend } from './AquaMapLegend';
-import type { MapElement } from './types';
+import type { ElementType, MapElement } from './types';
 import { ensureAquamapEnvelopeFromSiteJson, type AquamapSiteEnvelope } from './siteEnvelope';
+import { defaultSpriteForType } from './spriteUrls';
+import './aquamapEditor.css';
 
 export type AquaMapLandingViewerHandle = {
   zoomIn: () => void;
@@ -20,6 +23,36 @@ type Props = {
   onSelectElement: (el: MapElement | null) => void;
 };
 
+async function preloadImageUrls(urls: string[]): Promise<void> {
+  await Promise.all(
+    urls.map(
+      (src) =>
+        new Promise<void>((resolve) => {
+          if (src.startsWith('data:')) {
+            resolve();
+            return;
+          }
+          const im = new window.Image();
+          im.crossOrigin = 'anonymous';
+          im.onload = () => resolve();
+          im.onerror = () => resolve();
+          im.src = src;
+        })
+    )
+  );
+}
+
+function collectAssetUrls(envelope: AquamapSiteEnvelope): string[] {
+  const set = new Set<string>();
+  const types: ElementType[] = ['pool', 'slide', 'service', 'tree'];
+  for (const t of types) set.add(defaultSpriteForType(t));
+  for (const el of envelope.elements) {
+    const u = el.imgSrc?.trim();
+    if (u && !u.startsWith('data:')) set.add(u);
+  }
+  return [...set];
+}
+
 export const AquaMapLandingViewer = forwardRef<AquaMapLandingViewerHandle, Props>(function AquaMapLandingViewer(
   { jsonStr, onSelectElement },
   ref
@@ -27,6 +60,7 @@ export const AquaMapLandingViewer = forwardRef<AquaMapLandingViewerHandle, Props
   const [envelope, setEnvelope] = useState<AquamapSiteEnvelope>(() => ensureAquamapEnvelopeFromSiteJson(jsonStr));
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [camera, setCamera] = useState({ x: 0, y: 0, scale: 1 });
+  const [booting, setBooting] = useState(true);
   const mapWrapRef = useRef<HTMLDivElement>(null);
   const [stageSize, setStageSize] = useState({ w: 800, h: 600 });
 
@@ -34,6 +68,20 @@ export const AquaMapLandingViewer = forwardRef<AquaMapLandingViewerHandle, Props
     setEnvelope(ensureAquamapEnvelopeFromSiteJson(jsonStr));
     setSelectedId(null);
     setCamera({ x: 0, y: 0, scale: 1 });
+  }, [jsonStr]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setBooting(true);
+    const env = ensureAquamapEnvelopeFromSiteJson(jsonStr);
+    void (async () => {
+      await preloadImageUrls(collectAssetUrls(env));
+      await new Promise((r) => window.setTimeout(r, 200));
+      if (!cancelled) setBooting(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [jsonStr]);
 
   useEffect(() => {
@@ -63,13 +111,13 @@ export const AquaMapLandingViewer = forwardRef<AquaMapLandingViewerHandle, Props
     onSelectElement(selected);
   }, [selected, onSelectElement]);
 
-  const onElementDragEnd = useCallback(() => {}, []);
+  const onElementGeometryChange = useCallback(() => {}, []);
 
   const zoomIn = useCallback(() => {
-    setCamera((c) => ({ ...c, scale: Math.min(2.2, c.scale * 1.12) }));
+    setCamera((c) => ({ ...c, scale: Math.min(2.35, c.scale * 1.12) }));
   }, []);
   const zoomOut = useCallback(() => {
-    setCamera((c) => ({ ...c, scale: Math.max(0.45, c.scale / 1.12) }));
+    setCamera((c) => ({ ...c, scale: Math.max(0.42, c.scale / 1.12) }));
   }, []);
   const reset = useCallback(() => {
     setCamera({ x: 0, y: 0, scale: 1 });
@@ -94,7 +142,8 @@ export const AquaMapLandingViewer = forwardRef<AquaMapLandingViewerHandle, Props
   );
 
   return (
-    <div ref={mapWrapRef} className="relative h-full w-full">
+    <div ref={mapWrapRef} className="aquamap-artboard relative h-full w-full overflow-hidden">
+      {booting ? <AquaMapBootOverlay subtitle="Vista publica del parque" /> : null}
       <AquaMapCanvas
         width={stageSize.w}
         height={stageSize.h}
@@ -105,8 +154,9 @@ export const AquaMapLandingViewer = forwardRef<AquaMapLandingViewerHandle, Props
         setCamera={setCamera}
         selectedId={selectedId}
         setSelectedId={setSelectedId}
-        onElementDragEnd={onElementDragEnd}
+        onElementGeometryChange={onElementGeometryChange}
         readOnly
+        blockElementPointer={false}
       />
       <AquaMapLegend />
     </div>

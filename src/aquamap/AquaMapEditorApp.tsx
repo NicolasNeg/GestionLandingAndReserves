@@ -7,6 +7,7 @@ import { createMapElement } from './elementDefaults';
 import type { ElementType, MapElement } from './types';
 import { useLocalStorageElements } from './useLocalStorage';
 import { AQUAMAP_WORLD_H, AQUAMAP_WORLD_W } from './world';
+import './aquamapEditor.css';
 
 export function AquaMapEditorApp() {
   const [elements, setElements] = useLocalStorageElements([]);
@@ -57,9 +58,9 @@ export function AquaMapEditorApp() {
     [selectedId, setElements]
   );
 
-  const onElementDragEnd = useCallback(
-    (id: string, x: number, y: number) => {
-      setElements((prev) => prev.map((el) => (el.id === id ? { ...el, x, y } : el)));
+  const onElementGeometryChange = useCallback(
+    (id: string, geom: { x: number; y: number; width: number; height: number }) => {
+      setElements((prev) => prev.map((el) => (el.id === id ? { ...el, ...geom } : el)));
     },
     [setElements]
   );
@@ -107,10 +108,15 @@ export function AquaMapEditorApp() {
           setCamera={setCamera}
           selectedId={selectedId}
           setSelectedId={setSelectedId}
-          onElementDragEnd={onElementDragEnd}
+          onElementGeometryChange={onElementGeometryChange}
         />
         <AquaMapLegend />
-        <AquaMapZoomHud onZoomIn={onZoomIn} onZoomOut={onZoomOut} onReset={onResetView} />
+        <AquaMapZoomHud
+          onZoomIn={onZoomIn}
+          onZoomOut={onZoomOut}
+          onReset={onResetView}
+          zoomPercent={Math.round(100 * camera.scale)}
+        />
         {saveFlash ? (
           <div className="pointer-events-none absolute bottom-3 left-1/2 z-10 -translate-x-1/2 rounded-full border border-teal-500/40 bg-teal-950/90 px-4 py-1.5 text-xs font-semibold text-teal-100 shadow-lg">
             Guardado en localStorage

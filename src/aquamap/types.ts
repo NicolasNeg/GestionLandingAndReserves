@@ -1,4 +1,4 @@
-export type ElementType = 'pool' | 'slide' | 'service' | 'tree';
+export type ElementType = 'pool' | 'slide' | 'service' | 'tree' | 'mesa' | 'parking';
 
 export interface MapElement {
   id: string;

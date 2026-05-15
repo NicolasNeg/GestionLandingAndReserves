@@ -1,0 +1,87 @@
+/* AquaMap editor chrome: Photoshop-like panels + Blender-like boot */
+
+@keyframes aquamap-boot-shimmer {
+  0% {
+    transform: translateX(-100%);
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(200%);
+    opacity: 0.35;
+  }
+}
+
+@keyframes aquamap-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes aquamap-scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.aquamap-artboard {
+  background-color: #262626;
+  background-image:
+    linear-gradient(45deg, #2e2e2e 25%, transparent 25%),
+    linear-gradient(-45deg, #2e2e2e 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #2e2e2e 75%),
+    linear-gradient(-45deg, transparent 75%, #2e2e2e 75%);
+  background-size: 12px 12px;
+  background-position: 0 0, 0 6px, 6px -6px, -6px 0;
+}
+
+.aquamap-canvas-mount {
+  animation: aquamap-scale-in 0.45s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.aquamap-boot {
+  animation: aquamap-fade-in 0.2s ease-out forwards;
+}
+
+.aquamap-boot__bar {
+  position: relative;
+  overflow: hidden;
+  height: 3px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, #1e1e1e, #3a3a3a);
+}
+
+.aquamap-boot__bar::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  width: 40%;
+  background: linear-gradient(90deg, transparent, #e87d3e, #f4a261, transparent);
+  animation: aquamap-boot-shimmer 1.35s ease-in-out infinite;
+}
+
+.aquamap-pressable {
+  transition:
+    transform 0.12s cubic-bezier(0.22, 1, 0.36, 1),
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.aquamap-context-menu {
+  animation: aquamap-scale-in 0.14s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.aquamap-pressable:active {
+  transform: scale(0.96);
+}

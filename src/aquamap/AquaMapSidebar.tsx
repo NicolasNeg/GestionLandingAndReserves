@@ -1,24 +1,35 @@
 import {
+  Car,
+  CopyPlus,
   Droplets,
   Settings,
+  Square,
+  Trash2,
   Trees,
   Upload,
   Waves,
   Wrench
 } from 'lucide-react';
-import { useRef } from 'react';
+import { useMemo, useRef } from 'react';
+import { presetSizeForType } from './elementDefaults';
 import type { ElementType, MapElement } from './types';
 
-const ADD_BUTTONS: { type: ElementType; label: string; Icon: typeof Droplets }[] = [
-  { type: 'pool', label: 'Alberca', Icon: Droplets },
-  { type: 'slide', label: 'Tobogán', Icon: Waves },
-  { type: 'service', label: 'Servicio', Icon: Wrench },
-  { type: 'tree', label: 'Árbol', Icon: Trees }
-];
+const TYPE_META: Record<ElementType, { label: string; Icon: typeof Droplets }> = {
+  pool: { label: 'Alberca', Icon: Droplets },
+  slide: { label: 'Tobogán', Icon: Waves },
+  service: { label: 'Servicio', Icon: Wrench },
+  tree: { label: 'Árbol', Icon: Trees },
+  mesa: { label: 'Mesa', Icon: Square },
+  parking: { label: 'Cajón', Icon: Car }
+};
 
 const SWATCHES = ['#0ea5e9', '#f97316', '#22c55e', '#a855f7', '#eab308', '#ef4444', '#64748b', '#f8fafc'];
 
 type Props = {
+  layerLabel: string;
+  layerHint: string;
+  allowedTypes: ElementType[];
+  world: { w: number; h: number };
   elements: MapElement[];
   selectedId: string | null;
   setSelectedId: (id: string | null) => void;
@@ -27,61 +38,96 @@ type Props = {
   onUpdateSelected: (
     patch: Partial<Pick<MapElement, 'name' | 'color' | 'width' | 'height' | 'imgSrc' | 'description'>>
   ) => void;
+  onWorldChange: (patch: Partial<{ w: number; h: number }>) => void;
+  onApplyPresetSize: () => void;
+  onDuplicateSelected?: () => void;
+  onDeleteSelected?: () => void;
   onSaveClick: () => void;
   onPublishClick: () => void;
 };
 
 export function AquaMapSidebar({
+  layerLabel,
+  layerHint,
+  allowedTypes,
+  world,
   elements,
   selectedId,
   setSelectedId,
   selected,
   onAdd,
   onUpdateSelected,
+  onWorldChange,
+  onApplyPresetSize,
+  onDuplicateSelected,
+  onDeleteSelected,
   onSaveClick,
   onPublishClick
 }: Props) {
   const fileRef = useRef<HTMLInputElement>(null);
+  const maxW = Math.max(200, Math.round(world.w * 0.65));
+  const maxH = Math.max(160, Math.round(world.h * 0.65));
+  const preset = selected ? presetSizeForType(selected.type) : null;
+
+  const addButtons = useMemo(
+    () => allowedTypes.map((type) => ({ type, ...TYPE_META[type] })),
+    [allowedTypes]
+  );
+
   return (
-    <aside className="flex h-full w-[20%] flex-shrink-0 flex-col border-l border-slate-700/90 bg-slate-900 text-slate-100 shadow-2xl">
-      <div className="flex items-start justify-between gap-2 border-b border-slate-700 px-4 py-3">
-        <div>
-          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-            Panel de control
-          </p>
-          <h1 className="text-sm font-bold tracking-tight text-white">Administrador del mapa</h1>
+    <aside className="flex h-full w-[min(22%,300px)] min-w-[240px] flex-shrink-0 flex-col border-l border-[#1a1a1a] bg-[#323232] text-[#e5e5e5] shadow-[inset_1px_0_0_0_rgba(255,255,255,0.03)]">
+      <motionHeader layerLabel={layerLabel} layerHint={layerHint} />
+
+      <section className="border-b border-[#1f1f1f] px-3 py-2.5">
+        <h2 className="mb-2 font-mono text-[9px] font-semibold uppercase tracking-wider text-[#737373]">
+          Tamaño del lienzo
+        </h2>
+        <div className="grid grid-cols-2 gap-2">
+          <label className="flex flex-col gap-0.5 font-mono text-[9px] text-[#737373]">
+            Ancho
+            <input
+              type="number"
+              min={400}
+              max={4000}
+              step={10}
+              className="rounded border border-[#1f1f1f] bg-[#1e1e1e] px-2 py-1 text-[11px] text-white"
+              value={world.w}
+              onChange={(e) => onWorldChange({ w: parseInt(e.target.value, 10) || world.w })}
+            />
+          </label>
+          <label className="flex flex-col gap-0.5 font-mono text-[9px] text-[#737373]">
+            Alto
+            <input
+              type="number"
+              min={280}
+              max={3000}
+              step={10}
+              className="rounded border border-[#1f1f1f] bg-[#1e1e1e] px-2 py-1 text-[11px] text-white"
+              value={world.h}
+              onChange={(e) => onWorldChange({ h: parseInt(e.target.value, 10) || world.h })}
+            />
+          </label>
         </div>
-        <Settings className="mt-0.5 h-5 w-5 shrink-0 text-slate-500" strokeWidth={1.5} aria-hidden />
-      </div>
+      </section>
 
-      <div className="flex-1 overflow-y-auto px-4 py-4">
-        <section>
-          <h2 className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-            Anadir al mapa
-          </h2>
-          <div className="grid grid-cols-2 gap-2">
-            {ADD_BUTTONS.map(({ type, label, Icon }) => (
-              <button
-                key={type}
-                type="button"
-                onClick={() => onAdd(type)}
-                className="flex flex-col items-center gap-1.5 rounded-xl border border-slate-700 bg-slate-800/90 px-2 py-3 text-[11px] font-medium text-slate-200 transition hover:border-teal-500/50 hover:bg-slate-800"
-              >
-                <Icon className="h-5 w-5 text-teal-400" strokeWidth={1.75} />
-                {label}
-              </button>
-            ))}
-          </div>
-        </section>
+      <section className="border-b border-[#1f1f1f] px-3 py-2.5">
+        <h2 className="mb-2 font-mono text-[9px] font-semibold uppercase tracking-wider text-[#737373]">
+          Añadir al mapa
+        </h2>
+        <motionTools addButtons={addButtons} onAdd={onAdd} />
+      </section>
 
+      <div className="flex-1 overflow-y-auto px-3 py-3">
         {selected ? (
-          <section className="mt-8 border-t border-slate-700 pt-6">
-            <h2 className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-slate-500">Propiedades</h2>
+          <section>
+            <h2 className="mb-3 font-mono text-[9px] font-semibold uppercase tracking-wider text-[#737373]">
+              Capa activa
+            </h2>
 
-            <label className="mb-3 flex flex-col gap-1 text-sm">
-              <span className="text-[11px] text-slate-400">Elemento</span>
+            <label className="mb-3 flex flex-col gap-1 text-[12px]">
+              <span className="font-mono text-[9px] text-[#737373]">Elemento</span>
               <select
-                className="rounded-lg border border-slate-600 bg-slate-950 px-2 py-2 text-slate-100 outline-none focus:border-teal-500"
+                className="rounded border border-[#1f1f1f] bg-[#1e1e1e] px-2 py-1.5 text-[#e5e5e5] outline-none focus:border-[#5eead4]/60"
                 value={selectedId ?? ''}
                 onChange={(e) => setSelectedId(e.target.value || null)}
               >
@@ -93,39 +139,118 @@ export function AquaMapSidebar({
               </select>
             </label>
 
-            <div className="flex flex-col gap-3 text-sm">
+            <p className="mb-2 font-mono text-[9px] leading-relaxed text-[#737373]">
+              Arrastra en el mapa, clic derecho para acciones o usa las esquinas azules.
+            </p>
+
+            {onDuplicateSelected || onDeleteSelected ? (
+              <div className="mb-3 grid grid-cols-2 gap-1.5">
+                {onDuplicateSelected ? (
+                  <button
+                    type="button"
+                    onClick={onDuplicateSelected}
+                    className="aquamap-pressable flex items-center justify-center gap-1.5 rounded border border-[#404040] bg-[#2a2a2a] py-1.5 text-[10px] text-[#d4d4d4] hover:bg-[#333]"
+                  >
+                    <CopyPlus className="h-3.5 w-3.5 text-[#5eead4]" strokeWidth={2} />
+                    Duplicar
+                  </button>
+                ) : null}
+                {onDeleteSelected ? (
+                  <button
+                    type="button"
+                    onClick={onDeleteSelected}
+                    className="aquamap-pressable flex items-center justify-center gap-1.5 rounded border border-rose-900/50 bg-rose-950/30 py-1.5 text-[10px] text-rose-200 hover:bg-rose-950/50"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" strokeWidth={2} />
+                    Eliminar
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
+
+            <div className="flex flex-col gap-2.5 text-[12px]">
               <label className="flex flex-col gap-1">
-                <span className="text-[11px] text-slate-400">Nombre</span>
+                <span className="font-mono text-[9px] text-[#737373]">Nombre</span>
                 <input
-                  className="rounded-lg border border-slate-600 bg-slate-950 px-2 py-1.5 text-slate-100 outline-none focus:border-teal-500"
+                  className="rounded border border-[#1f1f1f] bg-[#1e1e1e] px-2 py-1.5 text-[#e5e5e5] outline-none focus:border-[#5eead4]/60"
                   value={selected.name}
                   onChange={(e) => onUpdateSelected({ name: e.target.value })}
                 />
               </label>
 
               <label className="flex flex-col gap-1">
-                <span className="text-[11px] text-slate-400">Descripcion publica</span>
+                <span className="font-mono text-[9px] text-[#737373]">Descripción pública</span>
                 <textarea
                   rows={3}
-                  className="resize-y rounded-lg border border-slate-600 bg-slate-950 px-2 py-1.5 text-sm text-slate-100 outline-none focus:border-teal-500"
+                  className="resize-y rounded border border-[#1f1f1f] bg-[#1e1e1e] px-2 py-1.5 text-[12px] text-[#e5e5e5] outline-none focus:border-[#5eead4]/60"
                   value={selected.description}
                   onChange={(e) => onUpdateSelected({ description: e.target.value })}
                 />
               </label>
 
+              <div className="rounded border border-[#2a2a2a] bg-[#262626] p-2.5">
+                <motionSizeHeader onApplyPresetSize={onApplyPresetSize} preset={preset} />
+                <div className="grid grid-cols-2 gap-2">
+                  <label className="flex flex-col gap-0.5 font-mono text-[9px] text-[#737373]">
+                    Ancho
+                    <input
+                      type="number"
+                      min={24}
+                      max={maxW}
+                      value={Math.round(selected.width)}
+                      onChange={(e) => onUpdateSelected({ width: Number(e.target.value) || selected.width })}
+                      className="rounded border border-[#1f1f1f] bg-[#1e1e1e] px-2 py-1 text-[11px] text-white"
+                    />
+                  </label>
+                  <label className="flex flex-col gap-0.5 font-mono text-[9px] text-[#737373]">
+                    Alto
+                    <input
+                      type="number"
+                      min={24}
+                      max={maxH}
+                      value={Math.round(selected.height)}
+                      onChange={(e) => onUpdateSelected({ height: Number(e.target.value) || selected.height })}
+                      className="rounded border border-[#1f1f1f] bg-[#1e1e1e] px-2 py-1 text-[11px] text-white"
+                    />
+                  </label>
+                </div>
+                <label className="mt-2 flex flex-col gap-1">
+                  <span className="font-mono text-[9px] text-[#737373]">Ancho (deslizador)</span>
+                  <input
+                    type="range"
+                    min={24}
+                    max={maxW}
+                    value={Math.round(selected.width)}
+                    onChange={(e) => onUpdateSelected({ width: Number(e.target.value) })}
+                    className="accent-[#5eead4]"
+                  />
+                </label>
+                <label className="flex flex-col gap-1">
+                  <span className="font-mono text-[9px] text-[#737373]">Alto (deslizador)</span>
+                  <input
+                    type="range"
+                    min={24}
+                    max={maxH}
+                    value={Math.round(selected.height)}
+                    onChange={(e) => onUpdateSelected({ height: Number(e.target.value) })}
+                    className="accent-[#5eead4]"
+                  />
+                </label>
+              </div>
+
               <div>
-                <span className="text-[11px] text-slate-400">Color de acento</span>
-                <div className="mt-2 grid grid-cols-4 gap-2">
+                <span className="font-mono text-[9px] text-[#737373]">Color de acento</span>
+                <div className="mt-2 grid grid-cols-4 gap-1.5">
                   {SWATCHES.map((c) => (
                     <button
                       key={c}
                       type="button"
                       title={c}
                       onClick={() => onUpdateSelected({ color: c })}
-                      className={`h-8 w-full rounded-lg border-2 transition ${
+                      className={`aquamap-pressable h-7 w-full rounded border transition ${
                         selected.color.toLowerCase() === c.toLowerCase()
-                          ? 'border-white ring-2 ring-teal-400/60'
-                          : 'border-transparent hover:border-white/30'
+                          ? 'border-white ring-1 ring-[#5eead4]/50'
+                          : 'border-transparent hover:border-[#525252]'
                       }`}
                       style={{ backgroundColor: c }}
                     />
@@ -133,39 +258,13 @@ export function AquaMapSidebar({
                 </div>
                 <input
                   type="color"
-                  className="mt-2 h-10 w-full cursor-pointer rounded-lg border border-slate-600 bg-slate-950"
+                  className="mt-2 h-9 w-full cursor-pointer rounded border border-[#1f1f1f] bg-[#1e1e1e]"
                   value={selected.color}
                   onChange={(e) => onUpdateSelected({ color: e.target.value })}
                 />
               </div>
 
-              <label className="flex flex-col gap-1">
-                <span className="text-[11px] text-slate-400">Ancho (px)</span>
-                <input
-                  type="range"
-                  min={48}
-                  max={280}
-                  value={Math.round(selected.width)}
-                  onChange={(e) => onUpdateSelected({ width: Number(e.target.value) })}
-                  className="accent-teal-500"
-                />
-                <span className="text-right text-[10px] text-slate-500">{Math.round(selected.width)} px</span>
-              </label>
-
-              <label className="flex flex-col gap-1">
-                <span className="text-[11px] text-slate-400">Alto (px)</span>
-                <input
-                  type="range"
-                  min={40}
-                  max={240}
-                  value={Math.round(selected.height)}
-                  onChange={(e) => onUpdateSelected({ height: Number(e.target.value) })}
-                  className="accent-teal-500"
-                />
-                <span className="text-right text-[10px] text-slate-500">{Math.round(selected.height)} px</span>
-              </label>
-
-              <div className="rounded-xl border border-dashed border-slate-600 bg-slate-950/60 p-3">
+              <div className="rounded border border-dashed border-[#404040] bg-[#262626] p-2.5">
                 <input
                   ref={fileRef}
                   type="file"
@@ -186,33 +285,114 @@ export function AquaMapSidebar({
                 <button
                   type="button"
                   onClick={() => fileRef.current?.click()}
-                  className="flex w-full cursor-pointer flex-col items-center gap-2 rounded-lg py-2 text-center text-[11px] text-slate-400 transition hover:bg-slate-800/80"
+                  className="aquamap-pressable flex w-full cursor-pointer flex-col items-center gap-1.5 rounded py-2 text-center text-[10px] text-[#a3a3a3] hover:bg-[#2e2e2e]"
                 >
-                  <Upload className="h-6 w-6 text-teal-400" strokeWidth={1.5} />
-                  <span>Insertar imagen (PNG con transparencia)</span>
+                  <Upload className="h-5 w-5 text-[#5eead4]" strokeWidth={1.5} />
+                  <span>Textura personalizada</span>
                 </button>
               </div>
             </div>
           </section>
-        ) : null}
+        ) : (
+          <p className="rounded border border-dashed border-[#404040] bg-[#262626] p-3 text-[11px] leading-relaxed text-[#a3a3a3]">
+            Selecciona un elemento en el mapa o añade uno con las herramientas de arriba.
+          </p>
+        )}
       </div>
 
-      <div className="border-t border-slate-700 p-3">
+      <div className="border-t border-[#1f1f1f] bg-[#3c3c3c] p-2.5">
         <button
           type="button"
           onClick={onSaveClick}
-          className="w-full rounded-xl bg-teal-600 py-2.5 text-sm font-bold text-white shadow hover:bg-teal-500"
+          className="aquamap-pressable w-full rounded border border-[#166534] bg-[#14532d] py-2 text-[12px] font-semibold text-white shadow-sm hover:bg-[#166534]"
         >
           Guardar cambios
         </button>
         <button
           type="button"
           onClick={onPublishClick}
-          className="mt-2 w-full rounded-xl border border-slate-600 py-2.5 text-sm font-semibold text-slate-200 hover:bg-slate-800"
+          className="aquamap-pressable mt-1.5 w-full rounded border border-[#404040] bg-[#2a2a2a] py-2 text-[12px] font-medium text-[#d4d4d4] hover:bg-[#333]"
         >
-          Publicar mapa
+          Vista previa web
         </button>
       </div>
     </aside>
+  );
+}
+
+function motionHeader({ layerLabel, layerHint }: { layerLabel: string; layerHint: string }) {
+  return (
+    <div className="border-b border-[#1f1f1f] bg-[#3c3c3c] px-3 py-2.5">
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <p className="font-mono text-[9px] font-semibold uppercase tracking-[0.18em] text-[#5eead4]">
+            Capa · {layerLabel}
+          </p>
+          <h1 className="text-[13px] font-semibold tracking-tight text-[#f5f5f5]">Editor del mapa</h1>
+          <p className="mt-1 text-[10px] leading-snug text-[#737373]">{layerHint}</p>
+        </div>
+        <Settings className="mt-0.5 h-4 w-4 shrink-0 text-[#737373]" strokeWidth={1.5} aria-hidden />
+      </div>
+    </div>
+  );
+}
+
+function motionTools({
+  addButtons,
+  onAdd
+}: {
+  addButtons: { type: ElementType; label: string; Icon: typeof Droplets }[];
+  onAdd: (type: ElementType) => void;
+}) {
+  return (
+    <motionToolsGrid addButtons={addButtons} onAdd={onAdd} />
+  );
+}
+
+function motionToolsGrid({
+  addButtons,
+  onAdd
+}: {
+  addButtons: { type: ElementType; label: string; Icon: typeof Droplets }[];
+  onAdd: (type: ElementType) => void;
+}) {
+  return (
+    <div className="grid grid-cols-2 gap-1.5">
+      {addButtons.map(({ type, label, Icon }) => (
+        <button
+          key={type}
+          type="button"
+          onClick={() => onAdd(type)}
+          className="aquamap-pressable flex flex-col items-center gap-1 rounded border border-[#1f1f1f] bg-[#2a2a2a] px-1.5 py-2.5 text-[10px] font-medium text-[#d4d4d4] hover:border-[#525252] hover:bg-[#333]"
+        >
+          <Icon className="h-4 w-4 text-[#5eead4]" strokeWidth={1.75} />
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function motionSizeHeader({
+  onApplyPresetSize,
+  preset
+}: {
+  onApplyPresetSize: () => void;
+  preset: { width: number; height: number } | null;
+}) {
+  return (
+    <div className="mb-2 flex items-center justify-between gap-2">
+      <span className="font-mono text-[9px] font-semibold uppercase text-[#737373]">Tamaño (px)</span>
+      {preset ? (
+        <button
+          type="button"
+          onClick={onApplyPresetSize}
+          className="aquamap-pressable rounded border border-[#404040] px-2 py-0.5 text-[9px] text-[#a3a3a3] hover:bg-[#333]"
+          title={`Restaurar ${preset.width}×${preset.height}`}
+        >
+          Tamaño tipo
+        </button>
+      ) : null}
+    </div>
   );
 }

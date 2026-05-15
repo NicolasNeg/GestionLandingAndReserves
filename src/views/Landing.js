@@ -183,7 +183,17 @@ function getPublicKindLabel(kindValue) {
 function pseudoItemFromAquamapElement(el) {
   if (!el) return null;
   const kind =
-    el.type === 'pool' ? 'pool' : el.type === 'tree' ? 'marker' : el.type === 'slide' ? 'rect' : 'servicio';
+    el.type === 'pool'
+      ? 'pool'
+      : el.type === 'mesa'
+        ? 'mesa'
+        : el.type === 'parking'
+          ? 'estacionamiento'
+          : el.type === 'tree'
+            ? 'marker'
+            : el.type === 'slide'
+              ? 'rect'
+              : 'servicio';
   return {
     kind,
     label: el.name,

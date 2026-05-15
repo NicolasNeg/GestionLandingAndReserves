@@ -53,9 +53,12 @@ import {
   getMapKind,
   parseDistribucionJson
 } from '../lib/distribucionMapa.js';
-import { mountReactMapEditor } from '../react/mapEditorMount.tsx';
 import { mountAquaMapSiteEditor } from '../react/aquaMapSiteMount.tsx';
-import { ensureAquamapEnvelopeFromSiteJson, isAquamapSiteJson } from '../aquamap/siteEnvelope.ts';
+import {
+  ensureAquamapEnvelopeFromSiteJson,
+  isAquamapSiteJson,
+  validateAquamapSiteForSave
+} from '../aquamap/siteEnvelope.ts';
 import { MAP_QUICK_PRESETS } from '../lib/mapEngine/mapPresets.js';
 import { getUserAccess } from '../lib/accessControl.js';
 import { icon } from '../lib/icons.js';
@@ -2729,10 +2732,11 @@ const AdminDashboard = {
         scheduleMapPersistDraft(jsonStr);
         bumpLandingUi();
       };
-      const getIsoSiteMapEditor = () => mapContext === 'parque' || mapContext === 'albercas';
+      const getIsoSiteMapEditor = () => true;
       const parseMapDimsForAdmin = (json, ctx) => {
-        if (ctx === 'mesas' || ctx === 'estacionamiento') return parseDistribucionJson(json);
-        const env = ensureAquamapEnvelopeFromSiteJson(json);
+        const view =
+          ctx === 'mesas' ? 'mesas' : ctx === 'estacionamiento' ? 'estacionamiento' : ctx === 'albercas' ? 'albercas' : 'global';
+        const env = ensureAquamapEnvelopeFromSiteJson(json, { view });
         return { w: env.world.w, h: env.world.h };
       };
       const getMapByContext = () =>
@@ -2757,21 +2761,9 @@ const AdminDashboard = {
         if (shell && host) {
           shell.classList.add('mapa-shell--react');
           host.classList.remove('hidden');
-          if (getIsoSiteMapEditor()) {
-            return mountAquaMapSiteEditor(host, {
-              initialJson: json || DEFAULT_MAPA_JSON,
-              onChangeJson: handleMapEditorChange,
-              onSaveSite: () => document.getElementById('lp-save')?.click(),
-              onPreviewPublic: () => {
-                const a = document.getElementById('mapa-preview-link');
-                if (a) a.click();
-                else window.location.assign('/home#mapa');
-              }
-            });
-          }
-          return mountReactMapEditor(host, {
+          return mountAquaMapSiteEditor(host, {
             initialJson: json || DEFAULT_MAPA_JSON,
-            view: mapViewForContext(),
+            mapContext,
             onChangeJson: handleMapEditorChange,
             onSaveSite: () => document.getElementById('lp-save')?.click(),
             onPreviewPublic: () => {
@@ -4100,19 +4092,17 @@ const AdminDashboard = {
         if (mapContext === 'estacionamiento') landing.mapaEstacionamientoJson = editedMapJson;
         if (mapContext === 'albercas') landing.mapaDistribucionJson = editedMapJson;
 
-        const vP = validateMapDocumentForSave(landing.mapaDistribucionJson || DEFAULT_MAPA_JSON, 'parque');
-        const vM = validateMapDocumentForSave(
-          landing.mapaMesasJson || landing.mapaDistribucionJson || DEFAULT_MAPA_JSON,
-          'mesas'
-        );
-        const vE = validateMapDocumentForSave(
-          landing.mapaEstacionamientoJson || landing.mapaDistribucionJson || DEFAULT_MAPA_JSON,
+        const validateMapJsonForSave = (jsonStr, ctx) => {
+          const j = jsonStr || DEFAULT_MAPA_JSON;
+          return isAquamapSiteJson(j) ? validateAquamapSiteForSave(j) : validateMapDocumentForSave(j, ctx);
+        };
+        const vP = validateMapJsonForSave(landing.mapaDistribucionJson, 'parque');
+        const vM = validateMapJsonForSave(landing.mapaMesasJson || landing.mapaDistribucionJson, 'mesas');
+        const vE = validateMapJsonForSave(
+          landing.mapaEstacionamientoJson || landing.mapaDistribucionJson,
           'estacionamiento'
         );
-        const vA = validateMapDocumentForSave(
-          landing.mapaDistribucionJson || DEFAULT_MAPA_JSON,
-          'albercas'
-        );
+        const vA = validateMapJsonForSave(landing.mapaDistribucionJson, 'albercas');
         const mapErrors = [...new Set([...vP.errors, ...vM.errors, ...vE.errors, ...vA.errors])];
         const mapWarnings = [...new Set([...vP.warnings, ...vM.warnings, ...vE.warnings, ...vA.warnings])];
         if (mapErrors.length) {
