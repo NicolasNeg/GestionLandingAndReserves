@@ -1,5 +1,15 @@
 import type { ElementType } from './types';
 
+/** Tipos soportados por el lienzo Konva (biblioteca completa del parque). */
+export const ALL_AQUAMAP_ELEMENT_TYPES: ElementType[] = [
+  'pool',
+  'slide',
+  'service',
+  'tree',
+  'mesa',
+  'parking'
+];
+
 export type MapLayerContext = 'parque' | 'mesas' | 'estacionamiento' | 'albercas';
 
 export type LayerUiConfig = {
@@ -31,8 +41,8 @@ export const MAP_LAYER_CONFIG: Record<MapLayerContext, LayerUiConfig> = {
   albercas: {
     id: 'albercas',
     label: 'Albercas',
-    shortHint: 'Zonas acuáticas del parque.',
-    allowedTypes: ['pool', 'slide']
+    shortHint: 'Zonas acuáticas; también servicios y árboles de contexto.',
+    allowedTypes: ['pool', 'slide', 'service', 'tree']
   }
 };
 

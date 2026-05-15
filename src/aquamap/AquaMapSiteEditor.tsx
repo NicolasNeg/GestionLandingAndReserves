@@ -454,6 +454,7 @@ export const AquaMapSiteEditor = forwardRef<AquaMapSiteEditorHandle, Props>(func
         onDeleteSelected={deleteSelected}
         onSaveClick={onSaveClick}
         onPublishClick={onPublishClick}
+        addDisabled={previewMode}
       />
     </div>
   );

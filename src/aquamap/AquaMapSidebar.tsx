@@ -44,6 +44,8 @@ type Props = {
   onDeleteSelected?: () => void;
   onSaveClick: () => void;
   onPublishClick: () => void;
+  /** En vista previa los botones de añadir quedan deshabilitados pero visibles. */
+  addDisabled?: boolean;
 };
 
 export function AquaMapSidebar({
@@ -62,7 +64,8 @@ export function AquaMapSidebar({
   onDuplicateSelected,
   onDeleteSelected,
   onSaveClick,
-  onPublishClick
+  onPublishClick,
+  addDisabled = false
 }: Props) {
   const fileRef = useRef<HTMLInputElement>(null);
   const maxW = Math.max(200, Math.round(world.w * 0.65));
@@ -114,7 +117,7 @@ export function AquaMapSidebar({
         <h2 className="mb-2 font-mono text-[9px] font-semibold uppercase tracking-wider text-[#737373]">
           Añadir al mapa
         </h2>
-        <motionTools addButtons={addButtons} onAdd={onAdd} />
+        <motionTools addButtons={addButtons} onAdd={onAdd} disabled={addDisabled} />
       </section>
 
       <div className="flex-1 overflow-y-auto px-3 py-3">
@@ -339,31 +342,46 @@ function motionHeader({ layerLabel, layerHint }: { layerLabel: string; layerHint
 
 function motionTools({
   addButtons,
-  onAdd
+  onAdd,
+  disabled
 }: {
   addButtons: { type: ElementType; label: string; Icon: typeof Droplets }[];
   onAdd: (type: ElementType) => void;
+  disabled?: boolean;
 }) {
-  return (
-    <motionToolsGrid addButtons={addButtons} onAdd={onAdd} />
-  );
+  return <motionToolsGrid addButtons={addButtons} onAdd={onAdd} disabled={disabled} />;
 }
 
 function motionToolsGrid({
   addButtons,
-  onAdd
+  onAdd,
+  disabled
 }: {
   addButtons: { type: ElementType; label: string; Icon: typeof Droplets }[];
   onAdd: (type: ElementType) => void;
+  disabled?: boolean;
 }) {
+  if (!addButtons.length) {
+    return (
+      <p className="text-[10px] leading-snug text-[#737373]">
+        No hay herramientas para esta capa. Cambia de vista (Global, Mesas, etc.).
+      </p>
+    );
+  }
+
   return (
     <div className="grid grid-cols-2 gap-1.5">
       {addButtons.map(({ type, label, Icon }) => (
         <button
           key={type}
           type="button"
+          disabled={disabled}
           onClick={() => onAdd(type)}
-          className="aquamap-pressable flex flex-col items-center gap-1 rounded border border-[#1f1f1f] bg-[#2a2a2a] px-1.5 py-2.5 text-[10px] font-medium text-[#d4d4d4] hover:border-[#525252] hover:bg-[#333]"
+          className={`aquamap-pressable flex flex-col items-center gap-1 rounded border px-1.5 py-2.5 text-[10px] font-medium ${
+            disabled
+              ? 'cursor-not-allowed border-[#333] bg-[#252525] text-[#525252]'
+              : 'border-[#1f1f1f] bg-[#2a2a2a] text-[#d4d4d4] hover:border-[#525252] hover:bg-[#333]'
+          }`}
         >
           <Icon className="h-4 w-4 text-[#5eead4]" strokeWidth={1.75} />
           {label}
