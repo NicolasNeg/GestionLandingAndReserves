@@ -189,6 +189,7 @@ const defaultLandingForm = () => ({
   mapaEstacionamientoJson: DEFAULT_MAPA_JSON,
   imagenSatelitalUrl: '',
   googleMapsUrl: '',
+  googleMapsAddress: '',
   horariosTexto: 'Ejemplo: Lunes a domingo 9:00 - 18:00',
   abiertoAhora: true,
   ocupacionTexto: 'Ejemplo: Ocupacion moderada hoy.',
@@ -215,6 +216,7 @@ function mergeLandingRow(row) {
     mapaEstacionamientoJson: row.mapaEstacionamientoJson || row.mapaDistribucionJson || d.mapaEstacionamientoJson,
     imagenSatelitalUrl: row.imagenSatelitalUrl ?? '',
     googleMapsUrl: row.googleMapsUrl ?? '',
+    googleMapsAddress: row.googleMapsAddress ?? '',
     horariosTexto: row.horariosTexto ?? d.horariosTexto,
     abiertoAhora: Boolean(row.abiertoAhora),
     ocupacionTexto: row.ocupacionTexto ?? d.ocupacionTexto,
@@ -2417,6 +2419,7 @@ const AdminDashboard = {
         const park = document.getElementById('lp-estacionamiento')?.value ?? '';
         const sat = document.getElementById('lp-satelite')?.value?.trim() ?? '';
         const maps = document.getElementById('lp-maps')?.value?.trim() ?? '';
+        const mapsAddr = document.getElementById('lp-maps-address')?.value?.trim() ?? '';
 
         const botRows = collectBotonesFromDom();
         const botPills = botRows
@@ -2471,7 +2474,8 @@ const AdminDashboard = {
           <section data-lb-canvas-block="contacto" class="lb-canvas-block rounded-b-xl bg-white px-4 py-4 sm:px-6">
             <p class="text-[10px] font-black uppercase text-slate-500">Ubicacion</p>
             <p class="mt-2 break-all text-xs text-slate-600">${sat ? `Imagen: ${escapeHtml(sat.slice(0, 48))}…` : 'Sin imagen satelital'}</p>
-            <p class="mt-1 break-all text-xs text-slate-600">${maps ? `Maps: ${escapeHtml(maps.slice(0, 48))}…` : 'Sin enlace Maps'}</p>
+            <p class="mt-1 break-all text-xs text-slate-600">${mapsAddr ? `Direccion: ${escapeHtml(mapsAddr.slice(0, 56))}${mapsAddr.length > 56 ? '…' : ''}` : 'Sin direccion Maps'}</p>
+            <p class="mt-1 break-all text-xs text-slate-600">${maps ? `Enlace: ${escapeHtml(maps.slice(0, 48))}…` : 'Sin enlace Maps'}</p>
           </section>
         `;
 
@@ -2666,6 +2670,7 @@ const AdminDashboard = {
       setVal('lp-estacionamiento', landing.estacionamientoTexto);
       setVal('lp-satelite', landing.imagenSatelitalUrl);
       setVal('lp-maps', landing.googleMapsUrl);
+      setVal('lp-maps-address', landing.googleMapsAddress);
       setVal('lp-hero-kicker', splitHeroLoad.hero.kicker);
       setVal('lp-hero-title', splitHeroLoad.hero.title);
       setVal('lp-hero-subtitle', splitHeroLoad.hero.subtitle);
@@ -2696,7 +2701,7 @@ const AdminDashboard = {
       };
       bumpLandingUiRef = bumpLandingUi;
 
-      ['lp-descripcion', 'lp-ocupacion', 'lp-estacionamiento', 'lp-abierto', 'lp-satelite', 'lp-maps'].forEach((id) => {
+      ['lp-descripcion', 'lp-ocupacion', 'lp-estacionamiento', 'lp-abierto', 'lp-satelite', 'lp-maps', 'lp-maps-address'].forEach((id) => {
         document.getElementById(id)?.addEventListener('input', bumpLandingUi);
         document.getElementById(id)?.addEventListener('change', bumpLandingUi);
       });
@@ -4135,6 +4140,7 @@ const AdminDashboard = {
           mapaEstacionamientoJson: landing.mapaEstacionamientoJson || landing.mapaDistribucionJson || DEFAULT_MAPA_JSON,
           imagenSatelitalUrl: document.getElementById('lp-satelite')?.value?.trim() || '',
           googleMapsUrl: document.getElementById('lp-maps')?.value?.trim() || '',
+          googleMapsAddress: document.getElementById('lp-maps-address')?.value?.trim() || '',
           horariosTexto: serializeScheduleConfig(scheduleConfig),
           abiertoAhora: document.getElementById('lp-abierto')?.checked ?? false,
           ocupacionTexto: document.getElementById('lp-ocupacion')?.value || '',
@@ -4173,6 +4179,7 @@ const AdminDashboard = {
             descripcionParque: payload.descripcionParque,
             imagenSatelitalUrl: payload.imagenSatelitalUrl,
             googleMapsUrl: payload.googleMapsUrl,
+            googleMapsAddress: payload.googleMapsAddress,
             horariosTexto: payload.horariosTexto,
             abiertoAhora: payload.abiertoAhora,
             ocupacionTexto: payload.ocupacionTexto,
@@ -4230,6 +4237,7 @@ const AdminDashboard = {
         setVal('lp-estacionamiento', landing.estacionamientoTexto);
         setVal('lp-satelite', landing.imagenSatelitalUrl);
         setVal('lp-maps', landing.googleMapsUrl);
+      setVal('lp-maps-address', landing.googleMapsAddress);
         setVal('lp-hero-kicker', sb.hero.kicker);
         setVal('lp-hero-title', sb.hero.title);
         setVal('lp-hero-subtitle', sb.hero.subtitle);

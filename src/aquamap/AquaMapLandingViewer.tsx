@@ -2,6 +2,12 @@ import { useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState,
 import { AquaMapBootOverlay } from './AquaMapBootOverlay';
 import { AquaMapCanvas } from './AquaMapCanvas';
 import { AquaMapLegend } from './AquaMapLegend';
+import {
+  constrainAquaMapCamera,
+  LANDING_CAMERA_LIMITS,
+  landingFitCamera,
+  clampCameraScale
+} from './aquaMapCameraConstraints';
 import type { ElementType, MapElement } from './types';
 import { ensureAquamapEnvelopeFromSiteJson, type AquamapSiteEnvelope } from './siteEnvelope';
 import { defaultSpriteForType } from './spriteUrls';
@@ -64,11 +70,33 @@ export const AquaMapLandingViewer = forwardRef<AquaMapLandingViewerHandle, Props
   const mapWrapRef = useRef<HTMLDivElement>(null);
   const [stageSize, setStageSize] = useState({ w: 800, h: 600 });
 
+  const viewport = useMemo(() => ({ width: stageSize.w, height: stageSize.h }), [stageSize]);
+  const world = useMemo(() => ({ w: envelope.world.w, h: envelope.world.h }), [envelope.world]);
+
+  const setCameraLanding = useCallback(
+    (next: typeof camera | ((prev: typeof camera) => typeof camera)) => {
+      setCamera((prev) => {
+        const raw = typeof next === 'function' ? next(prev) : next;
+        return constrainAquaMapCamera(raw, viewport, world, LANDING_CAMERA_LIMITS);
+      });
+    },
+    [viewport, world]
+  );
+
+  const fitCamera = useCallback(() => {
+    setCamera(landingFitCamera(viewport, world, LANDING_CAMERA_LIMITS));
+  }, [viewport, world]);
+
   useEffect(() => {
     setEnvelope(ensureAquamapEnvelopeFromSiteJson(jsonStr));
     setSelectedId(null);
-    setCamera({ x: 0, y: 0, scale: 1 });
+    setCamera(landingFitCamera(viewport, world, LANDING_CAMERA_LIMITS));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reset al cambiar JSON
   }, [jsonStr]);
+
+  useEffect(() => {
+    setCameraLanding((c) => c);
+  }, [stageSize.w, stageSize.h, envelope.world.w, envelope.world.h, setCameraLanding]);
 
   useEffect(() => {
     let cancelled = false;
@@ -114,17 +142,26 @@ export const AquaMapLandingViewer = forwardRef<AquaMapLandingViewerHandle, Props
   const onElementGeometryChange = useCallback(() => {}, []);
 
   const zoomIn = useCallback(() => {
-    setCamera((c) => ({ ...c, scale: Math.min(2.35, c.scale * 1.12) }));
-  }, []);
+    setCameraLanding((c) => ({
+      ...c,
+      scale: clampCameraScale(c.scale * 1.12, LANDING_CAMERA_LIMITS)
+    }));
+  }, [setCameraLanding]);
+
   const zoomOut = useCallback(() => {
-    setCamera((c) => ({ ...c, scale: Math.max(0.42, c.scale / 1.12) }));
-  }, []);
+    setCameraLanding((c) => ({
+      ...c,
+      scale: clampCameraScale(c.scale / 1.12, LANDING_CAMERA_LIMITS)
+    }));
+  }, [setCameraLanding]);
+
   const reset = useCallback(() => {
-    setCamera({ x: 0, y: 0, scale: 1 });
-  }, []);
+    fitCamera();
+  }, [fitCamera]);
+
   const fit = useCallback(() => {
-    setCamera({ x: 0, y: 0, scale: 1 });
-  }, []);
+    fitCamera();
+  }, [fitCamera]);
 
   useImperativeHandle(
     ref,
@@ -142,7 +179,11 @@ export const AquaMapLandingViewer = forwardRef<AquaMapLandingViewerHandle, Props
   );
 
   return (
-    <div ref={mapWrapRef} className="aquamap-artboard relative h-full w-full overflow-hidden">
+    <div
+      ref={mapWrapRef}
+      className="aquamap-artboard relative h-full w-full overflow-hidden"
+      data-aquamap-landing-viewer
+    >
       {booting ? <AquaMapBootOverlay subtitle="Vista publica del parque" /> : null}
       <AquaMapCanvas
         width={stageSize.w}
@@ -151,12 +192,13 @@ export const AquaMapLandingViewer = forwardRef<AquaMapLandingViewerHandle, Props
         worldH={envelope.world.h}
         elementsSorted={elementsSorted}
         camera={camera}
-        setCamera={setCamera}
+        setCamera={setCameraLanding}
         selectedId={selectedId}
         setSelectedId={setSelectedId}
         onElementGeometryChange={onElementGeometryChange}
         readOnly
         blockElementPointer={false}
+        cameraLimits={LANDING_CAMERA_LIMITS}
       />
       <AquaMapLegend />
     </div>

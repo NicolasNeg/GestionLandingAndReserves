@@ -80,6 +80,7 @@ create table if not exists public.landing_page (
   mapa_estacionamiento_json text not null default '{}',
   imagen_satelital_url text not null default '',
   google_maps_url text not null default '',
+  google_maps_address text not null default '',
   horarios_texto text not null default '',
   abierto_ahora boolean not null default true,
   ocupacion_texto text not null default '',

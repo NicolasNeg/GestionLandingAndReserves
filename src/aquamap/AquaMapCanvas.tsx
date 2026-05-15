@@ -3,20 +3,70 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import { Ellipse, Group, Image, Layer, Line, Rect, Stage, Transformer } from 'react-konva';
 import type { MapElement } from './types';
+import {
+  constrainAquaMapCamera,
+  EDITOR_CAMERA_LIMITS,
+  type CameraLimits,
+  type CameraState
+} from './aquaMapCameraConstraints';
 import { computeCanvasLayout, pointerToWorld } from './aquaMapCanvasCoords';
 import type { AquaMapContextRequest } from './useAquaMapEditorCommands';
 import { defaultSpriteForType } from './spriteUrls';
 import { AQUAMAP_ISLAND_MARGIN } from './world';
 
-type Camera = { x: number; y: number; scale: number };
+type Camera = CameraState;
 
 function resolveSrc(el: MapElement): string {
   const u = el.imgSrc?.trim();
   return u || defaultSpriteForType(el.type);
 }
 
-/** Tras arrastrar/redimensionar en Konva, normaliza escala y devuelve tamaño real en px del mundo. */
+function normalizeShapeSize(node: Konva.Shape, w: number, h: number) {
+  const width = Math.round(Math.max(16, w));
+  const height = Math.round(Math.max(16, h));
+  if (node.getClassName() === 'Image') {
+    const im = node as Konva.Image;
+    im.width(width);
+    im.height(height);
+  } else {
+    const r = node as Konva.Rect;
+    r.width(width);
+    r.height(height);
+  }
+  return { width, height };
+}
+
+/** Tras arrastrar/redimensionar: lee geometría del Group contenedor (estable para Transformer). */
 function readNodeGeometry(node: Konva.Node): { x: number; y: number; width: number; height: number } {
+  if (node.getClassName() === 'Group') {
+    const g = node as Konva.Group;
+    const child =
+      g.findOne<Konva.Image>('Image') ?? g.findOne<Konva.Rect>('Rect') ?? null;
+    const scaleX = g.scaleX();
+    const scaleY = g.scaleY();
+    let w = 64;
+    let h = 64;
+    if (child) {
+      w =
+        child.getClassName() === 'Image'
+          ? (child as Konva.Image).width() * scaleX
+          : (child as Konva.Rect).width() * scaleX;
+      h =
+        child.getClassName() === 'Image'
+          ? (child as Konva.Image).height() * scaleY
+          : (child as Konva.Rect).height() * scaleY;
+    }
+    g.scaleX(1);
+    g.scaleY(1);
+    if (child) normalizeShapeSize(child, w, h);
+    return {
+      x: Math.round(g.x()),
+      y: Math.round(g.y()),
+      width: Math.round(Math.max(16, w)),
+      height: Math.round(Math.max(16, h))
+    };
+  }
+
   const scaleX = node.scaleX();
   const scaleY = node.scaleY();
   const w =
@@ -29,20 +79,12 @@ function readNodeGeometry(node: Konva.Node): { x: number; y: number; width: numb
       : (node as Konva.Rect).height() * scaleY;
   node.scaleX(1);
   node.scaleY(1);
-  if (node.getClassName() === 'Image') {
-    const im = node as Konva.Image;
-    im.width(w);
-    im.height(h);
-  } else {
-    const r = node as Konva.Rect;
-    r.width(w);
-    r.height(h);
-  }
+  const { width, height } = normalizeShapeSize(node as Konva.Shape, w, h);
   return {
     x: Math.round(node.x()),
     y: Math.round(node.y()),
-    width: Math.round(Math.max(16, w)),
-    height: Math.round(Math.max(16, h))
+    width,
+    height
   };
 }
 
@@ -72,13 +114,13 @@ function ElementSprite({
   onContextMenu
 }: ElementSpriteProps) {
   const [img, setImg] = useState<HTMLImageElement | null>(null);
-  const innerRef = useRef<Konva.Shape>(null);
+  const groupRef = useRef<Konva.Group>(null);
   const src = resolveSrc(el);
 
   useEffect(() => {
-    shapeRef(el.id, innerRef.current);
+    shapeRef(el.id, groupRef.current);
     return () => shapeRef(el.id, null);
-  }, [el.id, shapeRef]);
+  }, [el.id, shapeRef, img]);
 
   useEffect(() => {
     const im = new window.Image();
@@ -89,49 +131,51 @@ function ElementSprite({
   }, [src]);
 
   useEffect(() => {
-    const node = innerRef.current;
-    if (!node) return;
-    node.x(el.x);
-    node.y(el.y);
-    node.scaleX(1);
-    node.scaleY(1);
-    if (node.getClassName() === 'Image') {
-      const im = node as Konva.Image;
-      im.width(el.width);
-      im.height(el.height);
-    } else {
-      const r = node as Konva.Rect;
-      r.width(el.width);
-      r.height(el.height);
-    }
-    node.to({
-      shadowBlur: selected ? 28 : hovered ? 18 : 11,
-      shadowOpacity: selected ? 0.62 : 0.48,
-      strokeWidth: selected ? 2.6 : hovered ? 1.8 : 1.15,
-      duration: 0.12,
-      easing: Konva.Easings.EaseOutCubic
-    });
-  }, [el.x, el.y, el.width, el.height, selected, hovered]);
+    const g = groupRef.current;
+    if (!g) return;
+    g.x(el.x);
+    g.y(el.y);
+    g.scaleX(1);
+    g.scaleY(1);
+    g.getLayer()?.batchDraw();
+  }, [el.x, el.y, el.width, el.height, img]);
 
   const stroke = selected ? '#38bdf8' : hovered ? '#94a3b8' : 'rgba(15,23,42,0.22)';
   const listening = !blockPointer && !readOnly;
   const commitGeometry = (node: Konva.Node) => {
-    onGeometryChange(el.id, readNodeGeometry(node));
+    const target = node.getClassName() === 'Group' ? node : node.getParent();
+    if (target) onGeometryChange(el.id, readNodeGeometry(target));
   };
 
-  const commonHandlers = {
+  const groupHandlers = {
     onMouseDown: (e: Konva.KonvaEventObject<MouseEvent>) => {
       e.cancelBubble = true;
       if (!readOnly) onSelect();
     },
-    onTap: (e: Konva.KonvaEventObject<MouseEvent>) => {
+    onClick: (e: Konva.KonvaEventObject<MouseEvent>) => {
       e.cancelBubble = true;
-      if (readOnly) onSelect();
+      onSelect();
     },
-    onMouseEnter: () => onHoverChange(el.id),
-    onMouseLeave: () => onHoverChange(null),
+    onTap: (e: Konva.KonvaEventObject<TouchEvent>) => {
+      e.cancelBubble = true;
+      onSelect();
+    },
+    onMouseEnter: () => {
+      onHoverChange(el.id);
+      if (readOnly) {
+        const stage = groupRef.current?.getStage();
+        stage?.container().style.setProperty('cursor', 'pointer');
+      }
+    },
+    onMouseLeave: () => {
+      onHoverChange(null);
+      if (readOnly) {
+        const stage = groupRef.current?.getStage();
+        stage?.container().style.setProperty('cursor', 'grab');
+      }
+    },
     onDragStart: (e: Konva.KonvaEventObject<DragEvent>) => {
-      const n = e.target;
+      const n = e.target as Konva.Group;
       n.scaleX(1);
       n.scaleY(1);
     },
@@ -146,49 +190,42 @@ function ElementSprite({
     }
   };
 
-  if (!img) {
-    return (
-      <Rect
-        ref={innerRef}
-        x={el.x}
-        y={el.y}
-        width={el.width}
-        height={el.height}
-        fill="rgba(30,41,59,0.42)"
-        stroke={stroke}
-        strokeWidth={selected ? 2.6 : 1.15}
-        cornerRadius={8}
-        draggable={listening}
-        listening={!blockPointer}
-        shadowBlur={11}
-        shadowColor="rgba(0,0,0,0.35)"
-        shadowOffsetY={3}
-        shadowOpacity={0.5}
-        hitStrokeWidth={readOnly ? 14 : 10}
-        {...commonHandlers}
-      />
-    );
-  }
+  const childProps = {
+    x: 0,
+    y: 0,
+    width: el.width,
+    height: el.height,
+    listening: false,
+    shadowBlur: selected ? 28 : hovered ? 18 : 11,
+    shadowColor: 'rgba(0,0,0,0.35)',
+    shadowOffsetY: selected ? 4 : 3,
+    shadowOpacity: selected ? 0.62 : 0.48,
+    stroke,
+    strokeWidth: selected ? 2.6 : hovered ? 1.8 : 1.15
+  };
 
   return (
-    <Image
-      ref={innerRef}
-      image={img}
-      x={el.x}
-      y={el.y}
-      width={el.width}
-      height={el.height}
-      draggable={listening}
-      listening={!blockPointer}
-      shadowBlur={11}
-      shadowColor="rgba(0,0,0,0.32)"
-      shadowOffsetY={4}
-      shadowOpacity={0.52}
-      stroke={stroke}
-      strokeWidth={selected ? 2.6 : 1.15}
-      hitStrokeWidth={readOnly ? 16 : 12}
-      {...commonHandlers}
-    />
+    <Group ref={groupRef} draggable={listening} listening={!blockPointer} {...groupHandlers}>
+      <Rect
+        x={0}
+        y={0}
+        width={el.width}
+        height={el.height}
+        fill="rgba(0,0,0,0.004)"
+        listening
+        hitStrokeWidth={readOnly ? 16 : 12}
+      />
+      {!img ? (
+        <Rect
+          {...childProps}
+          fill="rgba(30,41,59,0.42)"
+          cornerRadius={8}
+          listening={false}
+        />
+      ) : (
+        <Image {...childProps} image={img} listening={false} />
+      )}
+    </Group>
   );
 }
 
@@ -294,6 +331,7 @@ export type AquaMapCanvasProps = {
   readOnly?: boolean;
   blockElementPointer?: boolean;
   onContextRequest?: (req: AquaMapContextRequest) => void;
+  cameraLimits?: CameraLimits;
 };
 
 export function AquaMapCanvas({
@@ -309,23 +347,47 @@ export function AquaMapCanvas({
   onElementGeometryChange,
   readOnly = false,
   blockElementPointer = false,
-  onContextRequest
+  onContextRequest,
+  cameraLimits = EDITOR_CAMERA_LIMITS
 }: AquaMapCanvasProps) {
   const stageRef = useRef<Konva.Stage>(null);
   const trRef = useRef<Konva.Transformer>(null);
   const shapeRefs = useRef<Map<string, Konva.Shape>>(new Map());
   const [hoverId, setHoverId] = useState<string | null>(null);
 
-  const registerShapeRef = useCallback((id: string, node: Konva.Shape | null) => {
+  const registerShapeRef = useCallback((id: string, node: Konva.Group | null) => {
     if (node) shapeRefs.current.set(id, node);
     else shapeRefs.current.delete(id);
   }, []);
+
+  const syncTransformer = useCallback(() => {
+    const tr = trRef.current;
+    if (!tr || readOnly) return;
+    const node = selectedId ? shapeRefs.current.get(selectedId) : null;
+    if (node && node.getStage()) {
+      tr.nodes([node]);
+      tr.forceUpdate();
+      tr.getLayer()?.batchDraw();
+    } else {
+      tr.nodes([]);
+    }
+  }, [readOnly, selectedId]);
 
   const layout = useMemo(
     () => computeCanvasLayout(width, height, worldW, worldH, camera.scale),
     [width, height, worldW, worldH, camera.scale]
   );
   const s = layout.scale;
+
+  const applyCamera = useCallback(
+    (next: Camera | ((prev: Camera) => Camera)) => {
+      setCamera((prev) => {
+        const raw = typeof next === 'function' ? next(prev) : next;
+        return constrainAquaMapCamera(raw, { width, height }, { w: worldW, h: worldH }, cameraLimits);
+      });
+    },
+    [cameraLimits, height, setCamera, width, worldH, worldW]
+  );
 
   const emitContextRequest = useCallback(
     (e: Konva.KonvaEventObject<PointerEvent>, elementId?: string) => {
@@ -349,16 +411,20 @@ export function AquaMapCanvas({
   );
 
   useEffect(() => {
-    const tr = trRef.current;
-    if (!tr || readOnly) return;
-    const node = selectedId ? shapeRefs.current.get(selectedId) : null;
-    if (node) {
-      tr.nodes([node]);
-      tr.getLayer()?.batchDraw();
-    } else {
-      tr.nodes([]);
-    }
-  }, [selectedId, elementsSorted, readOnly]);
+    syncTransformer();
+    const id = window.requestAnimationFrame(syncTransformer);
+    return () => window.cancelAnimationFrame(id);
+  }, [syncTransformer, elementsSorted, layout.scale, layout.groupX, layout.groupY]);
+
+  const selectedEl = useMemo(
+    () => (selectedId ? elementsSorted.find((e) => e.id === selectedId) : null),
+    [elementsSorted, selectedId]
+  );
+
+  useEffect(() => {
+    if (!selectedEl) return;
+    syncTransformer();
+  }, [selectedEl?.x, selectedEl?.y, selectedEl?.width, selectedEl?.height, syncTransformer]);
 
   const onWheel = useCallback(
     (e: Konva.KonvaEventObject<WheelEvent>) => {
@@ -368,7 +434,7 @@ export function AquaMapCanvas({
 
       const pointer = stage.getPointerPosition();
       const factor = e.evt.deltaY > 0 ? 0.9 : 1.11;
-      const nextScale = Math.min(2.35, Math.max(0.42, camera.scale * factor));
+      const nextScale = camera.scale * factor;
       if (Math.abs(nextScale - camera.scale) < 1e-6) return;
 
       const oldLayout = computeCanvasLayout(width, height, worldW, worldH, camera.scale);
@@ -381,7 +447,7 @@ export function AquaMapCanvas({
       const gyNew = newLayout.groupY;
 
       if (!pointer) {
-        setCamera((c) => ({ ...c, scale: nextScale }));
+        applyCamera((c) => ({ ...c, scale: nextScale }));
         return;
       }
 
@@ -389,13 +455,13 @@ export function AquaMapCanvas({
       const py = pointer.y;
       const wx = (px - camera.x - gxOld) / oldS;
       const wy = (py - camera.y - gyOld) / oldS;
-      setCamera({
+      applyCamera({
         scale: nextScale,
         x: px - gxNew - wx * newS,
         y: py - gyNew - wy * newS
       });
     },
-    [camera.scale, camera.x, camera.y, height, setCamera, width, worldW, worldH]
+    [applyCamera, camera.scale, camera.x, camera.y, height, width, worldW, worldH]
   );
 
   const stageMouseDown = useCallback(
@@ -414,17 +480,29 @@ export function AquaMapCanvas({
       draggable
       x={camera.x}
       y={camera.y}
+      onDragMove={(e: Konva.KonvaEventObject<DragEvent>) => {
+        if (!cameraLimits.constrainPan) return;
+        const n = e.target;
+        if (n.getClassName() !== 'Stage') return;
+        const clamped = constrainAquaMapCamera(
+          { x: n.x(), y: n.y(), scale: camera.scale },
+          { width, height },
+          { w: worldW, h: worldH },
+          cameraLimits
+        );
+        n.position({ x: clamped.x, y: clamped.y });
+      }}
       onDragEnd={(e: Konva.KonvaEventObject<DragEvent>) => {
         const n = e.target;
         if (n.getClassName() !== 'Stage') return;
-        setCamera((c) => ({ ...c, x: n.x(), y: n.y() }));
+        applyCamera((c) => ({ ...c, x: n.x(), y: n.y() }));
       }}
       onWheel={onWheel}
       onMouseDown={stageMouseDown}
       onDblClick={(e) => {
         if (e.target !== e.target.getStage()) return;
         e.evt.preventDefault();
-        setCamera({ x: 0, y: 0, scale: 1 });
+        applyCamera({ x: 0, y: 0, scale: 1 });
       }}
       onMouseLeave={() => setHoverId(null)}
       onContextMenu={(e) => {
@@ -454,19 +532,25 @@ export function AquaMapCanvas({
             <Transformer
               ref={trRef}
               rotateEnabled={false}
+              ignoreStroke
               borderStroke="#38bdf8"
-              borderStrokeWidth={1.5}
+              borderStrokeWidth={1.5 / s}
               anchorStroke="#38bdf8"
               anchorFill="#0f172a"
-              anchorSize={9}
+              anchorSize={Math.max(7, 10 / s)}
               anchorCornerRadius={2}
+              padding={2 / s}
               boundBoxFunc={(oldBox, newBox) => {
                 if (newBox.width < 24 || newBox.height < 24) return oldBox;
                 return newBox;
               }}
+              onTransform={() => {
+                trRef.current?.forceUpdate();
+              }}
               onTransformEnd={() => {
                 const node = selectedId ? shapeRefs.current.get(selectedId) : null;
                 if (node) onElementGeometryChange(selectedId!, readNodeGeometry(node));
+                syncTransformer();
               }}
             />
           ) : null}

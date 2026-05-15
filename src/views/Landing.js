@@ -25,6 +25,7 @@ import { buildPublicMapFilterChips } from '../lib/mapEngine/mapPublicFilters.js'
 import { mountPublicParkMap } from '../react/publicParkMapMount.tsx';
 import { isAquamapSiteJson } from '../aquamap/siteEnvelope.ts';
 import { mountAquamapLandingMap } from '../react/aquaMapLandingMount.tsx';
+import { googleMapsEmbedUrl, googleMapsOpenUrl } from '../lib/googleMapsEmbed.js';
 
 const LANDING_PAGE_ID = 'main';
 
@@ -42,6 +43,7 @@ const defaultLanding = () => ({
   mapaEstacionamientoJson: DEFAULT_MAPA_JSON,
   imagenSatelitalUrl: '',
   googleMapsUrl: '',
+  googleMapsAddress: '',
   horariosTexto: 'Horario habitual: consulta en taquilla o actualiza este texto desde el panel.',
   abiertoAhora: true,
   ocupacionTexto: 'Ocupacion: informacion manual (proximamente automatica).',
@@ -200,39 +202,6 @@ function pseudoItemFromAquamapElement(el) {
     metadata: { publicName: el.name, description: el.description },
     notes: el.description || ''
   };
-}
-
-function googleMapsEmbedUrl(rawUrl) {
-  const raw = String(rawUrl || '').trim();
-  if (!raw) return '';
-
-  try {
-    const parsed = new URL(raw);
-    if (parsed.pathname.includes('/maps/embed')) return raw;
-    if (/maps\.app\.goo\.gl|goo\.gl\/maps/i.test(`${parsed.hostname}${parsed.pathname}`)) {
-      return `https://www.google.com/maps?q=${encodeURIComponent('Balneario San Antonio Texas')}&output=embed`;
-    }
-
-    const queryParam = parsed.searchParams.get('q') || parsed.searchParams.get('query');
-    const coordMatch = raw.match(/@(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)(?:,(\d+(?:\.\d+)?)z)?/i);
-    if (coordMatch) {
-      const [, lat, lng, zoom] = coordMatch;
-      return `https://www.google.com/maps?q=${lat},${lng}&z=${zoom || '17'}&output=embed`;
-    }
-
-    if (queryParam) {
-      return `https://www.google.com/maps?q=${encodeURIComponent(queryParam)}&output=embed`;
-    }
-
-    const placeMatch = decodeURIComponent(parsed.pathname).match(/\/place\/([^/]+)/);
-    if (placeMatch?.[1]) {
-      return `https://www.google.com/maps?q=${encodeURIComponent(placeMatch[1].replace(/\+/g, ' '))}&output=embed`;
-    }
-  } catch {
-    // Si el panel guarda solo una direccion o nombre, tambien se puede buscar.
-  }
-
-  return `https://www.google.com/maps?q=${encodeURIComponent(raw)}&output=embed`;
 }
 
 function renderBotones(botones) {
@@ -757,7 +726,7 @@ export default {
                   <div id="landing-map-info" class="public-map-info">
                     <div>
                       <p class="text-xs font-black uppercase tracking-wide text-cyan-700">Sin zona seleccionada</p>
-                      <p class="mt-1 text-sm font-semibold text-slate-600">Toca una zona del mapa para ver su descripcion publica.</p>
+                      <p class="mt-1 text-sm font-semibold text-slate-600">Haz clic en una zona del mapa para ver su descripcion publica.</p>
                     </div>
                   </div>
                   <div id="landing-map-info-mobile" class="hidden" aria-hidden="true"></div>
@@ -860,6 +829,7 @@ export default {
         mapaEstacionamientoJson: row.mapaEstacionamientoJson || row.mapaDistribucionJson || d.mapaEstacionamientoJson,
         imagenSatelitalUrl: row.imagenSatelitalUrl ?? '',
         googleMapsUrl: row.googleMapsUrl ?? '',
+        googleMapsAddress: row.googleMapsAddress ?? '',
         horariosTexto: row.horariosTexto ?? d.horariosTexto,
         abiertoAhora: Boolean(row.abiertoAhora),
         ocupacionTexto: row.ocupacionTexto ?? d.ocupacionTexto,
@@ -948,7 +918,7 @@ export default {
       const emptyHtml = `
         <div>
           <p class="text-xs font-black uppercase tracking-wide text-cyan-700">Sin zona seleccionada</p>
-          <p class="mt-1 text-sm font-semibold text-slate-600">Toca una zona del mapa para ver su descripcion publica.</p>
+          <p class="mt-1 text-sm font-semibold text-slate-600">Haz clic en una zona del mapa para ver su descripcion publica.</p>
         </div>
       `;
       if (!item) {
@@ -1116,8 +1086,11 @@ export default {
     const mapsIframe = document.getElementById('landing-maps-iframe');
     const urlSat = (landing.imagenSatelitalUrl || '').trim();
     const urlMaps = (landing.googleMapsUrl || '').trim();
-    if (urlMaps && mapsIframe && mapsEmbedWrap) {
-      mapsIframe.src = googleMapsEmbedUrl(urlMaps);
+    const addressMaps = (landing.googleMapsAddress || '').trim();
+    const embedSrc = googleMapsEmbedUrl({ url: urlMaps, address: addressMaps });
+    const openMaps = googleMapsOpenUrl({ url: urlMaps, address: addressMaps });
+    if (embedSrc && mapsIframe && mapsEmbedWrap) {
+      mapsIframe.src = embedSrc;
       mapsEmbedWrap.classList.remove('hidden');
       ph?.classList.add('hidden');
     }
@@ -1126,8 +1099,8 @@ export default {
       satWrap.classList.remove('hidden');
       ph?.classList.add('hidden');
     }
-    if (urlMaps && mapsLink && mapsWrap) {
-      mapsLink.href = urlMaps;
+    if (openMaps && mapsLink && mapsWrap) {
+      mapsLink.href = openMaps;
       mapsWrap.classList.remove('hidden');
       ph?.classList.add('hidden');
     }
