@@ -54,6 +54,8 @@ import {
   parseDistribucionJson
 } from '../lib/distribucionMapa.js';
 import { mountReactMapEditor } from '../react/mapEditorMount.tsx';
+import { mountAquaMapSiteEditor } from '../react/aquaMapSiteMount.tsx';
+import { ensureAquamapEnvelopeFromSiteJson, isAquamapSiteJson } from '../aquamap/siteEnvelope.ts';
 import { MAP_QUICK_PRESETS } from '../lib/mapEngine/mapPresets.js';
 import { getUserAccess } from '../lib/accessControl.js';
 import { icon } from '../lib/icons.js';
@@ -2727,6 +2729,12 @@ const AdminDashboard = {
         scheduleMapPersistDraft(jsonStr);
         bumpLandingUi();
       };
+      const getIsoSiteMapEditor = () => mapContext === 'parque' || mapContext === 'albercas';
+      const parseMapDimsForAdmin = (json, ctx) => {
+        if (ctx === 'mesas' || ctx === 'estacionamiento') return parseDistribucionJson(json);
+        const env = ensureAquamapEnvelopeFromSiteJson(json);
+        return { w: env.world.w, h: env.world.h };
+      };
       const getMapByContext = () =>
         mapContext === 'mesas'
           ? (landing.mapaMesasJson || landing.mapaDistribucionJson)
@@ -2749,6 +2757,18 @@ const AdminDashboard = {
         if (shell && host) {
           shell.classList.add('mapa-shell--react');
           host.classList.remove('hidden');
+          if (getIsoSiteMapEditor()) {
+            return mountAquaMapSiteEditor(host, {
+              initialJson: json || DEFAULT_MAPA_JSON,
+              onChangeJson: handleMapEditorChange,
+              onSaveSite: () => document.getElementById('lp-save')?.click(),
+              onPreviewPublic: () => {
+                const a = document.getElementById('mapa-preview-link');
+                if (a) a.click();
+                else window.location.assign('/home#mapa');
+              }
+            });
+          }
           return mountReactMapEditor(host, {
             initialJson: json || DEFAULT_MAPA_JSON,
             view: mapViewForContext(),
@@ -2794,7 +2814,18 @@ const AdminDashboard = {
         const hint = document.getElementById('mapa-empty-hint');
         if (!overlay) return;
         const items = docLike?.items || [];
-        const empty = items.length === 0;
+        let empty = items.length === 0;
+        if (getIsoSiteMapEditor() && mapEditor?.getJson) {
+          try {
+            const j = mapEditor.getJson();
+            if (isAquamapSiteJson(j)) {
+              const parsed = JSON.parse(j);
+              empty = !(Array.isArray(parsed.elements) && parsed.elements.length);
+            }
+          } catch {
+            /* noop */
+          }
+        }
         overlay.classList.toggle('hidden', !empty);
         overlay.classList.toggle('flex', empty);
         overlay.classList.toggle('pointer-events-none', !empty);
@@ -2844,7 +2875,7 @@ const AdminDashboard = {
         if (mapContext === 'estacionamiento') landing.mapaEstacionamientoJson = j;
         if (mapContext === 'albercas') landing.mapaDistribucionJson = j;
       };
-      const parsedMapDims = parseDistribucionJson(getMapByContext());
+      const parsedMapDims = parseMapDimsForAdmin(getMapByContext(), mapContext);
       setVal('mapa-doc-w', parsedMapDims.w);
       setVal('mapa-doc-h', parsedMapDims.h);
       const abierto = document.getElementById('lp-abierto');
@@ -3556,11 +3587,15 @@ const AdminDashboard = {
         syncInspectorTabs();
         mapEditor?.onSelectionChange(fillFields);
         mapEditor?.onDocumentChange?.((d) => {
-          syncBgFormFromDoc(d);
-          renderLayers();
+          if (!getIsoSiteMapEditor()) {
+            syncBgFormFromDoc(d);
+            renderLayers();
+          }
           updateMapEmptyOverlay(d);
         });
-        syncBgFormFromDoc(mapEditor?.getDocument?.() || {});
+        if (!getIsoSiteMapEditor()) {
+          syncBgFormFromDoc(mapEditor?.getDocument?.() || {});
+        }
         updateMapEmptyOverlay(mapEditor?.getDocument?.() || {});
         if (previewCanvasBtn && !mapEditor?.getPreviewMode?.()) {
           previewCanvasBtn.innerHTML = `${icon('eye', 'h-4 w-4')} Preview lienzo`;
@@ -3796,7 +3831,7 @@ const AdminDashboard = {
         if (canvas) {
           mapEditor = mountAdminMapEditor(canvas, nextJson);
           wireMapEditorUi();
-          const dims = parseDistribucionJson(nextJson);
+          const dims = parseMapDimsForAdmin(nextJson, mapContext);
           setVal('mapa-doc-w', dims.w);
           setVal('mapa-doc-h', dims.h);
         }
@@ -4219,7 +4254,7 @@ const AdminDashboard = {
         if (canvasEl) {
           mapEditor = mountAdminMapEditor(canvasEl, nextJson);
           wireMapEditorUi();
-          const dims = parseDistribucionJson(nextJson);
+          const dims = parseMapDimsForAdmin(nextJson, mapContext);
           setVal('mapa-doc-w', dims.w);
           setVal('mapa-doc-h', dims.h);
         }

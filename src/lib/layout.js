@@ -81,7 +81,12 @@ function renderHeader(access, theme) {
       : '',
     access.can('dashboard.manage') &&
     (access.can('landing.manage') || access.can('admin.panel') || access.isProgramador)
-      ? navLink({ href: '/admin/mapa', label: 'Editor mapa', iconName: 'map', active: false })
+      ? navLink({
+          href: '/admin/dashboard?section=sitio&mapfocus=1',
+          label: 'Editor mapa',
+          iconName: 'map',
+          active: false
+        })
       : '',
     access.can('admin.panel')
       ? navLink({ href: '/admin/dashboard?section=admin', label: 'Panel administracion', iconName: 'dashboard', active: path === '/admin/dashboard' })

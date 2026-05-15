@@ -25,7 +25,7 @@ type Props = {
   selected: MapElement | null;
   onAdd: (type: ElementType) => void;
   onUpdateSelected: (
-    patch: Partial<Pick<MapElement, 'name' | 'color' | 'width' | 'height' | 'imgSrc'>>
+    patch: Partial<Pick<MapElement, 'name' | 'color' | 'width' | 'height' | 'imgSrc' | 'description'>>
   ) => void;
   onSaveClick: () => void;
   onPublishClick: () => void;
@@ -100,6 +100,16 @@ export function AquaMapSidebar({
                   className="rounded-lg border border-slate-600 bg-slate-950 px-2 py-1.5 text-slate-100 outline-none focus:border-teal-500"
                   value={selected.name}
                   onChange={(e) => onUpdateSelected({ name: e.target.value })}
+                />
+              </label>
+
+              <label className="flex flex-col gap-1">
+                <span className="text-[11px] text-slate-400">Descripcion publica</span>
+                <textarea
+                  rows={3}
+                  className="resize-y rounded-lg border border-slate-600 bg-slate-950 px-2 py-1.5 text-sm text-slate-100 outline-none focus:border-teal-500"
+                  value={selected.description}
+                  onChange={(e) => onUpdateSelected({ description: e.target.value })}
                 />
               </label>
 

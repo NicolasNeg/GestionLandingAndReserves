@@ -23,6 +23,8 @@ import { splitBotonesJson, filterPublicBotones } from '../lib/landingBotonesHero
 import { computeRouteToMapItem } from '../lib/mapEngine/mapPathfinding.js';
 import { buildPublicMapFilterChips } from '../lib/mapEngine/mapPublicFilters.js';
 import { mountPublicParkMap } from '../react/publicParkMapMount.tsx';
+import { isAquamapSiteJson } from '../aquamap/siteEnvelope.ts';
+import { mountAquamapLandingMap } from '../react/aquaMapLandingMount.tsx';
 
 const LANDING_PAGE_ID = 'main';
 
@@ -175,6 +177,19 @@ function renderParkingLegend() {
 
 function getPublicKindLabel(kindValue) {
   return MAP_ITEM_KINDS.find((kind) => kind.value === kindValue)?.label || 'Zona';
+}
+
+/** Adapta un elemento AquaMap al shape que usa el panel de detalle de la landing (mismo que Konva). */
+function pseudoItemFromAquamapElement(el) {
+  if (!el) return null;
+  const kind =
+    el.type === 'pool' ? 'pool' : el.type === 'tree' ? 'marker' : el.type === 'slide' ? 'rect' : 'servicio';
+  return {
+    kind,
+    label: el.name,
+    metadata: { publicName: el.name, description: el.description },
+    notes: el.description || ''
+  };
 }
 
 function googleMapsEmbedUrl(rawUrl) {
@@ -694,7 +709,7 @@ export default {
                       ${icon('settings', 'h-4 w-4')} Editable desde panel
                     </p>
                     <p id="landing-mapa-edit-wrap" class="hidden">
-                      <a href="/admin/mapa" data-link class="inline-flex items-center gap-2 rounded-full bg-cyan-600 px-4 py-2 text-sm font-black text-white shadow-md transition hover:bg-cyan-500">
+                      <a href="/admin/dashboard?section=sitio&mapfocus=1" data-link class="inline-flex items-center gap-2 rounded-full bg-cyan-600 px-4 py-2 text-sm font-black text-white shadow-md transition hover:bg-cyan-500">
                         ${icon('map', 'h-4 w-4')} Editar plano del parque
                       </a>
                     </p>
@@ -979,8 +994,18 @@ export default {
       mapTooltip.classList.remove('hidden');
     };
     if (mapStageRoot) {
+      const useAquaPublic = isAquamapSiteJson(landing.mapaDistribucionJson);
+      let aquaElementCount = 0;
+      if (useAquaPublic) {
+        try {
+          const o = JSON.parse(landing.mapaDistribucionJson || '{}');
+          aquaElementCount = Array.isArray(o.elements) ? o.elements.length : 0;
+        } catch {
+          aquaElementCount = 0;
+        }
+      }
       const parsedPublicMap = parseDistribucionJson(landing.mapaDistribucionJson);
-      if (!parsedPublicMap.items.length) {
+      if (useAquaPublic ? aquaElementCount === 0 : !parsedPublicMap.items.length) {
         mapStageRoot.classList.add('hidden');
         setMapInfo(null);
         const stage = mapStageRoot.closest('.public-map-stage');
@@ -993,6 +1018,14 @@ export default {
             </div>
           </div>`
         );
+      } else if (useAquaPublic) {
+        globalMapViewer = mountAquamapLandingMap(mapStageRoot, landing.mapaDistribucionJson, {
+          onSelectElement: (el) => {
+            setMapInfo(el ? pseudoItemFromAquamapElement(el) : null);
+            if (globalMapViewer?.setDrawOptions) globalMapViewer.setDrawOptions({ navigationPath: [] });
+          }
+        });
+        if (mapFiltersEl) mapFiltersEl.innerHTML = '';
       } else {
         globalMapViewer = mountPublicParkMap(mapStageRoot, landing.mapaDistribucionJson, {
           view: 'global',

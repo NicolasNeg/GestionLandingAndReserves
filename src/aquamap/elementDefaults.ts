@@ -17,10 +17,15 @@ const COLORS: Record<ElementType, string> = {
   tree: '#22c55e'
 };
 
-export function createMapElement(type: ElementType): MapElement {
+export function createMapElement(
+  type: ElementType,
+  world?: { w: number; h: number }
+): MapElement {
   const id = nanoid();
-  const cx = AQUAMAP_WORLD_W / 2;
-  const cy = AQUAMAP_WORLD_H / 2;
+  const W = world?.w ?? AQUAMAP_WORLD_W;
+  const H = world?.h ?? AQUAMAP_WORLD_H;
+  const cx = W / 2;
+  const cy = H / 2;
   const spread = 120;
   return {
     id,

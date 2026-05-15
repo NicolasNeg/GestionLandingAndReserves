@@ -18,14 +18,11 @@ import { setRouteLoading } from './lib/routeLoading.js';
 import { showAlert } from './lib/appDialog.js';
 import { initRealtimeSync } from './lib/realtimeSync.js';
 
-import AquaMapEditorPage from './views/AquaMapEditorPage.js';
-
 /** Limpieza de la vista anterior (p. ej. desmontar React) antes de reemplazar `#app`. */
 let routeViewUnmount = null;
 
 // Listado de rutas mapeadas a componentes/funciones
 const routes = {
-    '/aquamap-editor': AquaMapEditorPage,
     '/home': Landing,
     '/login': Login,
     '/reservar': Reservar,

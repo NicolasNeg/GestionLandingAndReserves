@@ -17,11 +17,12 @@ function resolveSrc(el: MapElement): string {
 type ElementSpriteProps = {
   el: MapElement;
   selected: boolean;
+  readOnly: boolean;
   onSelect: () => void;
   onDragEnd: (id: string, x: number, y: number) => void;
 };
 
-function ElementSprite({ el, selected, onSelect, onDragEnd }: ElementSpriteProps) {
+function ElementSprite({ el, selected, readOnly, onSelect, onDragEnd }: ElementSpriteProps) {
   const [img, setImg] = useState<HTMLImageElement | null>(null);
   const src = resolveSrc(el);
 
@@ -47,7 +48,7 @@ function ElementSprite({ el, selected, onSelect, onDragEnd }: ElementSpriteProps
         stroke="#64748b"
         strokeWidth={1}
         cornerRadius={8}
-        draggable
+        draggable={!readOnly}
         onMouseDown={(e: Konva.KonvaEventObject<MouseEvent>) => {
           e.cancelBubble = true;
           onSelect();
@@ -67,7 +68,7 @@ function ElementSprite({ el, selected, onSelect, onDragEnd }: ElementSpriteProps
       y={el.y}
       width={el.width}
       height={el.height}
-      draggable
+      draggable={!readOnly}
       shadowBlur={selected ? 18 : 10}
       shadowColor="rgba(0,0,0,0.28)"
       shadowOffsetY={4}
@@ -171,6 +172,7 @@ type Props = {
   selectedId: string | null;
   setSelectedId: (id: string | null) => void;
   onElementDragEnd: (id: string, x: number, y: number) => void;
+  readOnly?: boolean;
 };
 
 export function AquaMapCanvas({
@@ -183,7 +185,8 @@ export function AquaMapCanvas({
   setCamera,
   selectedId,
   setSelectedId,
-  onElementDragEnd
+  onElementDragEnd,
+  readOnly = false
 }: Props) {
   const baseFit = useMemo(
     () => Math.min(width / worldW, height / worldH) * 0.9,
@@ -230,6 +233,7 @@ export function AquaMapCanvas({
                 key={el.id}
                 el={el}
                 selected={el.id === selectedId}
+                readOnly={readOnly}
                 onSelect={() => setSelectedId(el.id)}
                 onDragEnd={onElementDragEnd}
               />
