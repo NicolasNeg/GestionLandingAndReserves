@@ -11,8 +11,12 @@ import {
 } from './aquaMapCameraConstraints';
 import { computeCanvasLayout, pointerToWorld } from './aquaMapCanvasCoords';
 import type { AquaMapContextRequest } from './useAquaMapEditorCommands';
+import { elementMatchesAquamapFilter } from './aquaMapPublicFilters';
+import { useAquamapPinchZoom } from './useAquamapPinchZoom';
 import { defaultSpriteForType } from './spriteUrls';
 import { AQUAMAP_ISLAND_MARGIN } from './world';
+
+export type AquaMapVisualMode = 'editor' | 'public';
 
 type Camera = CameraState;
 
@@ -94,7 +98,9 @@ type ElementSpriteProps = {
   hovered: boolean;
   readOnly: boolean;
   blockPointer: boolean;
-  shapeRef: (id: string, node: Konva.Shape | null) => void;
+  visualMode: AquaMapVisualMode;
+  dimmed: boolean;
+  shapeRef: (id: string, node: Konva.Group | null) => void;
   onSelect: () => void;
   onHoverChange: (id: string | null) => void;
   onGeometryChange: (id: string, geom: { x: number; y: number; width: number; height: number }) => void;
@@ -107,6 +113,8 @@ function ElementSprite({
   hovered,
   readOnly,
   blockPointer,
+  visualMode,
+  dimmed,
   shapeRef,
   onSelect,
   onHoverChange,
@@ -140,7 +148,16 @@ function ElementSprite({
     g.getLayer()?.batchDraw();
   }, [el.x, el.y, el.width, el.height, img]);
 
-  const stroke = selected ? '#38bdf8' : hovered ? '#94a3b8' : 'rgba(15,23,42,0.22)';
+  const isPublic = visualMode === 'public';
+  const stroke = isPublic
+    ? selected
+      ? '#38bdf8'
+      : 'transparent'
+    : selected
+      ? '#38bdf8'
+      : hovered
+        ? '#94a3b8'
+        : 'rgba(15,23,42,0.22)';
   const listening = !blockPointer && !readOnly;
   const commitGeometry = (node: Konva.Node) => {
     const target = node.getClassName() === 'Group' ? node : node.getParent();
@@ -196,16 +213,22 @@ function ElementSprite({
     width: el.width,
     height: el.height,
     listening: false,
-    shadowBlur: selected ? 28 : hovered ? 18 : 11,
-    shadowColor: 'rgba(0,0,0,0.35)',
-    shadowOffsetY: selected ? 4 : 3,
-    shadowOpacity: selected ? 0.62 : 0.48,
+    shadowBlur: isPublic ? (selected ? 22 : 14) : selected ? 28 : hovered ? 18 : 11,
+    shadowColor: isPublic ? 'rgba(0,0,0,0.45)' : 'rgba(0,0,0,0.35)',
+    shadowOffsetY: isPublic ? 5 : selected ? 4 : 3,
+    shadowOpacity: isPublic ? 0.55 : selected ? 0.62 : 0.48,
     stroke,
-    strokeWidth: selected ? 2.6 : hovered ? 1.8 : 1.15
+    strokeWidth: isPublic ? (selected ? 2.2 : 0) : selected ? 2.6 : hovered ? 1.8 : 1.15
   };
 
   return (
-    <Group ref={groupRef} draggable={listening} listening={!blockPointer} {...groupHandlers}>
+    <Group
+      ref={groupRef}
+      draggable={listening}
+      listening={!blockPointer}
+      opacity={dimmed ? 0.28 : 1}
+      {...groupHandlers}
+    >
       <Rect
         x={0}
         y={0}
@@ -229,7 +252,15 @@ function ElementSprite({
   );
 }
 
-function IslandBackdrop({ worldW, worldH }: { worldW: number; worldH: number }) {
+function IslandBackdrop({
+  worldW,
+  worldH,
+  publicMode
+}: {
+  worldW: number;
+  worldH: number;
+  publicMode?: boolean;
+}) {
   const m = AQUAMAP_ISLAND_MARGIN;
   const iw = worldW - m * 2;
   const ih = worldH - m * 2;
@@ -310,6 +341,20 @@ function IslandBackdrop({ worldW, worldH }: { worldW: number; worldH: number }) 
         strokeWidth={1.5}
         listening={false}
       />
+      {publicMode ? (
+        <Rect
+          x={0}
+          y={0}
+          width={worldW}
+          height={worldH}
+          listening={false}
+          fillRadialGradientStartPoint={{ x: worldW * 0.5, y: worldH * 0.45 }}
+          fillRadialGradientEndPoint={{ x: worldW * 0.5, y: worldH * 0.5 }}
+          fillRadialGradientStartRadius={0}
+          fillRadialGradientEndRadius={worldW * 0.72}
+          fillRadialGradientColorStops={[0, 'rgba(255,255,255,0)', 0.72, 'rgba(0,0,0,0)', 1, 'rgba(0,0,0,0.22)']}
+        />
+      ) : null}
     </Group>
   );
 }
@@ -332,6 +377,9 @@ export type AquaMapCanvasProps = {
   blockElementPointer?: boolean;
   onContextRequest?: (req: AquaMapContextRequest) => void;
   cameraLimits?: CameraLimits;
+  visualMode?: AquaMapVisualMode;
+  publicFilter?: string;
+  navigationPath?: { x: number; y: number }[];
 };
 
 export function AquaMapCanvas({
@@ -348,11 +396,14 @@ export function AquaMapCanvas({
   readOnly = false,
   blockElementPointer = false,
   onContextRequest,
-  cameraLimits = EDITOR_CAMERA_LIMITS
+  cameraLimits = EDITOR_CAMERA_LIMITS,
+  visualMode = 'editor',
+  publicFilter = 'all',
+  navigationPath = []
 }: AquaMapCanvasProps) {
   const stageRef = useRef<Konva.Stage>(null);
   const trRef = useRef<Konva.Transformer>(null);
-  const shapeRefs = useRef<Map<string, Konva.Shape>>(new Map());
+  const shapeRefs = useRef<Map<string, Konva.Group>>(new Map());
   const [hoverId, setHoverId] = useState<string | null>(null);
 
   const registerShapeRef = useCallback((id: string, node: Konva.Group | null) => {
@@ -378,6 +429,11 @@ export function AquaMapCanvas({
     [width, height, worldW, worldH, camera.scale]
   );
   const s = layout.scale;
+  const isPublicVisual = visualMode === 'public';
+  const routePoints = useMemo(
+    () => navigationPath.flatMap((pt) => [pt.x, pt.y]),
+    [navigationPath]
+  );
 
   const applyCamera = useCallback(
     (next: Camera | ((prev: Camera) => Camera)) => {
@@ -408,6 +464,15 @@ export function AquaMapCanvas({
       });
     },
     [camera, layout, onContextRequest, readOnly, worldH, worldW]
+  );
+
+  useAquamapPinchZoom(
+    stageRef,
+    cameraLimits.constrainPan,
+    camera,
+    applyCamera,
+    { width, height, worldW, worldH },
+    cameraLimits
   );
 
   useEffect(() => {
@@ -476,7 +541,9 @@ export function AquaMapCanvas({
       ref={stageRef}
       width={width}
       height={height}
-      className="touch-none bg-gradient-to-b from-[#1e2433] via-[#171a22] to-[#12141a]"
+      className={`touch-none bg-gradient-to-b ${
+        isPublicVisual ? 'from-[#1a2438] via-[#151a28] to-[#0f1218]' : 'from-[#1e2433] via-[#171a22] to-[#12141a]'
+      }`}
       draggable
       x={camera.x}
       y={camera.y}
@@ -512,49 +579,72 @@ export function AquaMapCanvas({
     >
       <Layer>
         <Group x={layout.groupX} y={layout.groupY} scaleX={s} scaleY={s}>
-          <IslandBackdrop worldW={worldW} worldH={worldH} />
-          {elementsSorted.map((el) => (
-            <ElementSprite
-              key={el.id}
-              el={el}
-              selected={el.id === selectedId}
-              hovered={el.id === hoverId}
-              readOnly={readOnly}
-              blockPointer={blockElementPointer}
-              shapeRef={registerShapeRef}
-              onSelect={() => setSelectedId(el.id)}
-              onHoverChange={setHoverId}
-              onGeometryChange={onElementGeometryChange}
-              onContextMenu={(ev) => emitContextRequest(ev, el.id)}
-            />
-          ))}
-          {!readOnly && selectedId ? (
-            <Transformer
-              ref={trRef}
-              rotateEnabled={false}
-              ignoreStroke
-              borderStroke="#38bdf8"
-              borderStrokeWidth={1.5 / s}
-              anchorStroke="#38bdf8"
-              anchorFill="#0f172a"
-              anchorSize={Math.max(7, 10 / s)}
-              anchorCornerRadius={2}
-              padding={2 / s}
-              boundBoxFunc={(oldBox, newBox) => {
-                if (newBox.width < 24 || newBox.height < 24) return oldBox;
-                return newBox;
-              }}
-              onTransform={() => {
-                trRef.current?.forceUpdate();
-              }}
-              onTransformEnd={() => {
-                const node = selectedId ? shapeRefs.current.get(selectedId) : null;
-                if (node) onElementGeometryChange(selectedId!, readNodeGeometry(node));
-                syncTransformer();
-              }}
+          <IslandBackdrop worldW={worldW} worldH={worldH} publicMode={isPublicVisual} />
+          {elementsSorted.map((el) => {
+            const dimmed =
+              isPublicVisual &&
+              Boolean(publicFilter && publicFilter !== 'all') &&
+              !elementMatchesAquamapFilter(el, publicFilter);
+            return (
+              <ElementSprite
+                key={el.id}
+                el={el}
+                selected={el.id === selectedId}
+                hovered={el.id === hoverId}
+                readOnly={readOnly}
+                blockPointer={blockElementPointer}
+                visualMode={visualMode}
+                dimmed={dimmed}
+                shapeRef={registerShapeRef}
+                onSelect={() => setSelectedId(el.id)}
+                onHoverChange={setHoverId}
+                onGeometryChange={onElementGeometryChange}
+                onContextMenu={(ev) => emitContextRequest(ev, el.id)}
+              />
+            );
+          })}
+          {routePoints.length >= 4 ? (
+            <Line
+              points={routePoints}
+              stroke="#22d3ee"
+              strokeWidth={5}
+              lineCap="round"
+              lineJoin="round"
+              dash={[14, 10]}
+              opacity={0.9}
+              listening={false}
+              shadowColor="rgba(34,211,238,0.45)"
+              shadowBlur={8}
             />
           ) : null}
         </Group>
+        {!readOnly && selectedId ? (
+          <Transformer
+            ref={trRef}
+            rotateEnabled={false}
+            ignoreStroke
+            borderStroke="#38bdf8"
+            borderStrokeWidth={1.5}
+            anchorStroke="#38bdf8"
+            anchorFill="#0f172a"
+            anchorSize={8}
+            anchorCornerRadius={2}
+            padding={4}
+            boundBoxFunc={(oldBox, newBox) => {
+              const minScreen = 20;
+              if (newBox.width < minScreen || newBox.height < minScreen) return oldBox;
+              return newBox;
+            }}
+            onTransform={() => {
+              trRef.current?.forceUpdate();
+            }}
+            onTransformEnd={() => {
+              const node = selectedId ? shapeRefs.current.get(selectedId) : null;
+              if (node) onElementGeometryChange(selectedId!, readNodeGeometry(node));
+              syncTransformer();
+            }}
+          />
+        ) : null}
       </Layer>
     </Stage>
   );

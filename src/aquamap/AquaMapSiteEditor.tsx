@@ -11,9 +11,15 @@ import { AquaMapBootOverlay } from './AquaMapBootOverlay';
 import { AquaMapCanvas } from './AquaMapCanvas';
 import { AquaMapContextMenu } from './AquaMapContextMenu';
 import { AquaMapEditorChrome } from './AquaMapEditorChrome';
+import { AquaMapEditorToolbar } from './AquaMapEditorToolbar';
 import { AquaMapLegend } from './AquaMapLegend';
 import { AquaMapSidebar } from './AquaMapSidebar';
 import { AquaMapZoomHud } from './AquaMapZoomHud';
+import {
+  contentFitCamera,
+  EDITOR_CAMERA_LIMITS,
+  LANDING_CAMERA_LIMITS
+} from './aquaMapCameraConstraints';
 import { createMapElement, presetSizeForType } from './elementDefaults';
 import type { ElementType, MapElement } from './types';
 import {
@@ -24,6 +30,7 @@ import {
 import { MAP_LAYER_CONFIG, type MapLayerContext } from './mapLayers';
 import { defaultSpriteForType } from './spriteUrls';
 import { useAquaMapEditorCommands } from './useAquaMapEditorCommands';
+import { useAquamapHistory } from './useAquamapHistory';
 import './aquamapEditor.css';
 
 export type AquaMapSiteEditorHandle = {
@@ -82,17 +89,37 @@ function collectAssetUrls(envelope: AquamapSiteEnvelope): string[] {
   return [...set];
 }
 
+function isTypingTarget(el: EventTarget | null): boolean {
+  const t = el as HTMLElement | null;
+  if (!t) return false;
+  if (['INPUT', 'TEXTAREA', 'SELECT'].includes(t.tagName)) return true;
+  return Boolean(t.isContentEditable);
+}
+
 export const AquaMapSiteEditor = forwardRef<AquaMapSiteEditorHandle, Props>(function AquaMapSiteEditor(
   { initialJson, mapContext = 'parque', onChangeJson, onSaveSite, onPreviewPublic, mapBridgeNotifiers },
   ref
 ) {
   const layerConfig = MAP_LAYER_CONFIG[mapContext];
   const legacyView = legacyViewForContext(mapContext);
-  const [envelope, setEnvelope] = useState<AquamapSiteEnvelope>(() =>
-    ensureAquamapEnvelopeFromSiteJson(initialJson, { view: legacyView })
+  const initialEnvelope = useMemo(
+    () => ensureAquamapEnvelopeFromSiteJson(initialJson, { view: legacyView }),
+    [initialJson, legacyView]
   );
+
+  const {
+    envelope,
+    setEnvelope,
+    undo,
+    redo,
+    canUndo,
+    canRedo,
+    resetHistory
+  } = useAquamapHistory(initialEnvelope);
+
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [camera, setCamera] = useState({ x: 0, y: 0, scale: 1 });
+  const [previewMode, setPreviewMode] = useState(false);
   const [saveFlash, setSaveFlash] = useState(false);
   const [booting, setBooting] = useState(true);
   const [spaceDown, setSpaceDown] = useState(false);
@@ -103,14 +130,26 @@ export const AquaMapSiteEditor = forwardRef<AquaMapSiteEditorHandle, Props>(func
   const skipNextChangeEmitRef = useRef(true);
   envelopeRef.current = envelope;
 
+  const viewport = useMemo(() => ({ width: stageSize.w, height: stageSize.h }), [stageSize]);
+  const cameraLimits = previewMode ? LANDING_CAMERA_LIMITS : EDITOR_CAMERA_LIMITS;
+  const visualMode = previewMode ? 'public' : 'editor';
+  const canvasReadOnly = previewMode;
+
   const zoomPercentUi = Math.round(100 * camera.scale);
+
+  const fitCameraToContent = useCallback(() => {
+    const limits = previewMode ? LANDING_CAMERA_LIMITS : EDITOR_CAMERA_LIMITS;
+    const next = contentFitCamera(viewport, envelope.world, envelope.elements, limits);
+    setCamera(next);
+  }, [envelope.elements, envelope.world, previewMode, viewport]);
 
   useImperativeHandle(ref, () => ({
     getJson: () => serializeAquamapSiteEnvelope(envelopeRef.current),
     setJson: (json: string) => {
       externalSyncRef.current = true;
       skipNextChangeEmitRef.current = true;
-      setEnvelope(ensureAquamapEnvelopeFromSiteJson(json, { view: legacyView }));
+      const next = ensureAquamapEnvelopeFromSiteJson(json, { view: legacyView });
+      resetHistory(next);
       setSelectedId(null);
       setCamera({ x: 0, y: 0, scale: 1 });
       window.requestAnimationFrame(() => {
@@ -157,14 +196,28 @@ export const AquaMapSiteEditor = forwardRef<AquaMapSiteEditorHandle, Props>(func
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.code !== 'Space') return;
       const t = e.target as HTMLElement | null;
-      if (t && ['INPUT', 'TEXTAREA', 'SELECT'].includes(t.tagName)) return;
       const root = document.querySelector('[data-aquamap-editor-root]');
-      if (!root) return;
-      if (t && t !== document.body && !root.contains(t)) return;
-      e.preventDefault();
-      setSpaceDown(true);
+      if (!root || (t && t !== document.body && !root.contains(t))) return;
+
+      if (e.code === 'Space' && !isTypingTarget(e.target)) {
+        e.preventDefault();
+        setSpaceDown(true);
+        return;
+      }
+
+      if (isTypingTarget(e.target) || previewMode) return;
+
+      const mod = e.ctrlKey || e.metaKey;
+      if (mod && e.key.toLowerCase() === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        undo();
+        return;
+      }
+      if (mod && (e.key.toLowerCase() === 'y' || (e.key.toLowerCase() === 'z' && e.shiftKey))) {
+        e.preventDefault();
+        redo();
+      }
     };
     const onKeyUp = (e: KeyboardEvent) => {
       if (e.code === 'Space') setSpaceDown(false);
@@ -175,7 +228,7 @@ export const AquaMapSiteEditor = forwardRef<AquaMapSiteEditorHandle, Props>(func
       window.removeEventListener('keydown', onKeyDown, true);
       window.removeEventListener('keyup', onKeyUp, true);
     };
-  }, []);
+  }, [previewMode, redo, undo]);
 
   useEffect(() => {
     const el = mapWrapRef.current;
@@ -189,6 +242,10 @@ export const AquaMapSiteEditor = forwardRef<AquaMapSiteEditorHandle, Props>(func
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
+
+  useEffect(() => {
+    if (!booting && previewMode) fitCameraToContent();
+  }, [booting, previewMode, fitCameraToContent]);
 
   const elementsSorted = useMemo(
     () => [...envelope.elements].sort((a, b) => a.y - b.y),
@@ -206,7 +263,7 @@ export const AquaMapSiteEditor = forwardRef<AquaMapSiteEditorHandle, Props>(func
       setEnvelope((prev) => ({ ...prev, elements: [...prev.elements, next] }));
       setSelectedId(next.id);
     },
-    [envelope.world]
+    [envelope.world, setEnvelope]
   );
 
   const onUpdateSelected = useCallback(
@@ -217,7 +274,7 @@ export const AquaMapSiteEditor = forwardRef<AquaMapSiteEditorHandle, Props>(func
         elements: prev.elements.map((el) => (el.id === selectedId ? { ...el, ...patch } : el))
       }));
     },
-    [selectedId]
+    [selectedId, setEnvelope]
   );
 
   const onElementGeometryChange = useCallback(
@@ -227,18 +284,21 @@ export const AquaMapSiteEditor = forwardRef<AquaMapSiteEditorHandle, Props>(func
         elements: prev.elements.map((el) => (el.id === id ? { ...el, ...geom } : el))
       }));
     },
-    []
+    [setEnvelope]
   );
 
-  const onWorldChange = useCallback((patch: Partial<{ w: number; h: number }>) => {
-    setEnvelope((prev) => ({
-      ...prev,
-      world: {
-        w: Math.max(400, Math.round(patch.w ?? prev.world.w)),
-        h: Math.max(280, Math.round(patch.h ?? prev.world.h))
-      }
-    }));
-  }, []);
+  const onWorldChange = useCallback(
+    (patch: Partial<{ w: number; h: number }>) => {
+      setEnvelope((prev) => ({
+        ...prev,
+        world: {
+          w: Math.max(400, Math.round(patch.w ?? prev.world.w)),
+          h: Math.max(280, Math.round(patch.h ?? prev.world.h))
+        }
+      }));
+    },
+    [setEnvelope]
+  );
 
   const onApplyPresetSize = useCallback(() => {
     if (!selected) return;
@@ -263,14 +323,25 @@ export const AquaMapSiteEditor = forwardRef<AquaMapSiteEditorHandle, Props>(func
   });
 
   const onZoomIn = useCallback(() => {
-    setCamera((c) => ({ ...c, scale: Math.min(2.35, c.scale * 1.12) }));
-  }, []);
+    setCamera((c) => ({ ...c, scale: Math.min(cameraLimits.maxScale, c.scale * 1.12) }));
+  }, [cameraLimits.maxScale]);
   const onZoomOut = useCallback(() => {
-    setCamera((c) => ({ ...c, scale: Math.max(0.42, c.scale / 1.12) }));
-  }, []);
+    setCamera((c) => ({ ...c, scale: Math.max(cameraLimits.minScale, c.scale / 1.12) }));
+  }, [cameraLimits.minScale]);
   const onResetView = useCallback(() => {
-    setCamera({ x: 0, y: 0, scale: 1 });
-  }, []);
+    if (previewMode) fitCameraToContent();
+    else setCamera({ x: 0, y: 0, scale: 1 });
+  }, [fitCameraToContent, previewMode]);
+
+  const onTogglePreview = useCallback(() => {
+    setPreviewMode((p) => {
+      const next = !p;
+      if (next) {
+        window.requestAnimationFrame(() => fitCameraToContent());
+      }
+      return next;
+    });
+  }, [fitCameraToContent]);
 
   const onSaveClick = useCallback(() => {
     setSaveFlash(true);
@@ -286,6 +357,10 @@ export const AquaMapSiteEditor = forwardRef<AquaMapSiteEditorHandle, Props>(func
     <span className="rounded border border-[#e87d3e]/40 bg-[#2a2018] px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wide text-[#f4a261]">
       Pan · suelta Espacio para editar
     </span>
+  ) : previewMode ? (
+    <span className="rounded border border-[#5eead4]/40 bg-[#1a2e28] px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wide text-[#86efac]">
+      Vista previa publica
+    </span>
   ) : null;
 
   return (
@@ -296,6 +371,17 @@ export const AquaMapSiteEditor = forwardRef<AquaMapSiteEditorHandle, Props>(func
       <div className="flex min-h-0 min-w-0 flex-1 flex-col p-2 pr-1">
         <AquaMapEditorChrome
           zoomPercent={zoomPercentUi}
+          toolbar={
+            <AquaMapEditorToolbar
+              canUndo={canUndo}
+              canRedo={canRedo}
+              previewMode={previewMode}
+              onUndo={undo}
+              onRedo={redo}
+              onTogglePreview={onTogglePreview}
+              onFit={fitCameraToContent}
+            />
+          }
           trailing={
             <>
               <span className="font-mono text-[10px] text-[#a3a3a3]">{layerConfig.label}</span>
@@ -319,19 +405,23 @@ export const AquaMapSiteEditor = forwardRef<AquaMapSiteEditorHandle, Props>(func
               selectedId={selectedId}
               setSelectedId={setSelectedId}
               onElementGeometryChange={onElementGeometryChange}
-              readOnly={false}
-              blockElementPointer={spaceDown}
-              onContextRequest={spaceDown ? undefined : openContextMenu}
+              readOnly={canvasReadOnly}
+              blockElementPointer={spaceDown || previewMode}
+              onContextRequest={spaceDown || previewMode ? undefined : openContextMenu}
+              cameraLimits={cameraLimits}
+              visualMode={visualMode}
             />
-            <AquaMapContextMenu
-              open={contextMenu.open}
-              x={contextMenu.x}
-              y={contextMenu.y}
-              hasSelection={hasSelection}
-              canPaste={canPaste}
-              onAction={runContextAction}
-              onClose={closeContextMenu}
-            />
+            {!previewMode ? (
+              <AquaMapContextMenu
+                open={contextMenu.open}
+                x={contextMenu.x}
+                y={contextMenu.y}
+                hasSelection={hasSelection}
+                canPaste={canPaste}
+                onAction={runContextAction}
+                onClose={closeContextMenu}
+              />
+            ) : null}
             <AquaMapLegend />
             <AquaMapZoomHud
               onZoomIn={onZoomIn}

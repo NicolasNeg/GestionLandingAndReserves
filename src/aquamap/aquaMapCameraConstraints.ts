@@ -1,5 +1,7 @@
 import { computeCanvasLayout } from './aquaMapCanvasCoords';
 
+type ElementBox = { x: number; y: number; width: number; height: number };
+
 export type CameraState = { x: number; y: number; scale: number };
 
 export type CameraLimits = {
@@ -94,4 +96,60 @@ export function landingFitCamera(
   limits: CameraLimits = LANDING_CAMERA_LIMITS
 ): CameraState {
   return constrainAquaMapCamera({ x: 0, y: 0, scale: 1 }, viewport, world, limits);
+}
+
+/** Encuadra la cámara al contenido publicado (con margen). */
+export function contentFitCamera(
+  viewport: { width: number; height: number },
+  world: { w: number; h: number },
+  elements: ElementBox[],
+  limits: CameraLimits = LANDING_CAMERA_LIMITS
+): CameraState {
+  if (!elements.length || viewport.width <= 0 || viewport.height <= 0) {
+    return landingFitCamera(viewport, world, limits);
+  }
+
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const el of elements) {
+    minX = Math.min(minX, el.x);
+    minY = Math.min(minY, el.y);
+    maxX = Math.max(maxX, el.x + el.width);
+    maxY = Math.max(maxY, el.y + el.height);
+  }
+
+  const pad = 72;
+  minX = Math.max(0, minX - pad);
+  minY = Math.max(0, minY - pad);
+  maxX = Math.min(world.w, maxX + pad);
+  maxY = Math.min(world.h, maxY + pad);
+  const contentW = Math.max(160, maxX - minX);
+  const contentH = Math.max(160, maxY - minY);
+
+  const baseLayout = computeCanvasLayout(viewport.width, viewport.height, world.w, world.h, 1);
+  const baseS = baseLayout.scale;
+  const fill = 0.88;
+  const scaleX = (viewport.width * fill) / (contentW * baseS);
+  const scaleY = (viewport.height * fill) / (contentH * baseS);
+  const scale = clampCameraScale(Math.min(scaleX, scaleY), limits);
+
+  const layout = computeCanvasLayout(viewport.width, viewport.height, world.w, world.h, scale);
+  const s = layout.scale;
+  const cx = (minX + maxX) / 2;
+  const cy = (minY + maxY) / 2;
+  const screenCx = layout.groupX + cx * s;
+  const screenCy = layout.groupY + cy * s;
+
+  return constrainAquaMapCamera(
+    {
+      x: viewport.width / 2 - screenCx,
+      y: viewport.height / 2 - screenCy,
+      scale
+    },
+    viewport,
+    world,
+    limits
+  );
 }

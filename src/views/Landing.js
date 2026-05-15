@@ -1002,7 +1002,6 @@ export default {
         globalMapViewer = mountAquamapLandingMap(mapStageRoot, landing.mapaDistribucionJson, {
           onSelectElement: (el) => {
             setMapInfo(el ? pseudoItemFromAquamapElement(el) : null);
-            if (globalMapViewer?.setDrawOptions) globalMapViewer.setDrawOptions({ navigationPath: [] });
           }
         });
         if (mapFiltersEl) mapFiltersEl.innerHTML = '';

@@ -5,9 +5,10 @@ import { AquaMapLegend } from './AquaMapLegend';
 import {
   constrainAquaMapCamera,
   LANDING_CAMERA_LIMITS,
-  landingFitCamera,
+  contentFitCamera,
   clampCameraScale
 } from './aquaMapCameraConstraints';
+import { buildAquamapFilterChips, simpleRouteToElement } from './aquaMapPublicFilters';
 import type { ElementType, MapElement } from './types';
 import { ensureAquamapEnvelopeFromSiteJson, type AquamapSiteEnvelope } from './siteEnvelope';
 import { defaultSpriteForType } from './spriteUrls';
@@ -19,9 +20,14 @@ export type AquaMapLandingViewerHandle = {
   reset: () => void;
   fit: () => void;
   getViewportElement: () => HTMLElement | null;
-  setDrawOptions: (_patch: Record<string, unknown>) => void;
+  setDrawOptions: (patch: Record<string, unknown>) => void;
   getDocument: () => null;
   destroy: () => void;
+};
+
+type DrawOptions = {
+  publicMapFilter?: string;
+  navigationPath?: { x: number; y: number }[];
 };
 
 type Props = {
@@ -50,7 +56,7 @@ async function preloadImageUrls(urls: string[]): Promise<void> {
 
 function collectAssetUrls(envelope: AquamapSiteEnvelope): string[] {
   const set = new Set<string>();
-  const types: ElementType[] = ['pool', 'slide', 'service', 'tree'];
+  const types: ElementType[] = ['pool', 'slide', 'service', 'tree', 'mesa', 'parking'];
   for (const t of types) set.add(defaultSpriteForType(t));
   for (const el of envelope.elements) {
     const u = el.imgSrc?.trim();
@@ -67,6 +73,7 @@ export const AquaMapLandingViewer = forwardRef<AquaMapLandingViewerHandle, Props
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [camera, setCamera] = useState({ x: 0, y: 0, scale: 1 });
   const [booting, setBooting] = useState(true);
+  const [drawOptions, setDrawOptionsState] = useState<DrawOptions>({});
   const mapWrapRef = useRef<HTMLDivElement>(null);
   const [stageSize, setStageSize] = useState({ w: 800, h: 600 });
 
@@ -84,19 +91,25 @@ export const AquaMapLandingViewer = forwardRef<AquaMapLandingViewerHandle, Props
   );
 
   const fitCamera = useCallback(() => {
-    setCamera(landingFitCamera(viewport, world, LANDING_CAMERA_LIMITS));
-  }, [viewport, world]);
+    setCamera(contentFitCamera(viewport, world, envelope.elements, LANDING_CAMERA_LIMITS));
+  }, [viewport, world, envelope.elements]);
 
   useEffect(() => {
-    setEnvelope(ensureAquamapEnvelopeFromSiteJson(jsonStr));
+    const env = ensureAquamapEnvelopeFromSiteJson(jsonStr);
+    setEnvelope(env);
     setSelectedId(null);
-    setCamera(landingFitCamera(viewport, world, LANDING_CAMERA_LIMITS));
+    setDrawOptionsState({});
+    setCamera(contentFitCamera(viewport, { w: env.world.w, h: env.world.h }, env.elements));
     // eslint-disable-next-line react-hooks/exhaustive-deps -- reset al cambiar JSON
   }, [jsonStr]);
 
   useEffect(() => {
     setCameraLanding((c) => c);
   }, [stageSize.w, stageSize.h, envelope.world.w, envelope.world.h, setCameraLanding]);
+
+  useEffect(() => {
+    if (!booting) fitCamera();
+  }, [booting, fitCamera]);
 
   useEffect(() => {
     let cancelled = false;
@@ -135,6 +148,15 @@ export const AquaMapLandingViewer = forwardRef<AquaMapLandingViewerHandle, Props
     [envelope.elements, selectedId]
   );
 
+  const navigationPath = useMemo(() => {
+    if (drawOptions.navigationPath?.length) return drawOptions.navigationPath;
+    if (selected) return simpleRouteToElement(selected, envelope.world);
+    return [];
+  }, [drawOptions.navigationPath, selected, envelope.world]);
+
+  const filterChips = useMemo(() => buildAquamapFilterChips(envelope.elements), [envelope.elements]);
+  const publicFilter = drawOptions.publicMapFilter || 'all';
+
   useEffect(() => {
     onSelectElement(selected);
   }, [selected, onSelectElement]);
@@ -171,7 +193,12 @@ export const AquaMapLandingViewer = forwardRef<AquaMapLandingViewerHandle, Props
       reset,
       fit,
       getViewportElement: () => mapWrapRef.current,
-      setDrawOptions: () => {},
+      setDrawOptions: (patch: Record<string, unknown>) => {
+        setDrawOptionsState((prev) => ({
+          ...prev,
+          ...(patch as DrawOptions)
+        }));
+      },
       getDocument: () => null,
       destroy: () => {}
     }),
@@ -185,6 +212,26 @@ export const AquaMapLandingViewer = forwardRef<AquaMapLandingViewerHandle, Props
       data-aquamap-landing-viewer
     >
       {booting ? <AquaMapBootOverlay subtitle="Vista publica del parque" /> : null}
+      {filterChips.length > 1 ? (
+        <div className="pointer-events-auto absolute left-3 right-3 top-3 z-20 flex flex-wrap gap-1.5">
+          {filterChips.map((chip) => (
+            <button
+              key={chip.id}
+              type="button"
+              className={`rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide shadow ${
+                publicFilter === chip.id
+                  ? 'border-cyan-300 bg-cyan-500/90 text-white'
+                  : 'border-white/20 bg-slate-950/55 text-slate-200 backdrop-blur hover:bg-slate-900/70'
+              }`}
+              onClick={() =>
+                setDrawOptionsState((prev) => ({ ...prev, publicMapFilter: chip.id }))
+              }
+            >
+              {chip.label}
+            </button>
+          ))}
+        </div>
+      ) : null}
       <AquaMapCanvas
         width={stageSize.w}
         height={stageSize.h}
@@ -199,6 +246,9 @@ export const AquaMapLandingViewer = forwardRef<AquaMapLandingViewerHandle, Props
         readOnly
         blockElementPointer={false}
         cameraLimits={LANDING_CAMERA_LIMITS}
+        visualMode="public"
+        publicFilter={publicFilter}
+        navigationPath={navigationPath}
       />
       <AquaMapLegend />
     </div>
