@@ -698,7 +698,7 @@ export default {
                   <div class="flex flex-col gap-3 border-b border-slate-100 bg-white/92 p-4 sm:flex-row sm:items-center sm:justify-between">
                     <div>
                       <p class="text-sm font-black text-slate-900">Mapa del parque</p>
-                      <p class="mt-0.5 text-xs font-semibold text-slate-500">Arrastra para explorar · rueda o pellizca para acercar</p>
+                      <p class="mt-0.5 text-xs font-semibold text-slate-500">Arrastra para explorar · rueda o pellizca para acercar · clic en una zona para ver detalle</p>
                     </div>
                     <div class="flex flex-wrap gap-2">${renderMapLegend()}</div>
                   </div>

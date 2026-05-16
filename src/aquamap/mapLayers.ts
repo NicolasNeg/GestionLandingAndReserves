@@ -23,8 +23,8 @@ export const MAP_LAYER_CONFIG: Record<MapLayerContext, LayerUiConfig> = {
   parque: {
     id: 'parque',
     label: 'Parque global',
-    shortHint: 'Albercas, toboganes, servicios y árboles del plano público.',
-    allowedTypes: ['pool', 'slide', 'service', 'tree']
+    shortHint: 'Todas las piezas del plano público: albercas, toboganes, mesas, parking y más.',
+    allowedTypes: [...ALL_AQUAMAP_ELEMENT_TYPES]
   },
   mesas: {
     id: 'mesas',
@@ -35,7 +35,8 @@ export const MAP_LAYER_CONFIG: Record<MapLayerContext, LayerUiConfig> = {
   estacionamiento: {
     id: 'estacionamiento',
     label: 'Estacionamiento',
-    shortHint: 'Cajones y spots de parking.',
+    shortHint:
+      'Solo cajones de parking en este modo (distinto del mapa global). Posiciónalo sobre el plano del parque.',
     allowedTypes: ['parking']
   },
   albercas: {

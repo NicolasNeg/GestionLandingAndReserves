@@ -1,5 +1,7 @@
 export type ElementType = 'pool' | 'slide' | 'service' | 'tree' | 'mesa' | 'parking';
 
+export type ParkingSpotStatus = 'libre' | 'reservado' | 'ocupado' | 'mantenimiento';
+
 export interface MapElement {
   id: string;
   type: ElementType;
@@ -11,6 +13,8 @@ export interface MapElement {
   height: number;
   color: string;
   imgSrc?: string;
+  /** Solo type === 'parking': estado operativo en patio / landing. */
+  parkingStatus?: ParkingSpotStatus;
 }
 
 export interface AppState {

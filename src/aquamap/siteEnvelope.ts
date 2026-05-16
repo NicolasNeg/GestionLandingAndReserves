@@ -1,8 +1,14 @@
 import { parseMapDocument } from '../lib/mapEngine/mapMigrations.js';
 import { clampElementDimensions, presetSizeForType } from './elementDefaults';
 import type { ElementType, MapElement } from './types';
+import { normalizeParkingStatus } from './parkingYardAssets';
 import { defaultSpriteForType } from './spriteUrls';
-import { AQUAMAP_WORLD_H, AQUAMAP_WORLD_W } from './world';
+import { AQUAMAP_WORLD_H, AQUAMAP_WORLD_MAX_H, AQUAMAP_WORLD_MAX_W, AQUAMAP_WORLD_W } from './world';
+
+function clampWorldDim(n: number, min: number, max: number): number {
+  if (!Number.isFinite(n)) return min;
+  return Math.min(max, Math.max(min, Math.round(n)));
+}
 
 export const AQUAMAP_FORMAT = 'aquamap-v1' as const;
 
@@ -38,7 +44,7 @@ function migrateElement(raw: unknown, world = { w: AQUAMAP_WORLD_W, h: AQUAMAP_W
     },
     world
   );
-  return {
+  const base: MapElement = {
     id: String(o.id),
     type,
     name: String(o.name ?? ''),
@@ -50,6 +56,10 @@ function migrateElement(raw: unknown, world = { w: AQUAMAP_WORLD_W, h: AQUAMAP_W
     color: String(o.color || '#0ea5e9'),
     imgSrc: o.imgSrc?.trim() || defaultSpriteForType(type)
   };
+  if (type === 'parking') {
+    base.parkingStatus = normalizeParkingStatus((o as { parkingStatus?: unknown }).parkingStatus);
+  }
+  return base;
 }
 
 export function parseAquamapSiteEnvelope(jsonStr: string | null | undefined): AquamapSiteEnvelope {
@@ -62,14 +72,16 @@ export function parseAquamapSiteEnvelope(jsonStr: string | null | undefined): Aq
     if (!o || o.format !== AQUAMAP_FORMAT || !Array.isArray(o.elements)) {
       return { format: AQUAMAP_FORMAT, world, elements: [] };
     }
-    const w = o.world && typeof o.world === 'object' ? Number((o.world as { w?: number }).w) : world.w;
-    const h = o.world && typeof o.world === 'object' ? Number((o.world as { h?: number }).h) : world.h;
+    const rawW = o.world && typeof o.world === 'object' ? Number((o.world as { w?: number }).w) : world.w;
+    const rawH = o.world && typeof o.world === 'object' ? Number((o.world as { h?: number }).h) : world.h;
+    const w = clampWorldDim(Number.isFinite(rawW) && rawW > 0 ? rawW : world.w, 400, AQUAMAP_WORLD_MAX_W);
+    const h = clampWorldDim(Number.isFinite(rawH) && rawH > 0 ? rawH : world.h, 280, AQUAMAP_WORLD_MAX_H);
     const els = o.elements.map((raw) => migrateElement(raw, { w, h })).filter((x): x is MapElement => x != null);
     return {
       format: AQUAMAP_FORMAT,
       world: {
-        w: Number.isFinite(w) && w > 0 ? w : world.w,
-        h: Number.isFinite(h) && h > 0 ? h : world.h
+        w,
+        h
       },
       elements: els
     };
@@ -109,6 +121,11 @@ export function validateAquamapSiteForSave(jsonStr: string | null | undefined): 
   if (env.world.w < 400 || env.world.h < 280) {
     errors.push('El lienzo debe medir al menos 400×280 px.');
   }
+  if (env.world.w > AQUAMAP_WORLD_MAX_W || env.world.h > AQUAMAP_WORLD_MAX_H) {
+    warnings.push(
+      `El lienzo se guardará como máximo ${AQUAMAP_WORLD_MAX_W}×${AQUAMAP_WORLD_MAX_H} px para mantener el editor estable.`
+    );
+  }
   const seen = new Set<string>();
   env.elements.forEach((el, i) => {
     const label = el.name || el.type || `#${i + 1}`;
@@ -147,6 +164,8 @@ export function ensureAquamapEnvelopeFromSiteJson(
   try {
     const doc = parseMapDocument(jsonStr, { view: options.view ?? 'global' });
     const rawItems = Array.isArray(doc.items) ? doc.items : [];
+    const w = clampWorldDim(Math.max(320, Math.round(Number(doc.width) || AQUAMAP_WORLD_W)), 400, AQUAMAP_WORLD_MAX_W);
+    const h = clampWorldDim(Math.max(220, Math.round(Number(doc.height) || AQUAMAP_WORLD_H)), 280, AQUAMAP_WORLD_MAX_H);
     const world = { w, h };
     const elements: MapElement[] = rawItems.map((item: Record<string, unknown>, index: number) => {
       const type = kindToAquamapType(String(item.kind || 'area'));
@@ -177,8 +196,6 @@ export function ensureAquamapEnvelopeFromSiteJson(
         imgSrc: defaultSpriteForType(type)
       };
     });
-    const w = Math.max(320, Math.round(Number(doc.width) || AQUAMAP_WORLD_W));
-    const h = Math.max(220, Math.round(Number(doc.height) || AQUAMAP_WORLD_H));
     return {
       format: AQUAMAP_FORMAT,
       world: { w, h },

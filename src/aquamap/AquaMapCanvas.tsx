@@ -1,8 +1,13 @@
 import Konva from 'konva';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
-import { Ellipse, Group, Image, Layer, Line, Rect, Stage, Transformer } from 'react-konva';
+import { Ellipse, Group, Image, Layer, Line, Rect, Stage, Text, Transformer } from 'react-konva';
 import type { MapElement } from './types';
+import {
+  getParkingGridPatternCanvas,
+  getParkingStripePatternCanvas,
+  PARKING_STATUS_FILL
+} from './parkingYardAssets';
 import {
   constrainAquaMapCamera,
   EDITOR_CAMERA_LIMITS,
@@ -17,6 +22,8 @@ import { defaultSpriteForType } from './spriteUrls';
 import { AQUAMAP_ISLAND_MARGIN } from './world';
 
 export type AquaMapVisualMode = 'editor' | 'public';
+
+export type AquaMapYardVariant = 'island' | 'parking';
 
 type Camera = CameraState;
 
@@ -94,6 +101,7 @@ function readNodeGeometry(node: Konva.Node): { x: number; y: number; width: numb
 
 type ElementSpriteProps = {
   el: MapElement;
+  yardVariant: AquaMapYardVariant;
   selected: boolean;
   hovered: boolean;
   readOnly: boolean;
@@ -109,6 +117,7 @@ type ElementSpriteProps = {
 
 function ElementSprite({
   el,
+  yardVariant,
   selected,
   hovered,
   readOnly,
@@ -124,6 +133,7 @@ function ElementSprite({
   const [img, setImg] = useState<HTMLImageElement | null>(null);
   const groupRef = useRef<Konva.Group>(null);
   const src = resolveSrc(el);
+  const parkingStallVisual = yardVariant === 'parking' && el.type === 'parking';
 
   useEffect(() => {
     shapeRef(el.id, groupRef.current);
@@ -131,12 +141,16 @@ function ElementSprite({
   }, [el.id, shapeRef, img]);
 
   useEffect(() => {
+    if (parkingStallVisual) {
+      setImg(null);
+      return;
+    }
     const im = new window.Image();
     im.crossOrigin = 'anonymous';
     im.onload = () => setImg(im);
     im.onerror = () => setImg(null);
     im.src = src;
-  }, [src]);
+  }, [src, parkingStallVisual]);
 
   useEffect(() => {
     const g = groupRef.current;
@@ -149,6 +163,8 @@ function ElementSprite({
   }, [el.x, el.y, el.width, el.height, img]);
 
   const isPublic = visualMode === 'public';
+  const stallPalette =
+    PARKING_STATUS_FILL[el.parkingStatus ?? 'libre'] ?? PARKING_STATUS_FILL.libre;
   const stroke = isPublic
     ? selected
       ? '#38bdf8'
@@ -165,9 +181,13 @@ function ElementSprite({
   };
 
   const groupHandlers = {
+    onPointerDown: (e: Konva.KonvaEventObject<PointerEvent>) => {
+      e.cancelBubble = true;
+      onSelect();
+    },
     onMouseDown: (e: Konva.KonvaEventObject<MouseEvent>) => {
       e.cancelBubble = true;
-      if (!readOnly) onSelect();
+      onSelect();
     },
     onClick: (e: Konva.KonvaEventObject<MouseEvent>) => {
       e.cancelBubble = true;
@@ -238,7 +258,34 @@ function ElementSprite({
         listening
         hitStrokeWidth={readOnly ? 16 : 12}
       />
-      {!img ? (
+      {parkingStallVisual ? (
+        <>
+          <Rect
+            {...childProps}
+            cornerRadius={10}
+            fill={stallPalette.fill}
+            stroke={selected ? '#38bdf8' : stallPalette.stroke}
+            strokeWidth={
+              isPublic ? (selected ? 2.4 : 1.6) : selected ? 3 : hovered ? 2.2 : 1.6
+            }
+            listening={false}
+          />
+          <Text
+            text={(el.name || '').trim() || '—'}
+            width={el.width}
+            height={el.height}
+            align="center"
+            verticalAlign="middle"
+            fill="#f8fafc"
+            fontStyle="bold"
+            fontSize={Math.max(11, Math.round(Math.min(el.width, el.height) * 0.26))}
+            listening={false}
+            shadowColor="rgba(0,0,0,0.45)"
+            shadowBlur={5}
+            shadowOffsetY={1}
+          />
+        </>
+      ) : !img ? (
         <Rect
           {...childProps}
           fill="rgba(30,41,59,0.42)"
@@ -248,6 +295,66 @@ function ElementSprite({
       ) : (
         <Image {...childProps} image={img} listening={false} />
       )}
+    </Group>
+  );
+}
+
+function ParkingYardBackdrop({ worldW, worldH }: { worldW: number; worldH: number }) {
+  const dotPattern = useMemo(() => getParkingGridPatternCanvas(), []);
+  const stripePattern = useMemo(() => getParkingStripePatternCanvas(), []);
+  const m = AQUAMAP_ISLAND_MARGIN;
+  const iw = worldW - m * 2;
+  const ih = worldH - m * 2;
+  const r = 26;
+  const bandH = ih * 0.38;
+  const bandY = m + (ih - bandH) / 2;
+  return (
+    <Group listening={false}>
+      <Rect
+        x={0}
+        y={0}
+        width={worldW}
+        height={worldH}
+        fillLinearGradientStartPoint={{ x: 0, y: 0 }}
+        fillLinearGradientEndPoint={{ x: worldW, y: worldH }}
+        fillLinearGradientColorStops={[0, '#172554', 0.48, '#1e1b4b', 1, '#0f172a']}
+        listening={false}
+      />
+      <Rect
+        x={m}
+        y={m}
+        width={iw}
+        height={ih}
+        cornerRadius={r}
+        fillPatternImage={dotPattern}
+        fillPatternRepeat="repeat"
+        stroke="#134e4a"
+        strokeWidth={1}
+        listening={false}
+      />
+      <Rect
+        x={m + 14}
+        y={bandY}
+        width={iw - 28}
+        height={bandH}
+        cornerRadius={14}
+        fillPatternImage={stripePattern}
+        fillPatternRepeat="repeat"
+        opacity={0.55}
+        listening={false}
+      />
+      <Rect
+        x={m + 10}
+        y={m + 10}
+        width={iw - 20}
+        height={ih - 20}
+        cornerRadius={r - 6}
+        fillEnabled={false}
+        stroke="#2dd4bf"
+        strokeWidth={2}
+        dash={[14, 10]}
+        listening={false}
+      />
     </Group>
   );
 }
@@ -378,6 +485,7 @@ export type AquaMapCanvasProps = {
   onContextRequest?: (req: AquaMapContextRequest) => void;
   cameraLimits?: CameraLimits;
   visualMode?: AquaMapVisualMode;
+  yardVariant?: AquaMapYardVariant;
   publicFilter?: string;
   navigationPath?: { x: number; y: number }[];
 };
@@ -398,6 +506,7 @@ export function AquaMapCanvas({
   onContextRequest,
   cameraLimits = EDITOR_CAMERA_LIMITS,
   visualMode = 'editor',
+  yardVariant = 'island',
   publicFilter = 'all',
   navigationPath = []
 }: AquaMapCanvasProps) {
@@ -430,6 +539,7 @@ export function AquaMapCanvas({
   );
   const s = layout.scale;
   const isPublicVisual = visualMode === 'public';
+  const parkingYard = yardVariant === 'parking';
   const routePoints = useMemo(
     () => navigationPath.flatMap((pt) => [pt.x, pt.y]),
     [navigationPath]
@@ -541,8 +651,15 @@ export function AquaMapCanvas({
       ref={stageRef}
       width={width}
       height={height}
+      dragDistance={8}
       className={`touch-none bg-gradient-to-b ${
-        isPublicVisual ? 'from-[#1a2438] via-[#151a28] to-[#0f1218]' : 'from-[#1e2433] via-[#171a22] to-[#12141a]'
+        isPublicVisual
+          ? parkingYard
+            ? 'from-[#0f172a] via-[#111827] to-[#020617]'
+            : 'from-[#1a2438] via-[#151a28] to-[#0f1218]'
+          : parkingYard
+            ? 'from-[#0f172a] via-[#111827] to-[#020617]'
+            : 'from-[#1e2433] via-[#171a22] to-[#12141a]'
       }`}
       draggable
       x={camera.x}
@@ -579,16 +696,20 @@ export function AquaMapCanvas({
     >
       <Layer>
         <Group x={layout.groupX} y={layout.groupY} scaleX={s} scaleY={s}>
-          <IslandBackdrop worldW={worldW} worldH={worldH} publicMode={isPublicVisual} />
+          {parkingYard ? (
+            <ParkingYardBackdrop worldW={worldW} worldH={worldH} />
+          ) : (
+            <IslandBackdrop worldW={worldW} worldH={worldH} publicMode={isPublicVisual} />
+          )}
           {elementsSorted.map((el) => {
             const dimmed =
-              isPublicVisual &&
               Boolean(publicFilter && publicFilter !== 'all') &&
               !elementMatchesAquamapFilter(el, publicFilter);
             return (
               <ElementSprite
                 key={el.id}
                 el={el}
+                yardVariant={yardVariant}
                 selected={el.id === selectedId}
                 hovered={el.id === hoverId}
                 readOnly={readOnly}

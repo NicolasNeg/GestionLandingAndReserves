@@ -1,5 +1,6 @@
-import type { ElementType, MapElement } from './types';
 import { nanoid } from 'nanoid';
+import { normalizeParkingStatus } from './parkingYardAssets';
+import type { ElementType, MapElement } from './types';
 import { defaultSpriteForType } from './spriteUrls';
 import { AQUAMAP_WORLD_H, AQUAMAP_WORLD_W } from './world';
 
@@ -28,7 +29,8 @@ export const PRESET_SIZE_BY_TYPE: Record<ElementType, { width: number; height: n
   service: { width: 180, height: 150 },
   tree: { width: 96, height: 110 },
   mesa: { width: 112, height: 96 },
-  parking: { width: 108, height: 88 }
+  /** Cajón vertical (vista cenital del patio). */
+  parking: { width: 88, height: 108 }
 };
 
 export function presetSizeForType(type: ElementType): { width: number; height: number } {
@@ -66,7 +68,7 @@ export function createMapElement(
   const cy = H / 2;
   const spread = 120;
   const { width, height } = presetSizeForType(type);
-  return {
+  const base: MapElement = {
     id,
     type,
     name: LABELS[type],
@@ -78,4 +80,8 @@ export function createMapElement(
     color: COLORS[type],
     imgSrc: defaultSpriteForType(type)
   };
+  if (type === 'parking') {
+    base.parkingStatus = normalizeParkingStatus('libre');
+  }
+  return base;
 }

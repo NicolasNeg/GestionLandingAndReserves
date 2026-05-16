@@ -2775,6 +2775,9 @@ const AdminDashboard = {
               const a = document.getElementById('mapa-preview-link');
               if (a) a.click();
               else window.location.assign('/home#mapa');
+            },
+            onExitToSitePanel: () => {
+              document.getElementById('lp-save')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
             }
           });
         }

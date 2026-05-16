@@ -8,11 +8,14 @@ import {
   useState
 } from 'react';
 import { AquaMapBootOverlay } from './AquaMapBootOverlay';
+import type { AquaMapYardVariant } from './AquaMapCanvas';
 import { AquaMapCanvas } from './AquaMapCanvas';
 import { AquaMapContextMenu } from './AquaMapContextMenu';
 import { AquaMapEditorChrome } from './AquaMapEditorChrome';
 import { AquaMapEditorToolbar } from './AquaMapEditorToolbar';
 import { AquaMapLegend } from './AquaMapLegend';
+import { AquaMapParkingChrome } from './AquaMapParkingChrome';
+import { AquaMapParkingOverlays } from './AquaMapParkingOverlays';
 import { AquaMapSidebar } from './AquaMapSidebar';
 import { AquaMapZoomHud } from './AquaMapZoomHud';
 import {
@@ -20,6 +23,7 @@ import {
   EDITOR_CAMERA_LIMITS,
   LANDING_CAMERA_LIMITS
 } from './aquaMapCameraConstraints';
+import { buildAquamapFilterChips } from './aquaMapPublicFilters';
 import { createMapElement, presetSizeForType } from './elementDefaults';
 import type { ElementType, MapElement } from './types';
 import {
@@ -29,6 +33,7 @@ import {
 } from './siteEnvelope';
 import { MAP_LAYER_CONFIG, type MapLayerContext } from './mapLayers';
 import { defaultSpriteForType } from './spriteUrls';
+import { AQUAMAP_WORLD_MAX_H, AQUAMAP_WORLD_MAX_W } from './world';
 import { useAquaMapEditorCommands } from './useAquaMapEditorCommands';
 import { useAquamapHistory } from './useAquamapHistory';
 import './aquamapEditor.css';
@@ -49,6 +54,8 @@ type Props = {
   onChangeJson: (json: string) => void;
   onSaveSite: () => void;
   onPreviewPublic: () => void;
+  /** Vuelve el foco al panel Sitio (guardar / pestañas) sin abrir la landing. */
+  onExitToSitePanel?: () => void;
   mapBridgeNotifiers?: MapBridgeNotifiers | null;
 };
 
@@ -97,10 +104,20 @@ function isTypingTarget(el: EventTarget | null): boolean {
 }
 
 export const AquaMapSiteEditor = forwardRef<AquaMapSiteEditorHandle, Props>(function AquaMapSiteEditor(
-  { initialJson, mapContext = 'parque', onChangeJson, onSaveSite, onPreviewPublic, mapBridgeNotifiers },
+  {
+    initialJson,
+    mapContext = 'parque',
+    onChangeJson,
+    onSaveSite,
+    onPreviewPublic,
+    onExitToSitePanel,
+    mapBridgeNotifiers
+  },
   ref
 ) {
   const layerConfig = MAP_LAYER_CONFIG[mapContext];
+  const editorSkin = mapContext === 'estacionamiento' ? 'parking' : 'aquatic';
+  const yardVariant: AquaMapYardVariant = mapContext === 'estacionamiento' ? 'parking' : 'island';
   const legacyView = legacyViewForContext(mapContext);
   const initialEnvelope = useMemo(
     () => ensureAquamapEnvelopeFromSiteJson(initialJson, { view: legacyView }),
@@ -123,6 +140,8 @@ export const AquaMapSiteEditor = forwardRef<AquaMapSiteEditorHandle, Props>(func
   const [saveFlash, setSaveFlash] = useState(false);
   const [booting, setBooting] = useState(true);
   const [spaceDown, setSpaceDown] = useState(false);
+  const [editorTypeFilter, setEditorTypeFilter] = useState<string>('all');
+  const [parkingSpotDraft, setParkingSpotDraft] = useState('');
   const mapWrapRef = useRef<HTMLDivElement>(null);
   const [stageSize, setStageSize] = useState({ w: 800, h: 600 });
   const externalSyncRef = useRef(false);
@@ -247,6 +266,11 @@ export const AquaMapSiteEditor = forwardRef<AquaMapSiteEditorHandle, Props>(func
     if (!booting && previewMode) fitCameraToContent();
   }, [booting, previewMode, fitCameraToContent]);
 
+  const filterChips = useMemo(
+    () => buildAquamapFilterChips(envelope.elements),
+    [envelope.elements]
+  );
+
   const elementsSorted = useMemo(
     () => [...envelope.elements].sort((a, b) => a.y - b.y),
     [envelope.elements]
@@ -266,8 +290,27 @@ export const AquaMapSiteEditor = forwardRef<AquaMapSiteEditorHandle, Props>(func
     [envelope.world, setEnvelope]
   );
 
+  const onAddParkingSpot = useCallback(() => {
+    const raw = parkingSpotDraft.trim();
+    if (!raw) return;
+    const code = raw.toUpperCase();
+    const dup = envelope.elements.some(
+      (e) => e.type === 'parking' && (e.name || '').trim().toUpperCase() === code
+    );
+    if (dup) return;
+    const next = createMapElement('parking', envelope.world);
+    next.name = code;
+    setEnvelope((prev) => ({ ...prev, elements: [...prev.elements, next] }));
+    setSelectedId(next.id);
+    setParkingSpotDraft('');
+  }, [envelope.elements, envelope.world, parkingSpotDraft, setEnvelope]);
+
   const onUpdateSelected = useCallback(
-    (patch: Partial<Pick<MapElement, 'name' | 'color' | 'width' | 'height' | 'imgSrc' | 'description'>>) => {
+    (
+      patch: Partial<
+        Pick<MapElement, 'name' | 'color' | 'width' | 'height' | 'imgSrc' | 'description' | 'parkingStatus'>
+      >
+    ) => {
       if (!selectedId) return;
       setEnvelope((prev) => ({
         ...prev,
@@ -292,8 +335,14 @@ export const AquaMapSiteEditor = forwardRef<AquaMapSiteEditorHandle, Props>(func
       setEnvelope((prev) => ({
         ...prev,
         world: {
-          w: Math.max(400, Math.round(patch.w ?? prev.world.w)),
-          h: Math.max(280, Math.round(patch.h ?? prev.world.h))
+          w: Math.min(
+            AQUAMAP_WORLD_MAX_W,
+            Math.max(400, Math.round(patch.w ?? prev.world.w))
+          ),
+          h: Math.min(
+            AQUAMAP_WORLD_MAX_H,
+            Math.max(280, Math.round(patch.h ?? prev.world.h))
+          )
         }
       }));
     },
@@ -366,9 +415,17 @@ export const AquaMapSiteEditor = forwardRef<AquaMapSiteEditorHandle, Props>(func
   return (
     <div
       data-aquamap-editor-root
-      className="relative flex h-[min(76vh,760px)] w-full min-h-[min(64vh,600px)] overflow-hidden bg-[#262626]"
+      className="relative flex h-[min(68vh,620px)] w-full min-h-[min(52vh,480px)] overflow-hidden bg-[#262626]"
     >
       <div className="flex min-h-0 min-w-0 flex-1 flex-col p-2 pr-1">
+        {yardVariant === 'parking' && !previewMode ? (
+          <AquaMapParkingChrome
+            spotDraft={parkingSpotDraft}
+            onSpotDraftChange={setParkingSpotDraft}
+            onAddSpot={onAddParkingSpot}
+            disabled={previewMode}
+          />
+        ) : null}
         <AquaMapEditorChrome
           zoomPercent={zoomPercentUi}
           toolbar={
@@ -394,6 +451,25 @@ export const AquaMapSiteEditor = forwardRef<AquaMapSiteEditorHandle, Props>(func
             className={`relative h-full w-full min-h-[280px] ${spaceDown ? 'cursor-grab active:cursor-grabbing' : ''}`}
           >
             {booting ? <AquaMapBootOverlay /> : null}
+            {!booting && filterChips.length > 1 ? (
+              <div className="pointer-events-auto absolute left-3 right-16 top-3 z-[18] flex flex-wrap gap-1 sm:right-20">
+                {filterChips.map((chip) => (
+                  <button
+                    key={chip.id}
+                    type="button"
+                    title="Filtrar piezas visibles (solo resalta tipos; no borra nada)"
+                    className={`rounded-full border px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide shadow ${
+                      editorTypeFilter === chip.id
+                        ? 'border-[#5eead4]/60 bg-[#1a2e28] text-[#86efac]'
+                        : 'border-[#404040] bg-[#2a2a2a]/95 text-[#a3a3a3] hover:border-[#525252]'
+                    }`}
+                    onClick={() => setEditorTypeFilter(chip.id)}
+                  >
+                    {chip.label}
+                  </button>
+                ))}
+              </div>
+            ) : null}
             <AquaMapCanvas
               width={stageSize.w}
               height={stageSize.h}
@@ -410,6 +486,8 @@ export const AquaMapSiteEditor = forwardRef<AquaMapSiteEditorHandle, Props>(func
               onContextRequest={spaceDown || previewMode ? undefined : openContextMenu}
               cameraLimits={cameraLimits}
               visualMode={visualMode}
+              publicFilter={editorTypeFilter}
+              yardVariant={yardVariant}
             />
             {!previewMode ? (
               <AquaMapContextMenu
@@ -422,7 +500,7 @@ export const AquaMapSiteEditor = forwardRef<AquaMapSiteEditorHandle, Props>(func
                 onClose={closeContextMenu}
               />
             ) : null}
-            <AquaMapLegend />
+            {yardVariant === 'parking' ? <AquaMapParkingOverlays /> : <AquaMapLegend />}
             <AquaMapZoomHud
               onZoomIn={onZoomIn}
               onZoomOut={onZoomOut}
@@ -438,6 +516,7 @@ export const AquaMapSiteEditor = forwardRef<AquaMapSiteEditorHandle, Props>(func
         </AquaMapEditorChrome>
       </div>
       <AquaMapSidebar
+        editorSkin={editorSkin}
         layerLabel={layerConfig.label}
         layerHint={layerConfig.shortHint}
         allowedTypes={layerConfig.allowedTypes}
@@ -454,7 +533,9 @@ export const AquaMapSiteEditor = forwardRef<AquaMapSiteEditorHandle, Props>(func
         onDeleteSelected={deleteSelected}
         onSaveClick={onSaveClick}
         onPublishClick={onPublishClick}
+        onExitToSitePanel={onExitToSitePanel}
         addDisabled={previewMode}
+        hideQuickAdd={yardVariant === 'parking'}
       />
     </div>
   );

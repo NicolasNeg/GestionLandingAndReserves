@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, forwardRef } from 'react';
-import { AquaMapBootOverlay } from './AquaMapBootOverlay';
+import type { AquaMapYardVariant } from './AquaMapCanvas';
 import { AquaMapCanvas } from './AquaMapCanvas';
+import { AquaMapBootOverlay } from './AquaMapBootOverlay';
 import { AquaMapLegend } from './AquaMapLegend';
+import { AquaMapParkingOverlays } from './AquaMapParkingOverlays';
 import {
   constrainAquaMapCamera,
   LANDING_CAMERA_LIMITS,
@@ -157,6 +159,12 @@ export const AquaMapLandingViewer = forwardRef<AquaMapLandingViewerHandle, Props
   const filterChips = useMemo(() => buildAquamapFilterChips(envelope.elements), [envelope.elements]);
   const publicFilter = drawOptions.publicMapFilter || 'all';
 
+  const yardVariant = useMemo((): AquaMapYardVariant => {
+    const els = envelope.elements;
+    if (!els.length) return 'island';
+    return els.every((e) => e.type === 'parking') ? 'parking' : 'island';
+  }, [envelope.elements]);
+
   useEffect(() => {
     onSelectElement(selected);
   }, [selected, onSelectElement]);
@@ -249,8 +257,9 @@ export const AquaMapLandingViewer = forwardRef<AquaMapLandingViewerHandle, Props
         visualMode="public"
         publicFilter={publicFilter}
         navigationPath={navigationPath}
+        yardVariant={yardVariant}
       />
-      <AquaMapLegend />
+      {yardVariant === 'parking' ? <AquaMapParkingOverlays /> : <AquaMapLegend />}
     </div>
   );
 });

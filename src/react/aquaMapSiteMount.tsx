@@ -12,6 +12,7 @@ export type MountAquaMapSiteEditorOptions = {
   onChangeJson: (json: string) => void;
   onSaveSite: () => void;
   onPreviewPublic: () => void;
+  onExitToSitePanel?: () => void;
 };
 
 export function mountAquaMapSiteEditor(host: HTMLElement, options: MountAquaMapSiteEditorOptions) {
@@ -46,6 +47,7 @@ export function mountAquaMapSiteEditor(host: HTMLElement, options: MountAquaMapS
           onChangeJson={options.onChangeJson}
           onSaveSite={options.onSaveSite}
           onPreviewPublic={options.onPreviewPublic}
+          onExitToSitePanel={options.onExitToSitePanel}
           mapBridgeNotifiers={mapBridgeNotifiers}
         />
       </StrictMode>

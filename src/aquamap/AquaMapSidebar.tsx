@@ -1,4 +1,5 @@
 import {
+  ArrowUpLeft,
   Car,
   CopyPlus,
   Droplets,
@@ -12,7 +13,8 @@ import {
 } from 'lucide-react';
 import { useMemo, useRef } from 'react';
 import { presetSizeForType } from './elementDefaults';
-import type { ElementType, MapElement } from './types';
+import type { ElementType, MapElement, ParkingSpotStatus } from './types';
+import { AQUAMAP_WORLD_MAX_H, AQUAMAP_WORLD_MAX_W } from './world';
 
 const TYPE_META: Record<ElementType, { label: string; Icon: typeof Droplets }> = {
   pool: { label: 'Alberca', Icon: Droplets },
@@ -26,6 +28,7 @@ const TYPE_META: Record<ElementType, { label: string; Icon: typeof Droplets }> =
 const SWATCHES = ['#0ea5e9', '#f97316', '#22c55e', '#a855f7', '#eab308', '#ef4444', '#64748b', '#f8fafc'];
 
 type Props = {
+  editorSkin?: 'aquatic' | 'parking';
   layerLabel: string;
   layerHint: string;
   allowedTypes: ElementType[];
@@ -36,7 +39,9 @@ type Props = {
   selected: MapElement | null;
   onAdd: (type: ElementType) => void;
   onUpdateSelected: (
-    patch: Partial<Pick<MapElement, 'name' | 'color' | 'width' | 'height' | 'imgSrc' | 'description'>>
+    patch: Partial<
+      Pick<MapElement, 'name' | 'color' | 'width' | 'height' | 'imgSrc' | 'description' | 'parkingStatus'>
+    >
   ) => void;
   onWorldChange: (patch: Partial<{ w: number; h: number }>) => void;
   onApplyPresetSize: () => void;
@@ -46,9 +51,14 @@ type Props = {
   onPublishClick: () => void;
   /** En vista previa los botones de añadir quedan deshabilitados pero visibles. */
   addDisabled?: boolean;
+  /** Oculta la cuadrícula rápida “Añadir al mapa” (p. ej. modo patio con barra propia). */
+  hideQuickAdd?: boolean;
+  /** Scroll al panel Sitio (guardar / pestañas). */
+  onExitToSitePanel?: () => void;
 };
 
 export function AquaMapSidebar({
+  editorSkin = 'aquatic',
   layerLabel,
   layerHint,
   allowedTypes,
@@ -65,11 +75,13 @@ export function AquaMapSidebar({
   onDeleteSelected,
   onSaveClick,
   onPublishClick,
-  addDisabled = false
+  addDisabled = false,
+  hideQuickAdd = false,
+  onExitToSitePanel
 }: Props) {
   const fileRef = useRef<HTMLInputElement>(null);
-  const maxW = Math.max(200, Math.round(world.w * 0.65));
-  const maxH = Math.max(160, Math.round(world.h * 0.65));
+  const maxW = Math.min(2400, Math.max(200, Math.round(world.w * 0.65)));
+  const maxH = Math.min(2000, Math.max(160, Math.round(world.h * 0.65)));
   const preset = selected ? presetSizeForType(selected.type) : null;
 
   const addButtons = useMemo(
@@ -78,10 +90,16 @@ export function AquaMapSidebar({
   );
 
   return (
-    <aside className="flex h-full w-[min(22%,300px)] min-w-[240px] flex-shrink-0 flex-col border-l border-[#1a1a1a] bg-[#323232] text-[#e5e5e5] shadow-[inset_1px_0_0_0_rgba(255,255,255,0.03)]">
-      <motionHeader layerLabel={layerLabel} layerHint={layerHint} />
+    <aside
+      className={`flex h-full w-[min(22%,300px)] min-w-[240px] flex-shrink-0 flex-col border-l shadow-[inset_1px_0_0_0_rgba(255,255,255,0.03)] ${
+        editorSkin === 'parking'
+          ? 'border-l-amber-900/40 bg-[#2c261c] text-[#f5f5f4]'
+          : 'border-l-[#1a1a1a] bg-[#323232] text-[#e5e5e5]'
+      }`}
+    >
+      <motionHeader editorSkin={editorSkin} layerLabel={layerLabel} layerHint={layerHint} />
 
-      <section className="border-b border-[#1f1f1f] px-3 py-2.5">
+      <section className="flex-shrink-0 border-b border-[#1f1f1f] px-3 py-2.5">
         <h2 className="mb-2 font-mono text-[9px] font-semibold uppercase tracking-wider text-[#737373]">
           Tamaño del lienzo
         </h2>
@@ -91,7 +109,7 @@ export function AquaMapSidebar({
             <input
               type="number"
               min={400}
-              max={4000}
+              max={AQUAMAP_WORLD_MAX_W}
               step={10}
               className="rounded border border-[#1f1f1f] bg-[#1e1e1e] px-2 py-1 text-[11px] text-white"
               value={world.w}
@@ -103,7 +121,7 @@ export function AquaMapSidebar({
             <input
               type="number"
               min={280}
-              max={3000}
+              max={AQUAMAP_WORLD_MAX_H}
               step={10}
               className="rounded border border-[#1f1f1f] bg-[#1e1e1e] px-2 py-1 text-[11px] text-white"
               value={world.h}
@@ -113,14 +131,16 @@ export function AquaMapSidebar({
         </div>
       </section>
 
-      <section className="border-b border-[#1f1f1f] px-3 py-2.5">
-        <h2 className="mb-2 font-mono text-[9px] font-semibold uppercase tracking-wider text-[#737373]">
-          Añadir al mapa
-        </h2>
-        <motionTools addButtons={addButtons} onAdd={onAdd} disabled={addDisabled} />
-      </section>
+      {!hideQuickAdd ? (
+        <section className="flex-shrink-0 border-b border-[#1f1f1f] px-3 py-2.5">
+          <h2 className="mb-2 font-mono text-[9px] font-semibold uppercase tracking-wider text-[#737373]">
+            Añadir al mapa
+          </h2>
+          <motionTools addButtons={addButtons} onAdd={onAdd} disabled={addDisabled} />
+        </section>
+      ) : null}
 
-      <div className="flex-1 overflow-y-auto px-3 py-3">
+      <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
         {selected ? (
           <section>
             <h2 className="mb-3 font-mono text-[9px] font-semibold uppercase tracking-wider text-[#737373]">
@@ -180,6 +200,24 @@ export function AquaMapSidebar({
                   onChange={(e) => onUpdateSelected({ name: e.target.value })}
                 />
               </label>
+
+              {selected.type === 'parking' ? (
+                <label className="flex flex-col gap-1">
+                  <span className="font-mono text-[9px] text-[#737373]">Estado operativo</span>
+                  <select
+                    className="rounded border border-[#1f1f1f] bg-[#1e1e1e] px-2 py-1.5 text-[#e5e5e5] outline-none focus:border-[#5eead4]/60"
+                    value={selected.parkingStatus ?? 'libre'}
+                    onChange={(e) =>
+                      onUpdateSelected({ parkingStatus: e.target.value as ParkingSpotStatus })
+                    }
+                  >
+                    <option value="libre">Libre</option>
+                    <option value="reservado">Reservado</option>
+                    <option value="ocupado">Ocupado</option>
+                    <option value="mantenimiento">Mantenimiento</option>
+                  </select>
+                </label>
+              ) : null}
 
               <label className="flex flex-col gap-1">
                 <span className="font-mono text-[9px] text-[#737373]">Descripción pública</span>
@@ -241,69 +279,85 @@ export function AquaMapSidebar({
                 </label>
               </div>
 
-              <div>
-                <span className="font-mono text-[9px] text-[#737373]">Color de acento</span>
-                <div className="mt-2 grid grid-cols-4 gap-1.5">
-                  {SWATCHES.map((c) => (
-                    <button
-                      key={c}
-                      type="button"
-                      title={c}
-                      onClick={() => onUpdateSelected({ color: c })}
-                      className={`aquamap-pressable h-7 w-full rounded border transition ${
-                        selected.color.toLowerCase() === c.toLowerCase()
-                          ? 'border-white ring-1 ring-[#5eead4]/50'
-                          : 'border-transparent hover:border-[#525252]'
-                      }`}
-                      style={{ backgroundColor: c }}
+              {!(editorSkin === 'parking' && selected.type === 'parking') ? (
+                <>
+                  <div>
+                    <span className="font-mono text-[9px] text-[#737373]">Color de acento</span>
+                    <div className="mt-2 grid grid-cols-4 gap-1.5">
+                      {SWATCHES.map((c) => (
+                        <button
+                          key={c}
+                          type="button"
+                          title={c}
+                          onClick={() => onUpdateSelected({ color: c })}
+                          className={`aquamap-pressable h-7 w-full rounded border transition ${
+                            selected.color.toLowerCase() === c.toLowerCase()
+                              ? 'border-white ring-1 ring-[#5eead4]/50'
+                              : 'border-transparent hover:border-[#525252]'
+                          }`}
+                          style={{ backgroundColor: c }}
+                        />
+                      ))}
+                    </div>
+                    <input
+                      type="color"
+                      className="mt-2 h-9 w-full cursor-pointer rounded border border-[#1f1f1f] bg-[#1e1e1e]"
+                      value={selected.color}
+                      onChange={(e) => onUpdateSelected({ color: e.target.value })}
                     />
-                  ))}
-                </div>
-                <input
-                  type="color"
-                  className="mt-2 h-9 w-full cursor-pointer rounded border border-[#1f1f1f] bg-[#1e1e1e]"
-                  value={selected.color}
-                  onChange={(e) => onUpdateSelected({ color: e.target.value })}
-                />
-              </div>
+                  </div>
 
-              <div className="rounded border border-dashed border-[#404040] bg-[#262626] p-2.5">
-                <input
-                  ref={fileRef}
-                  type="file"
-                  accept="image/*"
-                  className="pointer-events-none absolute h-px w-px overflow-hidden opacity-0"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (!file) return;
-                    const reader = new FileReader();
-                    reader.onload = () => {
-                      const r = reader.result;
-                      if (typeof r === 'string') onUpdateSelected({ imgSrc: r });
-                    };
-                    reader.readAsDataURL(file);
-                    e.target.value = '';
-                  }}
-                />
-                <button
-                  type="button"
-                  onClick={() => fileRef.current?.click()}
-                  className="aquamap-pressable flex w-full cursor-pointer flex-col items-center gap-1.5 rounded py-2 text-center text-[10px] text-[#a3a3a3] hover:bg-[#2e2e2e]"
-                >
-                  <Upload className="h-5 w-5 text-[#5eead4]" strokeWidth={1.5} />
-                  <span>Textura personalizada</span>
-                </button>
-              </div>
+                  <div className="rounded border border-dashed border-[#404040] bg-[#262626] p-2.5">
+                    <input
+                      ref={fileRef}
+                      type="file"
+                      accept="image/*"
+                      className="pointer-events-none absolute h-px w-px overflow-hidden opacity-0"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        const reader = new FileReader();
+                        reader.onload = () => {
+                          const r = reader.result;
+                          if (typeof r === 'string') onUpdateSelected({ imgSrc: r });
+                        };
+                        reader.readAsDataURL(file);
+                        e.target.value = '';
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => fileRef.current?.click()}
+                      className="aquamap-pressable flex w-full cursor-pointer flex-col items-center gap-1.5 rounded py-2 text-center text-[10px] text-[#a3a3a3] hover:bg-[#2e2e2e]"
+                    >
+                      <Upload className="h-5 w-5 text-[#5eead4]" strokeWidth={1.5} />
+                      <span>Textura personalizada</span>
+                    </button>
+                  </div>
+                </>
+              ) : null}
             </div>
           </section>
         ) : (
           <p className="rounded border border-dashed border-[#404040] bg-[#262626] p-3 text-[11px] leading-relaxed text-[#a3a3a3]">
-            Selecciona un elemento en el mapa o añade uno con las herramientas de arriba.
+            {hideQuickAdd
+              ? 'Selecciona un spot en el mapa o usa “Agregar spot” en la barra superior.'
+              : 'Selecciona un elemento en el mapa o añade uno con las herramientas de arriba.'}
           </p>
         )}
       </div>
 
-      <div className="border-t border-[#1f1f1f] bg-[#3c3c3c] p-2.5">
+      <div className="flex-shrink-0 border-t border-[#1f1f1f] bg-[#3c3c3c] p-2.5">
+        {onExitToSitePanel ? (
+          <button
+            type="button"
+            onClick={onExitToSitePanel}
+            className="aquamap-pressable mb-1.5 flex w-full items-center justify-center gap-2 rounded border border-[#525252] bg-[#2a2a2a] py-2 text-[11px] font-semibold text-[#e5e5e5] hover:bg-[#333]"
+          >
+            <ArrowUpLeft className="h-3.5 w-3.5 shrink-0 text-[#a3a3a3]" strokeWidth={2} />
+            Volver al panel Sitio
+          </button>
+        ) : null}
         <button
           type="button"
           onClick={onSaveClick}
@@ -323,15 +377,27 @@ export function AquaMapSidebar({
   );
 }
 
-function motionHeader({ layerLabel, layerHint }: { layerLabel: string; layerHint: string }) {
+function motionHeader({
+  editorSkin,
+  layerLabel,
+  layerHint
+}: {
+  editorSkin: 'aquatic' | 'parking';
+  layerLabel: string;
+  layerHint: string;
+}) {
+  const accent =
+    editorSkin === 'parking' ? 'text-amber-400' : 'text-[#5eead4]';
+  const title =
+    editorSkin === 'parking' ? 'Editor de estacionamiento' : 'Editor del mapa';
   return (
-    <div className="border-b border-[#1f1f1f] bg-[#3c3c3c] px-3 py-2.5">
+    <div className="flex-shrink-0 border-b border-[#1f1f1f] bg-[#3c3c3c] px-3 py-2.5">
       <div className="flex items-start justify-between gap-2">
         <div>
-          <p className="font-mono text-[9px] font-semibold uppercase tracking-[0.18em] text-[#5eead4]">
+          <p className={`font-mono text-[9px] font-semibold uppercase tracking-[0.18em] ${accent}`}>
             Capa · {layerLabel}
           </p>
-          <h1 className="text-[13px] font-semibold tracking-tight text-[#f5f5f5]">Editor del mapa</h1>
+          <h1 className="text-[13px] font-semibold tracking-tight text-[#f5f5f5]">{title}</h1>
           <p className="mt-1 text-[10px] leading-snug text-[#737373]">{layerHint}</p>
         </div>
         <Settings className="mt-0.5 h-4 w-4 shrink-0 text-[#737373]" strokeWidth={1.5} aria-hidden />
