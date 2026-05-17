@@ -25,6 +25,19 @@ import {
 } from './aquaMapCameraConstraints';
 import { buildAquamapFilterChips } from './aquaMapPublicFilters';
 import { createMapElement, presetSizeForType } from './elementDefaults';
+import {
+  computeNextParkingSpotPlacement,
+  findParkingSpotByCode,
+  normalizeParkingSpotCode,
+  snapParkingGeometry
+} from './parkingLayout';
+import { countParkingSpots } from './parkingSpotStats';
+import {
+  removeParkingElementFromDbSafe,
+  syncAllParkingElementsToDbSafe,
+  syncParkingElementToDbSafe,
+  syncParkingPatchToDbSafe
+} from './parkingSpotsSync';
 import type { ElementType, MapElement } from './types';
 import {
   ensureAquamapEnvelopeFromSiteJson,
@@ -118,6 +131,7 @@ export const AquaMapSiteEditor = forwardRef<AquaMapSiteEditorHandle, Props>(func
   const layerConfig = MAP_LAYER_CONFIG[mapContext];
   const editorSkin = mapContext === 'estacionamiento' ? 'parking' : 'aquatic';
   const yardVariant: AquaMapYardVariant = mapContext === 'estacionamiento' ? 'parking' : 'island';
+  const syncParkingDb = yardVariant === 'parking';
   const legacyView = legacyViewForContext(mapContext);
   const initialEnvelope = useMemo(
     () => ensureAquamapEnvelopeFromSiteJson(initialJson, { view: legacyView }),
@@ -142,6 +156,7 @@ export const AquaMapSiteEditor = forwardRef<AquaMapSiteEditorHandle, Props>(func
   const [spaceDown, setSpaceDown] = useState(false);
   const [editorTypeFilter, setEditorTypeFilter] = useState<string>('all');
   const [parkingSpotDraft, setParkingSpotDraft] = useState('');
+  const [parkingSpotError, setParkingSpotError] = useState<string | null>(null);
   const mapWrapRef = useRef<HTMLDivElement>(null);
   const [stageSize, setStageSize] = useState({ w: 800, h: 600 });
   const externalSyncRef = useRef(false);
@@ -281,29 +296,52 @@ export const AquaMapSiteEditor = forwardRef<AquaMapSiteEditorHandle, Props>(func
     [envelope.elements, selectedId]
   );
 
+  const parkingCounts = useMemo(
+    () => (yardVariant === 'parking' ? countParkingSpots(envelope.elements) : undefined),
+    [envelope.elements, yardVariant]
+  );
+
+  const onParkingSpotDraftChange = useCallback((v: string) => {
+    setParkingSpotDraft(v);
+    if (parkingSpotError) setParkingSpotError(null);
+  }, [parkingSpotError]);
+
   const onAdd = useCallback(
     (type: ElementType) => {
       const next = createMapElement(type, envelope.world);
+      if (syncParkingDb && type === 'parking') {
+        const place = computeNextParkingSpotPlacement(envelope.elements, envelope.world);
+        next.x = place.x;
+        next.y = place.y;
+        const code = normalizeParkingSpotCode(next.name);
+        if (code) next.name = code;
+      }
       setEnvelope((prev) => ({ ...prev, elements: [...prev.elements, next] }));
       setSelectedId(next.id);
+      if (syncParkingDb && type === 'parking') syncParkingElementToDbSafe(next, envelope.world);
     },
-    [envelope.world, setEnvelope]
+    [envelope.elements, envelope.world, setEnvelope, syncParkingDb]
   );
 
   const onAddParkingSpot = useCallback(() => {
     const raw = parkingSpotDraft.trim();
     if (!raw) return;
-    const code = raw.toUpperCase();
-    const dup = envelope.elements.some(
-      (e) => e.type === 'parking' && (e.name || '').trim().toUpperCase() === code
-    );
-    if (dup) return;
+    const code = normalizeParkingSpotCode(raw);
+    if (findParkingSpotByCode(envelope.elements, code)) {
+      setParkingSpotError(`Ya existe un cajón con el código «${code}».`);
+      return;
+    }
     const next = createMapElement('parking', envelope.world);
     next.name = code;
+    const place = computeNextParkingSpotPlacement(envelope.elements, envelope.world);
+    next.x = place.x;
+    next.y = place.y;
     setEnvelope((prev) => ({ ...prev, elements: [...prev.elements, next] }));
     setSelectedId(next.id);
     setParkingSpotDraft('');
-  }, [envelope.elements, envelope.world, parkingSpotDraft, setEnvelope]);
+    setParkingSpotError(null);
+    if (syncParkingDb) syncParkingElementToDbSafe(next, envelope.world);
+  }, [envelope.elements, envelope.world, parkingSpotDraft, setEnvelope, syncParkingDb]);
 
   const onUpdateSelected = useCallback(
     (
@@ -312,22 +350,45 @@ export const AquaMapSiteEditor = forwardRef<AquaMapSiteEditorHandle, Props>(func
       >
     ) => {
       if (!selectedId) return;
+      const current = envelope.elements.find((e) => e.id === selectedId);
+      if (!current) return;
+      if (patch.name != null && yardVariant === 'parking') {
+        const code = normalizeParkingSpotCode(patch.name);
+        if (!code) return;
+        const dup = findParkingSpotByCode(envelope.elements, code, selectedId);
+        if (dup) {
+          setParkingSpotError(`Ya existe un cajón con el código «${code}».`);
+          return;
+        }
+        setParkingSpotError(null);
+        patch = { ...patch, name: code };
+      }
+      const merged = { ...current, ...patch };
       setEnvelope((prev) => ({
         ...prev,
-        elements: prev.elements.map((el) => (el.id === selectedId ? { ...el, ...patch } : el))
+        elements: prev.elements.map((el) => (el.id === selectedId ? merged : el))
       }));
+      if (syncParkingDb && current.type === 'parking') {
+        syncParkingPatchToDbSafe(current, envelope.world, patch);
+      }
     },
-    [selectedId, setEnvelope]
+    [envelope.elements, envelope.world, selectedId, setEnvelope, syncParkingDb, yardVariant]
   );
 
   const onElementGeometryChange = useCallback(
     (id: string, geom: { x: number; y: number; width: number; height: number }) => {
+      const el = envelope.elements.find((e) => e.id === id);
+      const nextGeom =
+        yardVariant === 'parking' && el?.type === 'parking' ? snapParkingGeometry(geom) : geom;
       setEnvelope((prev) => ({
         ...prev,
-        elements: prev.elements.map((el) => (el.id === id ? { ...el, ...geom } : el))
+        elements: prev.elements.map((e) => (e.id === id ? { ...e, ...nextGeom } : e))
       }));
+      if (syncParkingDb && el?.type === 'parking') {
+        syncParkingPatchToDbSafe(el, envelope.world, nextGeom);
+      }
     },
-    [setEnvelope]
+    [envelope.elements, envelope.world, setEnvelope, syncParkingDb, yardVariant]
   );
 
   const onWorldChange = useCallback(
@@ -355,6 +416,13 @@ export const AquaMapSiteEditor = forwardRef<AquaMapSiteEditorHandle, Props>(func
     onUpdateSelected({ width, height });
   }, [selected, onUpdateSelected]);
 
+  const onParkingElementDeleted = useCallback(
+    (el: MapElement) => {
+      if (syncParkingDb && el.type === 'parking') removeParkingElementFromDbSafe(el);
+    },
+    [syncParkingDb]
+  );
+
   const {
     contextMenu,
     closeContextMenu,
@@ -368,7 +436,8 @@ export const AquaMapSiteEditor = forwardRef<AquaMapSiteEditorHandle, Props>(func
     envelope,
     setEnvelope,
     selectedId,
-    setSelectedId
+    setSelectedId,
+    onElementDeleted: onParkingElementDeleted
   });
 
   const onZoomIn = useCallback(() => {
@@ -393,10 +462,11 @@ export const AquaMapSiteEditor = forwardRef<AquaMapSiteEditorHandle, Props>(func
   }, [fitCameraToContent]);
 
   const onSaveClick = useCallback(() => {
+    if (syncParkingDb) syncAllParkingElementsToDbSafe(envelope);
     setSaveFlash(true);
     window.setTimeout(() => setSaveFlash(false), 900);
     onSaveSite();
-  }, [onSaveSite]);
+  }, [envelope, onSaveSite, syncParkingDb]);
 
   const onPublishClick = useCallback(() => {
     onPreviewPublic();
@@ -421,7 +491,9 @@ export const AquaMapSiteEditor = forwardRef<AquaMapSiteEditorHandle, Props>(func
         {yardVariant === 'parking' && !previewMode ? (
           <AquaMapParkingChrome
             spotDraft={parkingSpotDraft}
-            onSpotDraftChange={setParkingSpotDraft}
+            spotError={parkingSpotError}
+            counts={parkingCounts}
+            onSpotDraftChange={onParkingSpotDraftChange}
             onAddSpot={onAddParkingSpot}
             disabled={previewMode}
           />

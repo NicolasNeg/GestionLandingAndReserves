@@ -11,8 +11,13 @@ import {
   clampCameraScale
 } from './aquaMapCameraConstraints';
 import { buildAquamapFilterChips, simpleRouteToElement } from './aquaMapPublicFilters';
+import { subscribeParkingSpots } from '../lib/parkingRealtime.js';
 import type { ElementType, MapElement } from './types';
 import { ensureAquamapEnvelopeFromSiteJson, type AquamapSiteEnvelope } from './siteEnvelope';
+import {
+  mergeParkingLiveIntoElements,
+  type ParkingSpotLive
+} from './parkingSpotsSync';
 import { defaultSpriteForType } from './spriteUrls';
 import './aquamapEditor.css';
 
@@ -35,6 +40,9 @@ type DrawOptions = {
 type Props = {
   jsonStr: string;
   onSelectElement: (el: MapElement | null) => void;
+  /** Estados en vivo desde public.parking_spots (solo mapa tipo patio). */
+  enableParkingRealtime?: boolean;
+  onParkingSpotsChange?: (spots: ParkingSpotLive[]) => void;
 };
 
 async function preloadImageUrls(urls: string[]): Promise<void> {
@@ -68,7 +76,7 @@ function collectAssetUrls(envelope: AquamapSiteEnvelope): string[] {
 }
 
 export const AquaMapLandingViewer = forwardRef<AquaMapLandingViewerHandle, Props>(function AquaMapLandingViewer(
-  { jsonStr, onSelectElement },
+  { jsonStr, onSelectElement, enableParkingRealtime = false, onParkingSpotsChange },
   ref
 ) {
   const [envelope, setEnvelope] = useState<AquamapSiteEnvelope>(() => ensureAquamapEnvelopeFromSiteJson(jsonStr));
@@ -76,6 +84,7 @@ export const AquaMapLandingViewer = forwardRef<AquaMapLandingViewerHandle, Props
   const [camera, setCamera] = useState({ x: 0, y: 0, scale: 1 });
   const [booting, setBooting] = useState(true);
   const [drawOptions, setDrawOptionsState] = useState<DrawOptions>({});
+  const [parkingById, setParkingById] = useState<Record<string, ParkingSpotLive>>({});
   const mapWrapRef = useRef<HTMLDivElement>(null);
   const [stageSize, setStageSize] = useState({ w: 800, h: 600 });
 
@@ -140,14 +149,28 @@ export const AquaMapLandingViewer = forwardRef<AquaMapLandingViewerHandle, Props
     return () => ro.disconnect();
   }, []);
 
+  const yardVariant = useMemo((): AquaMapYardVariant => {
+    const els = envelope.elements;
+    if (!els.length) return 'island';
+    return els.every((e) => e.type === 'parking') ? 'parking' : 'island';
+  }, [envelope.elements]);
+
+  const displayElements = useMemo(() => {
+    if (yardVariant !== 'parking' || !enableParkingRealtime) return envelope.elements;
+    return mergeParkingLiveIntoElements(envelope.elements, parkingById, {
+      world: envelope.world,
+      audience: 'public'
+    });
+  }, [enableParkingRealtime, envelope.elements, envelope.world, parkingById, yardVariant]);
+
   const elementsSorted = useMemo(
-    () => [...envelope.elements].sort((a, b) => a.y - b.y),
-    [envelope.elements]
+    () => [...displayElements].sort((a, b) => a.y - b.y),
+    [displayElements]
   );
 
   const selected = useMemo(
-    () => (selectedId ? envelope.elements.find((e) => e.id === selectedId) ?? null : null),
-    [envelope.elements, selectedId]
+    () => (selectedId ? displayElements.find((e) => e.id === selectedId) ?? null : null),
+    [displayElements, selectedId]
   );
 
   const navigationPath = useMemo(() => {
@@ -159,11 +182,23 @@ export const AquaMapLandingViewer = forwardRef<AquaMapLandingViewerHandle, Props
   const filterChips = useMemo(() => buildAquamapFilterChips(envelope.elements), [envelope.elements]);
   const publicFilter = drawOptions.publicMapFilter || 'all';
 
-  const yardVariant = useMemo((): AquaMapYardVariant => {
-    const els = envelope.elements;
-    if (!els.length) return 'island';
-    return els.every((e) => e.type === 'parking') ? 'parking' : 'island';
-  }, [envelope.elements]);
+  useEffect(() => {
+    if (!enableParkingRealtime || yardVariant !== 'parking') return;
+    return subscribeParkingSpots(
+      (spots) => {
+        const next: Record<string, ParkingSpotLive> = {};
+        for (const s of spots) {
+          if (s?.id) next[String(s.id)] = s as ParkingSpotLive;
+        }
+        setParkingById(next);
+        onParkingSpotsChange?.(spots as ParkingSpotLive[]);
+      },
+      (err) => {
+        console.warn('[parking realtime]', err);
+        onParkingSpotsChange?.([]);
+      }
+    );
+  }, [enableParkingRealtime, onParkingSpotsChange, yardVariant]);
 
   useEffect(() => {
     onSelectElement(selected);
@@ -258,8 +293,13 @@ export const AquaMapLandingViewer = forwardRef<AquaMapLandingViewerHandle, Props
         publicFilter={publicFilter}
         navigationPath={navigationPath}
         yardVariant={yardVariant}
+        parkingAudience={yardVariant === 'parking' ? 'public' : 'editor'}
       />
-      {yardVariant === 'parking' ? <AquaMapParkingOverlays /> : <AquaMapLegend />}
+      {yardVariant === 'parking' ? (
+        <AquaMapParkingOverlays publicOnly />
+      ) : (
+        <AquaMapLegend />
+      )}
     </div>
   );
 });

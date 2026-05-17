@@ -3,11 +3,16 @@ import { createRoot } from 'react-dom/client';
 import { flushSync } from 'react-dom';
 import { AquaMapLandingViewer, type AquaMapLandingViewerHandle } from '../aquamap/AquaMapLandingViewer';
 import type { MapElement } from '../aquamap/types';
+import type { ParkingSpotLive } from '../aquamap/parkingSpotsSync';
 
 export function mountAquamapLandingMap(
   host: HTMLElement,
   jsonStr: string,
-  options: { onSelectElement: (el: MapElement | null) => void }
+  options: {
+    onSelectElement: (el: MapElement | null) => void;
+    enableParkingRealtime?: boolean;
+    onParkingSpotsChange?: (spots: ParkingSpotLive[]) => void;
+  }
 ) {
   const viewerRef = createRef<AquaMapLandingViewerHandle>();
   const root = createRoot(host);
@@ -18,6 +23,8 @@ export function mountAquamapLandingMap(
           ref={viewerRef}
           jsonStr={jsonStr}
           onSelectElement={options.onSelectElement}
+          enableParkingRealtime={options.enableParkingRealtime}
+          onParkingSpotsChange={options.onParkingSpotsChange}
         />
       </StrictMode>
     );

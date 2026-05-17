@@ -791,7 +791,7 @@ export default {
                   </div>
                   <div class="mb-2 flex flex-wrap gap-2">${renderParkingLegend()}</div>
                   <div class="public-parking-map relative h-[380px] overflow-hidden sm:h-[420px]">
-                    <canvas id="landing-parking-canvas" width="800" height="440" class="absolute inset-0 h-full w-full cursor-grab"></canvas>
+                    <div id="landing-parking-map-host" class="absolute inset-0 h-full w-full cursor-grab"></div>
                     <div class="map-floating-toolbar map-floating-toolbar--parking absolute bottom-3 right-3 top-auto z-10 sm:bottom-auto sm:right-3 sm:top-3">
                       <button type="button" id="landing-parking-zoom-out" class="map-icon-btn" title="Alejar" aria-label="Alejar mapa">−</button>
                       <button type="button" id="landing-parking-center" class="map-reset-btn" title="Centrar mapa" aria-label="Centrar mapa">${icon('compass', 'h-3.5 w-3.5')}</button>
@@ -1051,7 +1051,7 @@ export default {
       document.getElementById('landing-map-center')?.addEventListener('click', () => globalMapViewer?.fit());
     }
 
-    const parkingMapCanvas = document.getElementById('landing-parking-canvas');
+    const parkingMapHost = document.getElementById('landing-parking-map-host');
     let landingParkingViewer = null;
     const parkingViewerOptions = {
       view: 'estacionamiento',
@@ -1061,6 +1061,11 @@ export default {
       viewerSelectionStyle: 'simple',
       parkingById: {},
       fitPaddingScale: 0.9
+    };
+    const formatParkingSummary = (spots) => {
+      const libres = spots.filter((s) => s.estado === 'libre').length;
+      const ocupados = spots.filter((s) => s.estado !== 'libre').length;
+      return `Libres: ${libres} · Ocupados: ${ocupados}`;
     };
 
     const mapEditWrap = document.getElementById('landing-mapa-edit-wrap');
@@ -1306,8 +1311,9 @@ export default {
     bindTicketButtons();
 
     const parkingSummary = document.getElementById('parking-summary');
-    if (parkingMapCanvas && parkingSummary) {
+    if (parkingMapHost && parkingSummary) {
       const parkingJson = landing.mapaEstacionamientoJson || landing.mapaDistribucionJson || DEFAULT_MAPA_JSON;
+      const useAquamapParking = isAquamapSiteJson(parkingJson);
       const syncParkingIndex = (spots) => {
         const next = {};
         spots.forEach((s) => {
@@ -1316,29 +1322,37 @@ export default {
         parkingViewerOptions.parkingById = next;
         landingParkingViewer?.redraw();
       };
-      landingParkingViewer = createMapViewer(parkingMapCanvas, parkingJson, parkingViewerOptions);
-      document.getElementById('landing-parking-zoom-in')?.addEventListener('click', () => landingParkingViewer?.zoomIn());
-      document.getElementById('landing-parking-zoom-out')?.addEventListener('click', () => landingParkingViewer?.zoomOut());
-      document.getElementById('landing-parking-reset')?.addEventListener('click', () => landingParkingViewer?.reset());
-      document.getElementById('landing-parking-center')?.addEventListener('click', () => landingParkingViewer?.fit());
-      subscribeParkingSpots(
-        (spots) => {
-          const libres = spots.filter((s) => s.estado === 'libre').length;
-          const reservados = spots.filter((s) => s.estado === 'reservado').length;
-          const ocupados = spots.filter((s) => s.estado === 'ocupado').length;
-          const mantenimiento = spots.filter((s) => s.estado === 'mantenimiento' || s.estado === 'taller' || s.estado === 'sucio').length;
-          parkingSummary.textContent = `Totales: ${spots.length} · Libres: ${libres} · Reservados: ${reservados} · Ocupados: ${ocupados} · Mantenimiento: ${mantenimiento}`;
-          syncParkingIndex(spots);
-        },
-        (error) => {
+      const onParkingSpotsChange = (spots) => {
+        parkingSummary.textContent = formatParkingSummary(spots);
+        if (!useAquamapParking) syncParkingIndex(spots);
+      };
+      if (useAquamapParking) {
+        landingParkingViewer = mountAquamapLandingMap(parkingMapHost, parkingJson, {
+          onSelectElement: () => {},
+          enableParkingRealtime: true,
+          onParkingSpotsChange
+        });
+      } else {
+        const parkingMapCanvas = document.createElement('canvas');
+        parkingMapCanvas.width = 800;
+        parkingMapCanvas.height = 440;
+        parkingMapCanvas.className = 'absolute inset-0 h-full w-full cursor-grab';
+        parkingMapHost.appendChild(parkingMapCanvas);
+        landingParkingViewer = createMapViewer(parkingMapCanvas, parkingJson, parkingViewerOptions);
+        subscribeParkingSpots(onParkingSpotsChange, (error) => {
           if (error?.code === 'permission-denied') {
-            parkingSummary.textContent = 'Estacionamiento: sin permisos de lectura (revisa RLS de parking_spots).';
+            parkingSummary.textContent =
+              'Estacionamiento: sin permisos de lectura (revisa RLS de parking_spots).';
             return;
           }
           console.warn('Parking realtime:', error);
           parkingSummary.textContent = 'No fue posible cargar estacionamiento en tiempo real.';
-        }
-      );
+        });
+      }
+      document.getElementById('landing-parking-zoom-in')?.addEventListener('click', () => landingParkingViewer?.zoomIn());
+      document.getElementById('landing-parking-zoom-out')?.addEventListener('click', () => landingParkingViewer?.zoomOut());
+      document.getElementById('landing-parking-reset')?.addEventListener('click', () => landingParkingViewer?.reset());
+      document.getElementById('landing-parking-center')?.addEventListener('click', () => landingParkingViewer?.fit());
     }
 
     const drawer = document.getElementById('home-nav-drawer');

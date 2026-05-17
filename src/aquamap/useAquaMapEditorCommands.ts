@@ -26,6 +26,8 @@ type Args = {
   selectedId: string | null;
   setSelectedId: (id: string | null) => void;
   editorRootSelector?: string;
+  /** Llamado antes de quitar el elemento del estado (p. ej. sync Supabase). */
+  onElementDeleted?: (el: MapElement) => void;
 };
 
 function isTypingTarget(el: EventTarget | null): boolean {
@@ -48,7 +50,8 @@ export function useAquaMapEditorCommands({
   setEnvelope,
   selectedId,
   setSelectedId,
-  editorRootSelector = '[data-aquamap-editor-root]'
+  editorRootSelector = '[data-aquamap-editor-root]',
+  onElementDeleted
 }: Args) {
   const clipboardRef = useRef<MapElement | null>(null);
   const [clipboardTick, setClipboardTick] = useState(0);
@@ -84,13 +87,14 @@ export function useAquaMapEditorCommands({
   }, [selected]);
 
   const deleteSelected = useCallback(() => {
-    if (!selectedId) return;
+    if (!selectedId || !selected) return;
+    onElementDeleted?.(selected);
     setEnvelope((prev) => ({
       ...prev,
       elements: prev.elements.filter((e) => e.id !== selectedId)
     }));
     setSelectedId(null);
-  }, [selectedId, setEnvelope, setSelectedId]);
+  }, [onElementDeleted, selected, selectedId, setEnvelope, setSelectedId]);
 
   const pasteAt = useCallback(
     (at?: { x: number; y: number }) => {

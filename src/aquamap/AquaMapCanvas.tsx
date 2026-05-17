@@ -6,7 +6,9 @@ import type { MapElement } from './types';
 import {
   getParkingGridPatternCanvas,
   getParkingStripePatternCanvas,
-  PARKING_STATUS_FILL
+  PARKING_STATUS_FILL,
+  PUBLIC_PARKING_FILL,
+  type ParkingAudience
 } from './parkingYardAssets';
 import {
   constrainAquaMapCamera,
@@ -99,9 +101,40 @@ function readNodeGeometry(node: Konva.Node): { x: number; y: number; width: numb
   };
 }
 
+function ParkingCarSilhouette({ w, h }: { w: number; h: number }) {
+  const cw = Math.round(w * 0.62);
+  const ch = Math.round(h * 0.38);
+  const cx = Math.round((w - cw) / 2);
+  const cy = Math.round((h - ch) / 2);
+  return (
+    <Group listening={false}>
+      <Rect
+        x={cx}
+        y={cy}
+        width={cw}
+        height={ch}
+        cornerRadius={6}
+        fill="#cbd5e1"
+        stroke="#94a3b8"
+        strokeWidth={1.2}
+      />
+      <Rect x={cx + cw * 0.12} y={cy - ch * 0.12} width={cw * 0.22} height={ch * 0.2} cornerRadius={3} fill="#e2e8f0" />
+      <Rect
+        x={cx + cw * 0.66}
+        y={cy - ch * 0.12}
+        width={cw * 0.22}
+        height={ch * 0.2}
+        cornerRadius={3}
+        fill="#e2e8f0"
+      />
+    </Group>
+  );
+}
+
 type ElementSpriteProps = {
   el: MapElement;
   yardVariant: AquaMapYardVariant;
+  parkingAudience: ParkingAudience;
   selected: boolean;
   hovered: boolean;
   readOnly: boolean;
@@ -118,6 +151,7 @@ type ElementSpriteProps = {
 function ElementSprite({
   el,
   yardVariant,
+  parkingAudience,
   selected,
   hovered,
   readOnly,
@@ -162,9 +196,21 @@ function ElementSprite({
     g.getLayer()?.batchDraw();
   }, [el.x, el.y, el.width, el.height, img]);
 
-  const isPublic = visualMode === 'public';
-  const stallPalette =
-    PARKING_STATUS_FILL[el.parkingStatus ?? 'libre'] ?? PARKING_STATUS_FILL.libre;
+  const isPublic = visualMode === 'public' || parkingAudience === 'public';
+  const publicStall = parkingAudience === 'public';
+  const rawStatus = el.parkingStatus ?? 'libre';
+  const displayStatus =
+    publicStall && rawStatus !== 'libre' ? 'ocupado' : rawStatus;
+  const stallPalette = publicStall
+    ? PUBLIC_PARKING_FILL[displayStatus === 'libre' ? 'libre' : 'ocupado']
+    : PARKING_STATUS_FILL[rawStatus] ?? PARKING_STATUS_FILL.libre;
+  const isOcupadoPublic = publicStall && displayStatus === 'ocupado';
+  const workerStatusLabel =
+    parkingAudience === 'worker'
+      ? { libre: 'Libre', reservado: 'Res.', ocupado: 'Ocup.', mantenimiento: 'Mant.' }[
+          rawStatus as 'libre' | 'reservado' | 'ocupado' | 'mantenimiento'
+        ] ?? ''
+      : '';
   const stroke = isPublic
     ? selected
       ? '#38bdf8'
@@ -270,20 +316,53 @@ function ElementSprite({
             }
             listening={false}
           />
-          <Text
-            text={(el.name || '').trim() || '—'}
-            width={el.width}
-            height={el.height}
-            align="center"
-            verticalAlign="middle"
-            fill="#f8fafc"
-            fontStyle="bold"
-            fontSize={Math.max(11, Math.round(Math.min(el.width, el.height) * 0.26))}
-            listening={false}
-            shadowColor="rgba(0,0,0,0.45)"
-            shadowBlur={5}
-            shadowOffsetY={1}
-          />
+          {isOcupadoPublic ? (
+            <ParkingCarSilhouette w={el.width} h={el.height} />
+          ) : publicStall ? (
+            <Text
+              text={(el.name || '').trim() || '—'}
+              width={el.width}
+              height={el.height}
+              align="center"
+              verticalAlign="middle"
+              fill="#ecfdf5"
+              fontStyle="bold"
+              fontSize={Math.max(11, Math.round(Math.min(el.width, el.height) * 0.26))}
+              listening={false}
+            />
+          ) : (
+            <>
+              <Text
+                text={(el.name || '').trim() || '—'}
+                width={el.width}
+                height={el.height - (parkingAudience === 'worker' ? 14 : 0)}
+                y={0}
+                align="center"
+                verticalAlign="middle"
+                fill="#f8fafc"
+                fontStyle="bold"
+                fontSize={Math.max(11, Math.round(Math.min(el.width, el.height) * 0.24))}
+                listening={false}
+                shadowColor="rgba(0,0,0,0.45)"
+                shadowBlur={5}
+                shadowOffsetY={1}
+              />
+              {parkingAudience === 'worker' && workerStatusLabel ? (
+                <Text
+                  text={workerStatusLabel}
+                  width={el.width}
+                  y={el.height - 16}
+                  height={14}
+                  align="center"
+                  verticalAlign="middle"
+                  fill="#cbd5e1"
+                  fontSize={9}
+                  fontStyle="bold"
+                  listening={false}
+                />
+              ) : null}
+            </>
+          )}
         </>
       ) : !img ? (
         <Rect
@@ -486,6 +565,7 @@ export type AquaMapCanvasProps = {
   cameraLimits?: CameraLimits;
   visualMode?: AquaMapVisualMode;
   yardVariant?: AquaMapYardVariant;
+  parkingAudience?: ParkingAudience;
   publicFilter?: string;
   navigationPath?: { x: number; y: number }[];
 };
@@ -507,6 +587,7 @@ export function AquaMapCanvas({
   cameraLimits = EDITOR_CAMERA_LIMITS,
   visualMode = 'editor',
   yardVariant = 'island',
+  parkingAudience = 'editor',
   publicFilter = 'all',
   navigationPath = []
 }: AquaMapCanvasProps) {
@@ -710,6 +791,7 @@ export function AquaMapCanvas({
                 key={el.id}
                 el={el}
                 yardVariant={yardVariant}
+                parkingAudience={parkingAudience}
                 selected={el.id === selectedId}
                 hovered={el.id === hoverId}
                 readOnly={readOnly}

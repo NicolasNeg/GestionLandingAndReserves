@@ -9,6 +9,7 @@ import Escaner from './views/Escaner.js';
 import Politicas from './views/Politicas.js';
 import ProgramadorDashboard from './views/ProgramadorDashboard.js';
 import OperacionDashboard from './views/OperacionDashboard.js';
+import ParkingOperacion from './views/ParkingOperacion.js';
 import VentaFisica from './views/VentaFisica.js';
 import RecuperarTicket from './views/RecuperarTicket.js';
 import { getUserAccess, normalizeRole, waitForAuthUser } from './lib/accessControl.js';
@@ -33,6 +34,7 @@ const routes = {
     '/cliente/configuracion': ClienteDashboard,
     '/cliente/tickets': ClienteDashboard,
     '/operacion': OperacionDashboard,
+    '/operacion/parking': ParkingOperacion,
     '/operacion/venta': VentaFisica,
     '/admin/dashboard': AdminDashboard,
     '/escaner': Escaner,
@@ -69,6 +71,18 @@ const guardPath = async (path, user) => {
                 access.can('programador.access');
             if (allowedPos) return true;
             await showAlert('Acceso denegado. Se requiere permiso de ventas físicas.', {
+                title: 'Sin permiso',
+                variant: 'danger'
+            });
+            return false;
+        }
+        if (path === '/operacion/parking') {
+            const allowedParking =
+                access.can('parking.manage') ||
+                access.can('admin.panel') ||
+                access.can('programador.access');
+            if (allowedParking) return true;
+            await showAlert('Acceso denegado. Se requiere permiso de estacionamiento.', {
                 title: 'Sin permiso',
                 variant: 'danger'
             });

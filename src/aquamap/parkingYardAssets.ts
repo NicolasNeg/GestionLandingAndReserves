@@ -53,6 +53,14 @@ export const PARKING_STATUS_FILL: Record<string, { fill: string; stroke: string 
   mantenimiento: { fill: 'rgba(100,116,139,0.34)', stroke: '#64748b' }
 };
 
+/** Vista pública: solo libre vs ocupado (sin reservado/mantenimiento visibles). */
+export const PUBLIC_PARKING_FILL: Record<'libre' | 'ocupado', { fill: string; stroke: string }> = {
+  libre: { fill: 'rgba(34,197,94,0.42)', stroke: '#22c55e' },
+  ocupado: { fill: 'rgba(51,65,85,0.72)', stroke: '#94a3b8' }
+};
+
+export type ParkingAudience = 'editor' | 'worker' | 'public';
+
 export function normalizeParkingStatus(raw: unknown): 'libre' | 'reservado' | 'ocupado' | 'mantenimiento' {
   const k = String(raw || '').toLowerCase();
   if (k === 'reservado') return 'reservado';
