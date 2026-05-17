@@ -162,9 +162,7 @@ function renderMapLegend() {
 function renderParkingLegend() {
   const items = [
     { label: 'Libre', fill: 'rgba(34,197,94,0.35)', stroke: '#15803d' },
-    { label: 'Reservado', fill: 'rgba(245,158,11,0.28)', stroke: '#b45309' },
-    { label: 'Ocupado', fill: 'rgba(239,68,68,0.26)', stroke: '#b91c1c' },
-    { label: 'Mantenimiento', fill: 'rgba(100,116,139,0.28)', stroke: '#475569' }
+    { label: 'Ocupado', fill: 'rgba(71,85,105,0.55)', stroke: '#64748b' }
   ];
   return items
     .map(

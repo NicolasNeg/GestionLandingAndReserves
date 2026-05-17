@@ -485,7 +485,7 @@ export const AquaMapSiteEditor = forwardRef<AquaMapSiteEditorHandle, Props>(func
   return (
     <div
       data-aquamap-editor-root
-      className="relative flex h-[min(68vh,620px)] w-full min-h-[min(52vh,480px)] overflow-hidden bg-[#262626]"
+      className="relative flex h-full min-h-[min(56vh,520px)] w-full overflow-hidden bg-[#262626]"
     >
       <div className="flex min-h-0 min-w-0 flex-1 flex-col p-2 pr-1">
         {yardVariant === 'parking' && !previewMode ? (
@@ -607,7 +607,7 @@ export const AquaMapSiteEditor = forwardRef<AquaMapSiteEditorHandle, Props>(func
         onPublishClick={onPublishClick}
         onExitToSitePanel={onExitToSitePanel}
         addDisabled={previewMode}
-        hideQuickAdd={yardVariant === 'parking'}
+        hideQuickAdd={false}
       />
     </div>
   );

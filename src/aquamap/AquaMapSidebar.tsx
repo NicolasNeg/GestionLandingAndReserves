@@ -97,7 +97,7 @@ export function AquaMapSidebar({
           : 'border-l-[#1a1a1a] bg-[#323232] text-[#e5e5e5]'
       }`}
     >
-      <motionHeader editorSkin={editorSkin} layerLabel={layerLabel} layerHint={layerHint} />
+      <SidebarHeader editorSkin={editorSkin} layerLabel={layerLabel} layerHint={layerHint} />
 
       <section className="flex-shrink-0 border-b border-[#1f1f1f] px-3 py-2.5">
         <h2 className="mb-2 font-mono text-[9px] font-semibold uppercase tracking-wider text-[#737373]">
@@ -136,7 +136,7 @@ export function AquaMapSidebar({
           <h2 className="mb-2 font-mono text-[9px] font-semibold uppercase tracking-wider text-[#737373]">
             Añadir al mapa
           </h2>
-          <motionTools addButtons={addButtons} onAdd={onAdd} disabled={addDisabled} />
+          <AddToolsGrid addButtons={addButtons} onAdd={onAdd} disabled={addDisabled} />
         </section>
       ) : null}
 
@@ -230,7 +230,7 @@ export function AquaMapSidebar({
               </label>
 
               <div className="rounded border border-[#2a2a2a] bg-[#262626] p-2.5">
-                <motionSizeHeader onApplyPresetSize={onApplyPresetSize} preset={preset} />
+                <SizePresetHeader onApplyPresetSize={onApplyPresetSize} preset={preset} />
                 <div className="grid grid-cols-2 gap-2">
                   <label className="flex flex-col gap-0.5 font-mono text-[9px] text-[#737373]">
                     Ancho
@@ -377,7 +377,7 @@ export function AquaMapSidebar({
   );
 }
 
-function motionHeader({
+function SidebarHeader({
   editorSkin,
   layerLabel,
   layerHint
@@ -406,19 +406,7 @@ function motionHeader({
   );
 }
 
-function motionTools({
-  addButtons,
-  onAdd,
-  disabled
-}: {
-  addButtons: { type: ElementType; label: string; Icon: typeof Droplets }[];
-  onAdd: (type: ElementType) => void;
-  disabled?: boolean;
-}) {
-  return <motionToolsGrid addButtons={addButtons} onAdd={onAdd} disabled={disabled} />;
-}
-
-function motionToolsGrid({
+function AddToolsGrid({
   addButtons,
   onAdd,
   disabled
@@ -457,7 +445,7 @@ function motionToolsGrid({
   );
 }
 
-function motionSizeHeader({
+function SizePresetHeader({
   onApplyPresetSize,
   preset
 }: {

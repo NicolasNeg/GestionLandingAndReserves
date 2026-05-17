@@ -54,6 +54,7 @@ import {
   parseDistribucionJson
 } from '../lib/distribucionMapa.js';
 import { mountAquaMapSiteEditor } from '../react/aquaMapSiteMount.tsx';
+import { mountParkingWorkerApp } from '../react/parkingWorkerMount.tsx';
 import {
   ensureAquamapEnvelopeFromSiteJson,
   isAquamapSiteJson,
@@ -588,7 +589,7 @@ const AdminDashboard = {
                     <div>
                       <p class="text-xs font-black uppercase tracking-widest text-cyan-300">Tiempo real</p>
                       <h2 class="mt-1 text-2xl font-black text-white">Mapa operativo de estacionamiento</h2>
-                      <p class="mt-2 max-w-3xl text-sm text-slate-300">Plano de patio con cajones, estado de unidades y movimiento por drag & drop para personal autorizado.</p>
+                      <p class="mt-2 max-w-3xl text-sm text-slate-300">Operación en vivo: mueve unidades, placas y estado. Para <strong>diseñar el plano</strong> (ubicar cajones P-01, P-02…) usa <button type="button" id="parking-goto-sitio-editor" class="font-bold text-cyan-200 underline">Sitio → Editor del mapa → Estacionamiento</button>.</p>
                     </div>
                     <span class="rounded-full border border-emerald-400/30 bg-emerald-400/10 px-3 py-1 text-xs font-black text-emerald-200">parking.manage</span>
                   </div>
@@ -1123,7 +1124,7 @@ const AdminDashboard = {
                             </div>
                           </header>
 
-                          <div id="mapa-editor-react-host" class="mapa-editor-react-host hidden min-h-[min(64vh,600px)] w-full shrink-0 bg-white"></div>
+                          <div id="mapa-editor-react-host" class="mapa-editor-react-host hidden min-h-0 w-full shrink-0"></div>
 
                           <p id="mapa-draw-hint" class="hidden border-b border-amber-500/20 bg-amber-500/10 px-4 py-2 text-center text-[11px] font-semibold text-amber-200">Modo dibujo activo: arrastra sobre el lienzo para crear el rectangulo.</p>
 

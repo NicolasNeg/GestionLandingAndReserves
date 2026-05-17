@@ -1949,7 +1949,8 @@
   .mapa-editor-shell.mapa-shell--react {
     display: flex;
     flex-direction: column;
-    min-height: min(76vh, 760px);
+    min-height: min(72vh, 720px);
+    max-height: min(82vh, 860px);
   }
 
   .mapa-editor-shell.mapa-shell--react .mapa-editor-topbar {
@@ -1960,10 +1961,17 @@
     display: none !important;
   }
 
+  .mapa-editor-shell.mapa-shell--react .mapa-ws-footer {
+    display: none !important;
+  }
+
   .mapa-editor-shell.mapa-shell--react .mapa-editor-react-host {
-    display: block !important;
+    display: flex !important;
     flex: 1 1 auto;
-    min-height: 0;
+    min-height: min(56vh, 520px);
+    max-height: min(78vh, 800px);
+    overflow: hidden;
+    background: #262626;
   }
 
   .mapa-editor-shell.mapa-shell--react #mapa-draw-hint {
