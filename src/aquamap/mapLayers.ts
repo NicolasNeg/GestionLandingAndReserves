@@ -1,14 +1,7 @@
+import { ALL_AQUAMAP_ELEMENT_TYPES } from './elementCatalog';
 import type { ElementType } from './types';
 
-/** Tipos soportados por el lienzo Konva (biblioteca completa del parque). */
-export const ALL_AQUAMAP_ELEMENT_TYPES: ElementType[] = [
-  'pool',
-  'slide',
-  'service',
-  'tree',
-  'mesa',
-  'parking'
-];
+export { ALL_AQUAMAP_ELEMENT_TYPES };
 
 export type MapLayerContext = 'parque' | 'mesas' | 'estacionamiento' | 'albercas';
 
@@ -23,27 +16,28 @@ export const MAP_LAYER_CONFIG: Record<MapLayerContext, LayerUiConfig> = {
   parque: {
     id: 'parque',
     label: 'Parque global',
-    shortHint: 'Todas las piezas del plano público: albercas, toboganes, mesas, parking y más.',
+    shortHint:
+      'Plano completo: albercas, palapas, mesas, servicios, accesos, zonas y cajones de estacionamiento.',
     allowedTypes: [...ALL_AQUAMAP_ELEMENT_TYPES]
   },
   mesas: {
     id: 'mesas',
     label: 'Mesas',
-    shortHint: 'Mesas reservables para /reservar.',
-    allowedTypes: ['mesa']
+    shortHint: 'Mesas reservables y contexto (palapas, árboles, zonas).',
+    allowedTypes: ['mesa', 'palapa', 'tree', 'area', 'camino', 'entrada']
   },
   estacionamiento: {
     id: 'estacionamiento',
     label: 'Estacionamiento',
     shortHint:
-      'Solo cajones de parking en este modo (distinto del mapa global). Posiciónalo sobre el plano del parque.',
-    allowedTypes: ['parking']
+      'Cajones P-01…, entrada/salida, caminos y zonas de patio o taller. Sincroniza con operación y landing.',
+    allowedTypes: ['parking', 'entrada', 'area', 'camino', 'service']
   },
   albercas: {
     id: 'albercas',
     label: 'Albercas',
-    shortHint: 'Zonas acuáticas; también servicios y árboles de contexto.',
-    allowedTypes: ['pool', 'slide', 'service', 'tree']
+    shortHint: 'Zonas acuáticas, palapas, servicios y áreas de sombra.',
+    allowedTypes: ['pool', 'slide', 'service', 'tree', 'palapa', 'area', 'banos', 'bar']
   }
 };
 

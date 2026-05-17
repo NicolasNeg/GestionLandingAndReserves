@@ -1,37 +1,18 @@
 import { nanoid } from 'nanoid';
+import {
+  ELEMENT_COLORS,
+  ELEMENT_LABELS,
+  ELEMENT_PRESET_SIZES
+} from './elementCatalog';
 import { normalizeParkingStatus } from './parkingYardAssets';
 import type { ElementType, MapElement } from './types';
 import { defaultSpriteForType } from './spriteUrls';
 import { AQUAMAP_WORLD_H, AQUAMAP_WORLD_W } from './world';
 
-const LABELS: Record<ElementType, string> = {
-  pool: 'Alberca',
-  slide: 'Tobogán',
-  service: 'Servicio',
-  tree: 'Árbol',
-  mesa: 'Mesa',
-  parking: 'Cajón'
-};
-
-const COLORS: Record<ElementType, string> = {
-  pool: '#0ea5e9',
-  slide: '#f97316',
-  service: '#a855f7',
-  tree: '#22c55e',
-  mesa: '#10b981',
-  parking: '#f59e0b'
-};
+export { ELEMENT_LABELS as ELEMENT_TYPE_LABELS };
 
 /** Tamaños por defecto al crear (px en coordenadas del mundo). */
-export const PRESET_SIZE_BY_TYPE: Record<ElementType, { width: number; height: number }> = {
-  pool: { width: 240, height: 200 },
-  slide: { width: 160, height: 130 },
-  service: { width: 180, height: 150 },
-  tree: { width: 96, height: 110 },
-  mesa: { width: 112, height: 96 },
-  /** Cajón vertical (vista cenital del patio). */
-  parking: { width: 88, height: 108 }
-};
+export const PRESET_SIZE_BY_TYPE = ELEMENT_PRESET_SIZES;
 
 export function presetSizeForType(type: ElementType): { width: number; height: number } {
   return { ...PRESET_SIZE_BY_TYPE[type] };
@@ -71,13 +52,13 @@ export function createMapElement(
   const base: MapElement = {
     id,
     type,
-    name: LABELS[type],
+    name: ELEMENT_LABELS[type],
     description: '',
     x: cx - width / 2 + (Math.random() - 0.5) * spread,
     y: cy - height / 2 + (Math.random() - 0.5) * spread,
     width,
     height,
-    color: COLORS[type],
+    color: ELEMENT_COLORS[type],
     imgSrc: defaultSpriteForType(type)
   };
   if (type === 'parking') {

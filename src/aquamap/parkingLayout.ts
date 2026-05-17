@@ -1,4 +1,4 @@
-import { presetSizeForType } from './elementDefaults';
+import { createMapElement, presetSizeForType } from './elementDefaults';
 import type { MapElement } from './types';
 import { AQUAMAP_ISLAND_MARGIN } from './world';
 
@@ -77,4 +77,74 @@ export function snapParkingGeometry(geom: {
     x: snapParkingCoord(geom.x),
     y: snapParkingCoord(geom.y)
   };
+}
+
+/** Siguiente código sugerido: P1, P2… o P-01 si ya usas guion. */
+export function suggestNextParkingCode(
+  elements: MapElement[],
+  pending: string[] = []
+): string {
+  const codes = [
+    ...elements.filter((e) => e.type === 'parking').map((e) => normalizeParkingSpotCode(e.name || '')),
+    ...pending.map(normalizeParkingSpotCode)
+  ].filter(Boolean);
+
+  const dashed = codes.some((c) => /^P-\d+$/i.test(c));
+  let max = 0;
+  for (const c of codes) {
+    const m = c.match(/^P-?(\d+)$/i);
+    if (m) max = Math.max(max, parseInt(m[1], 10));
+  }
+  const next = max + 1;
+  return dashed || codes.length === 0 ? `P-${String(next).padStart(2, '0')}` : `P${next}`;
+}
+
+/** Coloca N cajones en fila con códigos consecutivos. */
+export function buildParkingRowElements(
+  elements: MapElement[],
+  world: { w: number; h: number },
+  count: number,
+  startCode?: string
+): MapElement[] {
+  const { width, height } = presetSizeForType('parking');
+  const y = parkingBandCenterY(world.h, height);
+  const m = AQUAMAP_ISLAND_MARGIN;
+  let x = m + 40;
+  const existingRight = elements
+    .filter((e) => e.type === 'parking')
+    .reduce((best, el) => Math.max(best, el.x + el.width), m + 28);
+  if (existingRight > x) x = Math.round(existingRight + SPOT_GAP);
+
+  const pending: string[] = [];
+  const created: MapElement[] = [];
+  let code = startCode ? normalizeParkingSpotCode(startCode) : suggestNextParkingCode(elements);
+
+  for (let i = 0; i < count; i++) {
+    while (
+      findParkingSpotByCode(elements, code) ||
+      pending.some((p) => normalizeParkingSpotCode(p) === code)
+    ) {
+      code = suggestNextParkingCode([...elements, ...created], pending);
+    }
+    pending.push(code);
+    const el = createMapElement('parking', world);
+    el.name = code;
+    el.x = x;
+    el.y = y;
+    created.push(el);
+    x += width + SPOT_GAP;
+  }
+  return created;
+}
+
+/** Alinea todos los cajones a la misma fila (eje Y del patio). */
+export function alignParkingSpotsY(
+  elements: MapElement[],
+  world: { w: number; h: number }
+): MapElement[] {
+  const { height } = presetSizeForType('parking');
+  const y = parkingBandCenterY(world.h, height);
+  return elements.map((el) =>
+    el.type === 'parking' ? { ...el, y: snapParkingCoord(y) } : el
+  );
 }

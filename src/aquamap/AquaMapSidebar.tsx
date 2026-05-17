@@ -1,28 +1,41 @@
 import {
   ArrowUpLeft,
+  Bath,
   Car,
   CopyPlus,
+  DoorOpen,
   Droplets,
+  MapPin,
+  Route,
   Settings,
   Square,
   Trash2,
   Trees,
+  Umbrella,
   Upload,
+  UtensilsCrossed,
   Waves,
   Wrench
 } from 'lucide-react';
 import { useMemo, useRef } from 'react';
+import { ELEMENT_LABELS } from './elementCatalog';
 import { presetSizeForType } from './elementDefaults';
 import type { ElementType, MapElement, ParkingSpotStatus } from './types';
 import { AQUAMAP_WORLD_MAX_H, AQUAMAP_WORLD_MAX_W } from './world';
 
 const TYPE_META: Record<ElementType, { label: string; Icon: typeof Droplets }> = {
-  pool: { label: 'Alberca', Icon: Droplets },
-  slide: { label: 'Tobogán', Icon: Waves },
-  service: { label: 'Servicio', Icon: Wrench },
-  tree: { label: 'Árbol', Icon: Trees },
-  mesa: { label: 'Mesa', Icon: Square },
-  parking: { label: 'Cajón', Icon: Car }
+  pool: { label: ELEMENT_LABELS.pool, Icon: Droplets },
+  slide: { label: ELEMENT_LABELS.slide, Icon: Waves },
+  service: { label: ELEMENT_LABELS.service, Icon: Wrench },
+  tree: { label: ELEMENT_LABELS.tree, Icon: Trees },
+  mesa: { label: ELEMENT_LABELS.mesa, Icon: Square },
+  parking: { label: ELEMENT_LABELS.parking, Icon: Car },
+  palapa: { label: ELEMENT_LABELS.palapa, Icon: Umbrella },
+  entrada: { label: ELEMENT_LABELS.entrada, Icon: DoorOpen },
+  area: { label: ELEMENT_LABELS.area, Icon: MapPin },
+  bar: { label: ELEMENT_LABELS.bar, Icon: UtensilsCrossed },
+  camino: { label: ELEMENT_LABELS.camino, Icon: Route },
+  banos: { label: ELEMENT_LABELS.banos, Icon: Bath }
 };
 
 const SWATCHES = ['#0ea5e9', '#f97316', '#22c55e', '#a855f7', '#eab308', '#ef4444', '#64748b', '#f8fafc'];
@@ -424,7 +437,7 @@ function AddToolsGrid({
   }
 
   return (
-    <div className="grid grid-cols-2 gap-1.5">
+    <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
       {addButtons.map(({ type, label, Icon }) => (
         <button
           key={type}

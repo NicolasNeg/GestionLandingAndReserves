@@ -25,11 +25,15 @@ import {
 } from './aquaMapCameraConstraints';
 import { buildAquamapFilterChips } from './aquaMapPublicFilters';
 import { createMapElement, presetSizeForType } from './elementDefaults';
+import { ALL_AQUAMAP_ELEMENT_TYPES } from './elementCatalog';
 import {
+  alignParkingSpotsY,
+  buildParkingRowElements,
   computeNextParkingSpotPlacement,
   findParkingSpotByCode,
   normalizeParkingSpotCode,
-  snapParkingGeometry
+  snapParkingGeometry,
+  suggestNextParkingCode
 } from './parkingLayout';
 import { countParkingSpots } from './parkingSpotStats';
 import {
@@ -100,8 +104,7 @@ async function preloadImageUrls(urls: string[]): Promise<void> {
 
 function collectAssetUrls(envelope: AquamapSiteEnvelope): string[] {
   const set = new Set<string>();
-  const types: ElementType[] = ['pool', 'slide', 'service', 'tree', 'mesa', 'parking'];
-  for (const t of types) set.add(defaultSpriteForType(t));
+  for (const t of ALL_AQUAMAP_ELEMENT_TYPES) set.add(defaultSpriteForType(t));
   for (const el of envelope.elements) {
     const u = el.imgSrc?.trim();
     if (u && !u.startsWith('data:')) set.add(u);
@@ -204,6 +207,13 @@ export const AquaMapSiteEditor = forwardRef<AquaMapSiteEditorHandle, Props>(func
   useEffect(() => {
     if (selectedId && !envelope.elements.some((e) => e.id === selectedId)) setSelectedId(null);
   }, [envelope.elements, selectedId]);
+
+  useEffect(() => {
+    if (yardVariant === 'parking' && !parkingSpotDraft.trim()) {
+      setParkingSpotDraft(suggestNextParkingCode(envelope.elements));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- solo al entrar en modo patio
+  }, [yardVariant]);
 
   useEffect(() => {
     mapBridgeNotifiers?.notifyDocument();
@@ -322,6 +332,35 @@ export const AquaMapSiteEditor = forwardRef<AquaMapSiteEditorHandle, Props>(func
     },
     [envelope.elements, envelope.world, setEnvelope, syncParkingDb]
   );
+
+  const onSuggestNextParkingId = useCallback(() => {
+    setParkingSpotDraft(suggestNextParkingCode(envelope.elements));
+    setParkingSpotError(null);
+  }, [envelope.elements]);
+
+  const onAddParkingRow = useCallback(
+    (count: number) => {
+      const row = buildParkingRowElements(envelope.elements, envelope.world, count);
+      if (!row.length) return;
+      setEnvelope((prev) => ({ ...prev, elements: [...prev.elements, ...row] }));
+      setSelectedId(row[row.length - 1].id);
+      setParkingSpotError(null);
+      if (syncParkingDb) row.forEach((el) => syncParkingElementToDbSafe(el, envelope.world));
+    },
+    [envelope.elements, envelope.world, setEnvelope, syncParkingDb]
+  );
+
+  const onAlignParkingRow = useCallback(() => {
+    setEnvelope((prev) => {
+      const elements = alignParkingSpotsY(prev.elements, prev.world);
+      if (syncParkingDb) {
+        elements
+          .filter((e) => e.type === 'parking')
+          .forEach((el) => syncParkingElementToDbSafe(el, prev.world));
+      }
+      return { ...prev, elements };
+    });
+  }, [setEnvelope, syncParkingDb]);
 
   const onAddParkingSpot = useCallback(() => {
     const raw = parkingSpotDraft.trim();
@@ -495,6 +534,9 @@ export const AquaMapSiteEditor = forwardRef<AquaMapSiteEditorHandle, Props>(func
             counts={parkingCounts}
             onSpotDraftChange={onParkingSpotDraftChange}
             onAddSpot={onAddParkingSpot}
+            onSuggestNextId={onSuggestNextParkingId}
+            onAddRow={onAddParkingRow}
+            onAlignRow={onAlignParkingRow}
             disabled={previewMode}
           />
         ) : null}

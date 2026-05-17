@@ -66,7 +66,20 @@ async function preloadImageUrls(urls: string[]): Promise<void> {
 
 function collectAssetUrls(envelope: AquamapSiteEnvelope): string[] {
   const set = new Set<string>();
-  const types: ElementType[] = ['pool', 'slide', 'service', 'tree', 'mesa', 'parking'];
+  const types: ElementType[] = [
+    'pool',
+    'slide',
+    'service',
+    'tree',
+    'mesa',
+    'parking',
+    'palapa',
+    'entrada',
+    'area',
+    'bar',
+    'camino',
+    'banos'
+  ];
   for (const t of types) set.add(defaultSpriteForType(t));
   for (const el of envelope.elements) {
     const u = el.imgSrc?.trim();

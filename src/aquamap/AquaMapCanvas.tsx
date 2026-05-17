@@ -2,6 +2,7 @@ import Konva from 'konva';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import { Ellipse, Group, Image, Layer, Line, Rect, Stage, Text, Transformer } from 'react-konva';
+import { ELEMENT_NATIVE_SHAPE, elementUsesNativeShape } from './elementCatalog';
 import type { MapElement } from './types';
 import {
   getParkingGridPatternCanvas,
@@ -101,6 +102,146 @@ function readNodeGeometry(node: Konva.Node): { x: number; y: number; width: numb
   };
 }
 
+type NativeShapeProps = {
+  el: MapElement;
+  childProps: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    listening: boolean;
+    shadowBlur: number;
+    shadowColor: string;
+    shadowOffsetY: number;
+    shadowOpacity: number;
+    stroke: string;
+    strokeWidth: number;
+  };
+};
+
+function NativeElementShape({ el, childProps }: NativeShapeProps) {
+  const shape = ELEMENT_NATIVE_SHAPE[el.type];
+  const fill = el.color || '#64748b';
+  const label = (el.name || '').trim();
+  const fs = Math.max(9, Math.round(Math.min(el.width, el.height) * 0.18));
+
+  if (shape === 'ellipse') {
+    return (
+      <Ellipse
+        x={el.width / 2}
+        y={el.height / 2}
+        radiusX={el.width / 2}
+        radiusY={el.height / 2}
+        fill={fill}
+        opacity={0.88}
+        stroke={childProps.stroke}
+        strokeWidth={childProps.strokeWidth}
+        listening={false}
+        shadowBlur={childProps.shadowBlur}
+        shadowColor={childProps.shadowColor}
+        shadowOffsetY={childProps.shadowOffsetY}
+        shadowOpacity={childProps.shadowOpacity}
+      />
+    );
+  }
+
+  if (shape === 'zone') {
+    return (
+      <Rect
+        {...childProps}
+        fill={fill}
+        opacity={0.32}
+        cornerRadius={14}
+        dash={[10, 7]}
+        listening={false}
+      />
+    );
+  }
+
+  if (shape === 'path') {
+    return (
+      <>
+        <Rect
+          {...childProps}
+          fill="#64748b"
+          opacity={0.75}
+          cornerRadius={8}
+          listening={false}
+        />
+        <Line
+          points={[12, el.height / 2, el.width - 12, el.height / 2]}
+          stroke="#e2e8f0"
+          strokeWidth={2}
+          dash={[14, 10]}
+          listening={false}
+        />
+      </>
+    );
+  }
+
+  if (shape === 'entrance') {
+    return (
+      <>
+        <Rect
+          {...childProps}
+          fill={fill}
+          opacity={0.92}
+          cornerRadius={10}
+          listening={false}
+        />
+        <Text
+          text={label || 'ENTRADA'}
+          width={el.width}
+          height={el.height}
+          align="center"
+          verticalAlign="middle"
+          fill="#ecfdf5"
+          fontStyle="bold"
+          fontSize={fs}
+          listening={false}
+        />
+      </>
+    );
+  }
+
+  if (shape === 'building') {
+    return (
+      <>
+        <Rect
+          {...childProps}
+          fill={fill}
+          opacity={0.9}
+          cornerRadius={12}
+          listening={false}
+        />
+        {label ? (
+          <Text
+            text={label}
+            width={el.width}
+            height={el.height}
+            align="center"
+            verticalAlign="middle"
+            fill="#f8fafc"
+            fontStyle="bold"
+            fontSize={fs}
+            listening={false}
+          />
+        ) : null}
+      </>
+    );
+  }
+
+  return (
+    <Rect
+      {...childProps}
+      fill={fill}
+      opacity={0.85}
+      cornerRadius={8}
+      listening={false}
+    />
+  );
+}
+
 function ParkingCarSilhouette({ w, h }: { w: number; h: number }) {
   const cw = Math.round(w * 0.62);
   const ch = Math.round(h * 0.38);
@@ -168,6 +309,7 @@ function ElementSprite({
   const groupRef = useRef<Konva.Group>(null);
   const src = resolveSrc(el);
   const parkingStallVisual = yardVariant === 'parking' && el.type === 'parking';
+  const nativeShape = elementUsesNativeShape(el.type);
 
   useEffect(() => {
     shapeRef(el.id, groupRef.current);
@@ -175,7 +317,7 @@ function ElementSprite({
   }, [el.id, shapeRef, img]);
 
   useEffect(() => {
-    if (parkingStallVisual) {
+    if (parkingStallVisual || nativeShape) {
       setImg(null);
       return;
     }
@@ -184,7 +326,7 @@ function ElementSprite({
     im.onload = () => setImg(im);
     im.onerror = () => setImg(null);
     im.src = src;
-  }, [src, parkingStallVisual]);
+  }, [src, parkingStallVisual, nativeShape]);
 
   useEffect(() => {
     const g = groupRef.current;
@@ -364,6 +506,8 @@ function ElementSprite({
             </>
           )}
         </>
+      ) : nativeShape ? (
+        <NativeElementShape el={el} childProps={childProps} />
       ) : !img ? (
         <Rect
           {...childProps}

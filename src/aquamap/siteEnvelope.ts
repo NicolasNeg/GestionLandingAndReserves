@@ -1,4 +1,5 @@
 import { parseMapDocument } from '../lib/mapEngine/mapMigrations.js';
+import { ALL_AQUAMAP_ELEMENT_TYPES } from './elementCatalog';
 import { clampElementDimensions, presetSizeForType } from './elementDefaults';
 import type { ElementType, MapElement } from './types';
 import { normalizeParkingStatus } from './parkingYardAssets';
@@ -33,7 +34,7 @@ function migrateElement(raw: unknown, world = { w: AQUAMAP_WORLD_W, h: AQUAMAP_W
   const o = raw as Partial<MapElement>;
   if (!o.id || !o.type) return null;
   const rawType = String(o.type);
-  const valid: ElementType[] = ['pool', 'slide', 'service', 'tree', 'mesa', 'parking'];
+  const valid = ALL_AQUAMAP_ELEMENT_TYPES;
   const type = valid.includes(rawType as ElementType) ? (rawType as ElementType) : 'service';
   const preset = presetSizeForType(type);
   const dims = clampElementDimensions(
@@ -145,6 +146,12 @@ function kindToAquamapType(kind: string): ElementType {
   if (k.includes('tree') || k.includes('arbol')) return 'tree';
   if (k === 'mesa' || k === 'table') return 'mesa';
   if (k.includes('parking') || k === 'estacionamiento' || k.includes('cajon')) return 'parking';
+  if (k.includes('palapa')) return 'palapa';
+  if (k.includes('entrada') || k.includes('entrance') || k.includes('acceso')) return 'entrada';
+  if (k === 'area' || k.includes('zona') || k.includes('zone')) return 'area';
+  if (k.includes('bar') || k.includes('restaur') || k.includes('comida') || k.includes('food')) return 'bar';
+  if (k.includes('camino') || k.includes('path') || k.includes('via') || k === 'line') return 'camino';
+  if (k.includes('bano') || k.includes('wc') || k.includes('restroom')) return 'banos';
   return 'service';
 }
 

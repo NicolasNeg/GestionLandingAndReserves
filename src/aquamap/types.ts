@@ -1,4 +1,16 @@
-export type ElementType = 'pool' | 'slide' | 'service' | 'tree' | 'mesa' | 'parking';
+export type ElementType =
+  | 'pool'
+  | 'slide'
+  | 'service'
+  | 'tree'
+  | 'mesa'
+  | 'parking'
+  | 'palapa'
+  | 'entrada'
+  | 'area'
+  | 'bar'
+  | 'camino'
+  | 'banos';
 
 export type ParkingSpotStatus = 'libre' | 'reservado' | 'ocupado' | 'mantenimiento';
 

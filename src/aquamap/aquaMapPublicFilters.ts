@@ -1,26 +1,8 @@
-import type { ElementType, MapElement } from './types';
-
-const TYPE_TO_FILTER: Record<ElementType, string> = {
-  pool: 'piscinas',
-  slide: 'toboganes',
-  service: 'servicios',
-  tree: 'areas',
-  mesa: 'mesas',
-  parking: 'estacionamiento'
-};
-
-const FILTER_LABELS: Record<string, string> = {
-  all: 'Todo',
-  piscinas: 'Albercas',
-  toboganes: 'Toboganes',
-  servicios: 'Servicios',
-  areas: 'Áreas verdes',
-  mesas: 'Mesas',
-  estacionamiento: 'Estacionamiento'
-};
+import { ELEMENT_FILTER_ID, FILTER_LABELS } from './elementCatalog';
+import type { MapElement } from './types';
 
 export function filterIdForElement(el: MapElement): string {
-  return TYPE_TO_FILTER[el.type] || 'otros';
+  return ELEMENT_FILTER_ID[el.type] || 'otros';
 }
 
 export function buildAquamapFilterChips(elements: MapElement[]): { id: string; label: string }[] {

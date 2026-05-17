@@ -1,8 +1,7 @@
 import type { ElementType } from './types';
 
 const SPRITE_FILE: Partial<Record<ElementType, string>> = {
-  mesa: 'service',
-  parking: 'service'
+  mesa: 'service'
 };
 
 export function defaultSpriteForType(type: ElementType): string {
