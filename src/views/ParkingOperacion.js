@@ -7,8 +7,8 @@ let destroyWorker = null;
 
 const ParkingOperacion = {
   render: () => `
-    <div class="flex min-h-[calc(100vh-92px)] flex-col bg-[#0f172a]">
-      <div id="parking-worker-root" class="min-h-0 flex-1"></div>
+    <div class="flex min-h-[calc(100vh-92px)] flex-col bg-[#121329]">
+      <div id="parking-worker-root" class="parking-worker-host min-h-0 flex-1 overflow-hidden"></div>
     </div>
   `,
 

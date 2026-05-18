@@ -1139,6 +1139,142 @@
   box-shadow: 0 0 0 2px rgba(0, 200, 255, .8), inset 0 0 22px rgba(0, 200, 255, .16);
 }
 
+/* ===== Patio embebido (Gestión / Operación) ===== */
+.parking-worker-host .parking-sandbox-app {
+  display: grid;
+  grid-template-columns: min(292px, 30vw) minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-areas:
+    "header header"
+    "tools yard";
+  min-width: 0 !important;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  position: relative;
+  overflow: hidden;
+}
+
+.parking-worker-host .top-shell {
+  grid-area: header;
+  height: auto;
+  min-height: 84px;
+  max-height: 112px;
+  padding: 10px 14px 0;
+  position: relative;
+  flex-shrink: 0;
+}
+
+.parking-worker-host .command-bar {
+  height: 64px;
+}
+
+.parking-worker-host .scoreboard {
+  min-width: 0;
+  width: min(100% - 120px, 560px);
+  gap: 14px;
+  padding: 10px 16px;
+}
+
+.parking-worker-host .metric strong {
+  font-size: 20px;
+}
+
+.parking-worker-host .map-tools {
+  grid-area: tools;
+  position: relative;
+  left: auto;
+  right: auto;
+  top: auto;
+  width: auto;
+  max-width: none;
+  align-self: stretch;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 10px 8px 12px 12px;
+  z-index: 4;
+  pointer-events: auto;
+}
+
+.parking-worker-host .yard-wrap {
+  grid-area: yard;
+  position: relative;
+  inset: unset;
+  min-height: 0;
+  height: auto;
+  overflow: hidden;
+}
+
+.parking-worker-host .yard-viewport {
+  position: absolute;
+  inset: 0;
+}
+
+.parking-worker-host .sandbox-toolbar {
+  position: absolute;
+  left: calc(min(292px, 30vw) + 10px);
+  right: auto;
+  bottom: 12px;
+  z-index: 36;
+  max-width: calc(100% - min(292px, 30vw) - 90px);
+}
+
+.parking-worker-host .zoom-stack {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  z-index: 30;
+}
+
+.parking-worker-host .zoom-stack button {
+  width: 48px;
+  height: 48px;
+  font-size: 24px;
+}
+
+.parking-worker-host .unit-popover {
+  position: absolute;
+  right: 12px;
+  top: 72px;
+  z-index: 40;
+}
+
+.parking-worker-host .history-drawer {
+  position: absolute;
+  left: 12px;
+  bottom: 72px;
+  width: min(344px, calc(100% - 24px));
+  max-height: min(340px, 45%);
+  z-index: 37;
+}
+
+.parking-worker-host .inventory-drawer {
+  position: absolute;
+  left: min(292px, 30vw);
+  top: 72px;
+  width: min(520px, calc(100% - min(292px, 30vw) - 24px));
+  max-width: none;
+  max-height: calc(100% - 88px);
+  z-index: 70;
+}
+
+.parking-worker-host .summary-modal {
+  position: absolute;
+  inset: 0;
+  z-index: 60;
+}
+
+.parking-worker-host .toast {
+  position: absolute;
+  left: 50%;
+  bottom: 12px;
+  z-index: 80;
+}
+
+.parking-worker-host .ops-panel {
+  display: none;
+}
+
 /* Responsive básico */
 @media (max-width: 1200px) {
   .parking-sandbox-app { min-width: 920px; }
@@ -1146,4 +1282,17 @@
   .scoreboard { min-width: 520px; gap: 18px; }
   .ops-panel, .map-tools { display: none; }
   .inventory-drawer { left: 20px; max-width: calc(100vw - 40px); }
+
+  .parking-worker-host .parking-sandbox-app {
+    min-width: 0 !important;
+    grid-template-columns: min(260px, 34vw) minmax(0, 1fr);
+  }
+
+  .parking-worker-host .map-tools {
+    display: grid;
+  }
+
+  .parking-worker-host .ops-panel {
+    display: none;
+  }
 }

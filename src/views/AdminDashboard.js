@@ -391,7 +391,7 @@ const AdminDashboard = {
                 </div>
             </aside>
 
-            <div class="flex-grow overflow-y-auto p-6 sm:p-8">
+            <div id="admin-main-column" class="admin-main-column flex-grow overflow-y-auto p-6 sm:p-8">
                 <div id="admin-panel-tickets">
                 <div id="exec-dash-root" class="exec-dash mb-8">
                   <header class="exec-dash-header mb-6 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
@@ -623,11 +623,6 @@ const AdminDashboard = {
                 </div>` : ''}
 
                                 ${canParking ? `<div id="admin-panel-parking" class="hidden flex min-h-0 flex-1 flex-col">
-                  <div class="shrink-0 border-b border-slate-700 bg-slate-900/90 px-4 py-3">
-                    <p class="text-[10px] font-black uppercase tracking-widest text-cyan-400">Operación</p>
-                    <h2 class="mt-0.5 text-lg font-black text-white">Patio operativo</h2>
-                    <p class="mt-1 max-w-2xl text-xs text-slate-400">Sandbox para mover unidades en tiempo real. El diseño del plano público está en <strong class="text-slate-300">Sitio → Mapa → Estacionamiento</strong> (editor), no aquí.</p>
-                  </div>
                   <div id="parking-worker-root" class="parking-worker-host min-h-0 flex-1 overflow-hidden"></div>
                 </div>` : ''}
 
@@ -2025,6 +2020,7 @@ const AdminDashboard = {
       if (name === 'parking' && !panelParking) return;
       if (name === 'soporte' && !panelSoporte) return;
       if (name === 'bitacora' && !panelBitacora) return;
+      document.querySelector('.admin-shell')?.classList.toggle('admin-shell--parking', name === 'parking');
       if (panelTickets) panelTickets.classList.toggle('hidden', name !== 'tickets');
       if (panelParking) panelParking.classList.toggle('hidden', name !== 'parking');
       if (panelInventario) panelInventario.classList.toggle('hidden', name !== 'inventario');

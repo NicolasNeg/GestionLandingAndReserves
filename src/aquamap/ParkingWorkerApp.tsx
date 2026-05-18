@@ -31,13 +31,15 @@ export function ParkingWorkerApp({ onBack }: Props) {
 
   if (loading) {
     return (
-      <div className="flex h-full min-h-[320px] items-center justify-center bg-[#121329] text-sm text-slate-400">
+      <div className="flex h-full min-h-0 flex-1 items-center justify-center bg-[#121329] text-sm text-slate-400">
         Cargando patio…
       </div>
     );
   }
 
   return (
-    <ParkingBjxSandbox parkingById={parkingById} plazaCode="Patio" onBack={onBack} />
+    <div className="flex h-full min-h-0 flex-1 flex-col">
+      <ParkingBjxSandbox parkingById={parkingById} plazaCode="Patio" onBack={onBack} />
+    </div>
   );
 }
