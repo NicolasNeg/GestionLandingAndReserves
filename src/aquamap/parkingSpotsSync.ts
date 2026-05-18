@@ -20,7 +20,7 @@ export type ParkingSpotLive = {
   ubicacion?: string;
 };
 
-/** Centro del cajón en % del lienzo (mismo criterio que el panel operativo). */
+/** Centro del cajón en % del lienzo (editor / landing). */
 export function elementCenterPercent(
   el: MapElement,
   world: { w: number; h: number }

@@ -28,9 +28,9 @@ export const MAP_LAYER_CONFIG: Record<MapLayerContext, LayerUiConfig> = {
   },
   estacionamiento: {
     id: 'estacionamiento',
-    label: 'Estacionamiento',
+    label: 'Plano estacionamiento',
     shortHint:
-      'Cajones P-01…, entrada/salida, caminos y zonas de patio o taller. Sincroniza con operación y landing.',
+      'Solo diseño del plano para la landing (#estacionamiento): cajones, entradas y zonas. La operación diaria (mover unidades) está en Gestión → Patio operativo.',
     allowedTypes: ['parking', 'entrada', 'area', 'camino', 'service']
   },
   albercas: {

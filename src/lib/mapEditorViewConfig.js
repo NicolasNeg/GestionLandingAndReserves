@@ -62,11 +62,11 @@ export const MAP_EDITOR_VIEWS = {
     ]
   },
   estacionamiento: {
-    label: 'Estacionamiento',
+    label: 'Plano estacionamiento',
     accent: 'yellow',
     mapView: 'estacionamiento',
     storageField: 'mapaEstacionamientoJson',
-    sidebarHint: 'Cajones, circulación y zonas operativas de parking.',
+    sidebarHint: 'Diseño del plano público (cajones y zonas). No es el patio operativo del personal.',
     toolGroups: [
       {
         title: 'Agregar al mapa',

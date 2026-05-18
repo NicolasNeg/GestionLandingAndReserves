@@ -372,7 +372,7 @@ const AdminDashboard = {
                         <span class="admin-sidebar-label">Resumen</span>
                     </button>
                     ${canTicketTypesPanel ? `<button type="button" data-admin-section="ticket-types" class="admin-sidebar-item" title="Tickets del catalogo">${icon('ticket', 'h-5 w-5')}<span class="admin-sidebar-label">Tickets</span></button>` : ''}
-                    ${canParking ? `<button type="button" data-admin-section="parking" class="admin-sidebar-item" title="Estacionamiento">${icon('parking', 'h-5 w-5')}<span class="admin-sidebar-label">Estacionamiento</span></button>` : ''}
+                    ${canParking ? `<button type="button" data-admin-section="parking" class="admin-sidebar-item" title="Patio operativo (sandbox)">${icon('parking', 'h-5 w-5')}<span class="admin-sidebar-label">Patio operativo</span></button>` : ''}
                     ${canInventoryView ? `<button type="button" data-admin-section="inventario" class="admin-sidebar-item" title="Inventario y ventas">${icon('package', 'h-5 w-5')}<span class="admin-sidebar-label">Inventario / Ventas</span></button>` : ''}
                     ${canCorteDia ? `<button type="button" data-admin-section="corte-dia" class="admin-sidebar-item" title="Corte del día">${icon('clock', 'h-5 w-5')}<span class="admin-sidebar-label">Corte del día</span></button>` : ''}
                     ${canSupport ? `<button type="button" data-admin-section="soporte" class="admin-sidebar-item" title="Soporte clientes">${icon('users', 'h-5 w-5')}<span class="admin-sidebar-label">Soporte</span></button>` : ''}
@@ -622,8 +622,13 @@ const AdminDashboard = {
                   </div>
                 </div>` : ''}
 
-                                ${canParking ? `<div id="admin-panel-parking" class="hidden">
-                  <div id="parking-worker-root" class="parking-worker-host min-h-[min(72vh,720px)] overflow-hidden rounded-2xl border border-slate-700 shadow-xl"></div>
+                                ${canParking ? `<div id="admin-panel-parking" class="hidden flex min-h-0 flex-1 flex-col">
+                  <div class="shrink-0 border-b border-slate-700 bg-slate-900/90 px-4 py-3">
+                    <p class="text-[10px] font-black uppercase tracking-widest text-cyan-400">Operación</p>
+                    <h2 class="mt-0.5 text-lg font-black text-white">Patio operativo</h2>
+                    <p class="mt-1 max-w-2xl text-xs text-slate-400">Sandbox para mover unidades en tiempo real. El diseño del plano público está en <strong class="text-slate-300">Sitio → Mapa → Estacionamiento</strong> (editor), no aquí.</p>
+                  </div>
+                  <div id="parking-worker-root" class="parking-worker-host min-h-0 flex-1 overflow-hidden"></div>
                 </div>` : ''}
 
                 ${canInventoryView ? `<div id="admin-panel-inventario" class="hidden space-y-6">
@@ -1103,7 +1108,7 @@ const AdminDashboard = {
                                 <div id="map-view-tabs" class="inline-flex flex-wrap items-center justify-center gap-1 rounded-xl border border-white/10 bg-white/5 p-1">
                                   <button type="button" data-map-view-tab="parque" class="mapa-view-tab mapa-view-tab--global is-active">Global</button>
                                   <button type="button" data-map-view-tab="mesas" class="mapa-view-tab mapa-view-tab--mesas">Mesas</button>
-                                  <button type="button" data-map-view-tab="estacionamiento" class="mapa-view-tab mapa-view-tab--estacionamiento">Estacionamiento</button>
+                                  <button type="button" data-map-view-tab="estacionamiento" class="mapa-view-tab mapa-view-tab--estacionamiento" title="Editor del plano público">Plano estacionamiento</button>
                                   <button type="button" data-map-view-tab="albercas" class="mapa-view-tab mapa-view-tab--albercas">Albercas</button>
                                 </div>
                                 <select id="map-context-select" class="hidden rounded-lg border border-cyan-400/30 bg-cyan-500/10 px-3 py-2 text-xs font-black text-cyan-100">
@@ -2832,7 +2837,7 @@ const AdminDashboard = {
             'Este mapa se usa en /reservar (reserva de mesas). Si no hay piezas, la app puede usar el mapa global como respaldo.';
         } else if (mapContext === 'estacionamiento') {
           el.textContent =
-            'Este mapa alimenta la vista de estacionamiento y el panel operativo de parking.';
+            'Plano público en la landing (#estacionamiento). El patio operativo del personal está en Gestión → Patio operativo.';
         } else if (mapContext === 'albercas') {
           el.textContent =
             'Vista Albercas: usa el mapa global y destaca zonas acuáticas sin romper compatibilidad actual.';
@@ -2875,9 +2880,9 @@ const AdminDashboard = {
             hint.textContent =
               'Agrega un bloque de mesas con la herramienta Mesa o importa un JSON. Las mesas reservables necesitan ID estable.';
           } else if (mapContext === 'estacionamiento') {
-            title.textContent = 'Aún no hay mapa de estacionamiento.';
+            title.textContent = 'Aún no hay plano de estacionamiento.';
             hint.textContent =
-              'Agrega cajones con la herramienta Estacionamiento o importa JSON. Configura código en cada cajón.';
+              'Diseña cajones para visitantes (P-01, etc.). La operación con autos no se hace aquí: usa Gestión → Patio operativo.';
           } else if (mapContext === 'albercas') {
             title.textContent = 'Aún no hay albercas configuradas.';
             hint.textContent =

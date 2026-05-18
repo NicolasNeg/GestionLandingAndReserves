@@ -402,7 +402,7 @@ function SidebarHeader({
   const accent =
     editorSkin === 'parking' ? 'text-amber-400' : 'text-[#5eead4]';
   const title =
-    editorSkin === 'parking' ? 'Editor de estacionamiento' : 'Editor del mapa';
+    editorSkin === 'parking' ? 'Editor del plano (estacionamiento)' : 'Editor del mapa';
   return (
     <div className="flex-shrink-0 border-b border-[#1f1f1f] bg-[#3c3c3c] px-3 py-2.5">
       <div className="flex items-start justify-between gap-2">

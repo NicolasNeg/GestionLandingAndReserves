@@ -134,7 +134,8 @@ export const AquaMapSiteEditor = forwardRef<AquaMapSiteEditorHandle, Props>(func
   const layerConfig = MAP_LAYER_CONFIG[mapContext];
   const editorSkin = mapContext === 'estacionamiento' ? 'parking' : 'aquatic';
   const yardVariant: AquaMapYardVariant = mapContext === 'estacionamiento' ? 'parking' : 'island';
-  const syncParkingDb = yardVariant === 'parking';
+  /** El patio operativo (sandbox BJX) vive aparte; aquí solo se edita JSON del plano. */
+  const syncParkingDb = false;
   const legacyView = legacyViewForContext(mapContext);
   const initialEnvelope = useMemo(
     () => ensureAquamapEnvelopeFromSiteJson(initialJson, { view: legacyView }),

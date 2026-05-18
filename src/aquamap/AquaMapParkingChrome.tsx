@@ -12,14 +12,6 @@ type Props = {
   disabled?: boolean;
 };
 
-const COUNTER_ROWS: { key: keyof ParkingSpotCounts; label: string; dot: string }[] = [
-  { key: 'total', label: 'Total', dot: 'bg-slate-400' },
-  { key: 'libre', label: 'Libres', dot: 'bg-emerald-400' },
-  { key: 'reservado', label: 'Reservados', dot: 'bg-amber-400' },
-  { key: 'ocupado', label: 'Ocupados', dot: 'bg-red-500' },
-  { key: 'mantenimiento', label: 'Mant.', dot: 'bg-slate-500' }
-];
-
 export function AquaMapParkingChrome({
   spotDraft,
   spotError,
@@ -35,24 +27,16 @@ export function AquaMapParkingChrome({
     <div className="mb-2 flex shrink-0 flex-col gap-2 rounded-lg border border-teal-900/35 bg-gradient-to-r from-[#0f172a] via-[#111827] to-[#0c1524] px-3 py-2.5 shadow-[inset_0_1px_0_rgba(45,212,191,0.12)]">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
-          <h2 className="font-bold uppercase tracking-[0.08em] text-[#e2e8f0]">Plano del patio</h2>
+          <h2 className="font-bold uppercase tracking-[0.08em] text-[#e2e8f0]">Diseño del plano</h2>
           <p className="mt-0.5 max-w-xl text-[11px] leading-snug text-slate-400">
-            Arrastra cajones, usa fila rápida o añade entrada/caminos desde la barra lateral. Sincroniza con
-            operación y landing.
+            Coloca cajones y zonas para la vista pública. Para mover autos y estados usa Gestión → Patio operativo
+            (sandbox).
           </p>
         </div>
         {counts && counts.total > 0 ? (
-          <div className="flex flex-wrap gap-2 sm:justify-end">
-            {COUNTER_ROWS.map((row) => (
-              <span
-                key={row.key}
-                className="inline-flex items-center gap-1.5 rounded-full border border-teal-900/40 bg-[#0b1220]/80 px-2 py-0.5 font-mono text-[9px] uppercase tracking-wide text-slate-300"
-              >
-                <span className={`h-1.5 w-1.5 rounded-full ${row.dot}`} aria-hidden />
-                {row.label}: {counts[row.key]}
-              </span>
-            ))}
-          </div>
+          <span className="inline-flex items-center rounded-full border border-teal-900/40 bg-[#0b1220]/80 px-2.5 py-1 font-mono text-[9px] uppercase tracking-wide text-slate-300">
+            {counts.total} cajón{counts.total === 1 ? '' : 'es'} en el plano
+          </span>
         ) : null}
       </div>
 
