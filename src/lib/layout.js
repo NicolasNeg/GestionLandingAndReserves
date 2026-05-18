@@ -65,34 +65,29 @@ function renderHeader(access, theme) {
     navLink({ href: '/login', label: 'Login', iconName: 'login', active: path === '/login' })
   ].join('');
 
+  const canOperacion =
+    access.can('tickets.scan') ||
+    access.can('parking.manage') ||
+    access.can('sales.physical') ||
+    access.can('admin.panel') ||
+    access.isProgramador;
+
   const loggedLinks = [
-    navLink({ href: '/home', label: 'Inicio', iconName: 'home', active: path === '/home' }),
-    cartButton,
-    access.can('tickets.scan') || access.can('parking.manage') || access.can('sales.physical')
+    canOperacion
       ? navLink({
           href: '/operacion',
           label: 'Operacion',
           iconName: 'waves',
-          active: path === '/operacion'
+          active: path === '/operacion' || path === '/operacion/parking'
         })
       : '',
     access.can('dashboard.manage')
-      ? navLink({ href: '/admin/dashboard?section=tickets', label: 'Gestion', iconName: 'briefcase', active: path === '/admin/dashboard' })
-      : '',
-    access.can('dashboard.manage') &&
-    (access.can('landing.manage') || access.can('admin.panel') || access.isProgramador)
       ? navLink({
-          href: '/admin/dashboard?section=sitio&mapfocus=1',
-          label: 'Editor mapa',
-          iconName: 'map',
-          active: false
+          href: '/admin/dashboard?section=tickets',
+          label: 'Gestion',
+          iconName: 'briefcase',
+          active: path === '/admin/dashboard'
         })
-      : '',
-    access.can('admin.panel')
-      ? navLink({ href: '/admin/dashboard?section=admin', label: 'Panel administracion', iconName: 'dashboard', active: path === '/admin/dashboard' })
-      : '',
-    access.can('tickets.scan')
-      ? navLink({ href: '/escaner', label: 'Escanear', iconName: 'scan', active: path === '/escaner' })
       : ''
   ].join('');
 
@@ -112,7 +107,7 @@ function renderHeader(access, theme) {
             <div id="app-user-menu-backdrop" class="app-user-menu-backdrop" hidden data-app-user-menu-backdrop></div>
             <button type="button" class="app-user-button" data-app-user-menu-toggle aria-expanded="false" aria-controls="app-user-menu">
               ${userAvatar(access)}
-              <span>Usuario</span>
+              <span>Mi perfil</span>
               ${icon('chevronDown', 'h-4 w-4')}
             </button>
             <div id="app-user-menu" class="app-user-menu hidden">
@@ -146,7 +141,7 @@ function renderHeader(access, theme) {
                     <span>Gestión</span>
                   </a>`
                 : ''}
-              <a href="/home#contacto" data-link class="app-user-menu-item">
+              <a href="/home#ayuda" data-link class="app-user-menu-item">
                 ${icon('info', 'h-4 w-4')}
                 <span>Ayuda y contacto</span>
               </a>

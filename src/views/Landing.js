@@ -202,12 +202,23 @@ function pseudoItemFromAquamapElement(el) {
   };
 }
 
+function formatPhoneDisplay(digits) {
+  const d = String(digits || '').replace(/\D/g, '');
+  if (d.length === 12 && d.startsWith('52')) {
+    return `+52 ${d.slice(2, 5)} ${d.slice(5, 8)} ${d.slice(8)}`;
+  }
+  if (d.length === 10) {
+    return `${d.slice(0, 3)} ${d.slice(3, 6)} ${d.slice(6)}`;
+  }
+  return d || '';
+}
+
 function renderBotones(botones) {
   if (!botones.length) {
-    return '<p class="text-sm text-slate-500">Los accesos rapidos se configuran desde el panel del personal.</p>';
+    return '';
   }
   return botones
-    .map((btn, i) => {
+    .map((btn) => {
       const label = escapeHtml(btn.label || 'Enlace');
       const href = buildButtonHref(btn);
       const type = (btn.type || '').toLowerCase();
@@ -215,11 +226,124 @@ function renderBotones(botones) {
         type === 'custom' &&
         (btn.external === true ||
           /^https?:\/\//i.test(href));
+      const wa = type === 'whatsapp';
+      const mail = type === 'mail';
+      const btnClass = wa
+        ? 'landing-help-action landing-help-action--wa'
+        : mail
+          ? 'landing-help-action landing-help-action--mail'
+          : 'landing-help-action';
       if (external && href !== '#') {
-        return `<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer" class="inline-flex items-center justify-center rounded-xl bg-slate-800 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-700">${label}</a>`;
+        return `<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer" class="${btnClass}">${label}</a>`;
       }
       const path = href.startsWith('/') ? href : `/${href.replace(/^\//, '')}`;
-      return `<a href="${escapeHtml(path)}" data-link class="inline-flex items-center justify-center rounded-xl bg-slate-800 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-700">${label}</a>`;
+      return `<a href="${escapeHtml(path)}" data-link class="${btnClass}">${label}</a>`;
+    })
+    .join('');
+}
+
+function renderFaqList(faq) {
+  const items = (faq || []).filter((f) => f?.q && f?.a);
+  if (!items.length) {
+    return `<p class="text-sm text-slate-500">Las preguntas frecuentes se publican desde el panel de Sitio.</p>`;
+  }
+  return items
+    .map(
+      (item, i) => `
+    <details class="landing-faq-item" ${i === 0 ? 'open' : ''}>
+      <summary class="landing-faq-question">
+        <span>${escapeHtml(item.q)}</span>
+        ${icon('chevronDown', 'landing-faq-chevron')}
+      </summary>
+      <div class="landing-faq-answer">
+        <p>${escapeHtml(item.a)}</p>
+      </div>
+    </details>`
+    )
+    .join('');
+}
+
+function buildContactCards(landing, botones, todayScheduleSlot) {
+  const cards = [];
+  for (const btn of botones) {
+    const type = (btn.type || '').toLowerCase();
+    const href = buildButtonHref(btn);
+    if (href === '#') continue;
+    if (type === 'whatsapp') {
+      cards.push({
+        iconName: 'phone',
+        title: btn.label || 'WhatsApp',
+        body: formatPhoneDisplay(btn.value) || 'Escríbenos',
+        href,
+        external: true,
+        cta: 'Abrir chat'
+      });
+    } else if (type === 'mail') {
+      cards.push({
+        iconName: 'info',
+        title: btn.label || 'Correo',
+        body: String(btn.value || '').trim() || 'Envíanos un mensaje',
+        href,
+        external: false,
+        cta: 'Enviar correo'
+      });
+    }
+  }
+  const address = (landing.googleMapsAddress || '').trim();
+  const mapsUrl = googleMapsOpenUrl({
+    url: landing.googleMapsUrl,
+    address: landing.googleMapsAddress
+  });
+  if (address) {
+    cards.push({
+      iconName: 'map',
+      title: 'Ubicación',
+      body: address,
+      href: mapsUrl || '#',
+      external: Boolean(mapsUrl),
+      cta: mapsUrl ? 'Ver en Maps' : ''
+    });
+  }
+  if (todayScheduleSlot) {
+    const hours = todayScheduleSlot.closed
+      ? 'Cerrado hoy'
+      : `${todayScheduleSlot.open} – ${todayScheduleSlot.close}`;
+    cards.push({
+      iconName: 'clock',
+      title: `Horario · ${todayScheduleSlot.label}`,
+      body: hours,
+      href: '#estado',
+      external: false,
+      cta: 'Ver horarios'
+    });
+  }
+  return cards;
+}
+
+function renderContactCards(cards) {
+  if (!cards.length) {
+    return `<p class="text-sm text-slate-500">Configura WhatsApp, correo o dirección en el panel de Sitio.</p>`;
+  }
+  return cards
+    .map((card) => {
+      const isHash = card.href.startsWith('#');
+      const linkAttrs = card.external
+        ? `href="${escapeHtml(card.href)}" target="_blank" rel="noopener noreferrer"`
+        : isHash
+          ? `href="${escapeHtml(card.href)}"`
+          : `href="${escapeHtml(card.href)}" data-link`;
+      const cta = card.cta
+        ? `<span class="landing-help-card-cta">${escapeHtml(card.cta)} ${icon('chevronDown', 'h-3.5 w-3.5 -rotate-90')}</span>`
+        : '';
+      return `
+      <a ${linkAttrs} class="landing-help-card">
+        <span class="landing-help-card-icon">${icon(card.iconName, 'h-5 w-5')}</span>
+        <span class="landing-help-card-body">
+          <span class="landing-help-card-title">${escapeHtml(card.title)}</span>
+          <span class="landing-help-card-text">${escapeHtml(card.body)}</span>
+          ${cta}
+        </span>
+      </a>`;
     })
     .join('');
 }
@@ -401,7 +525,7 @@ const navItems = [
   { id: 'paquetes', label: 'Paquetes', iconName: 'package' },
   { id: 'productos', label: 'Productos', iconName: 'package' },
   { id: 'estacionamiento', label: 'Estacionamiento', iconName: 'parking' },
-  { id: 'contacto', label: 'Contacto', iconName: 'phone' }
+  { id: 'ayuda', label: 'Ayuda', iconName: 'info' }
 ];
 
 function renderHomeNavItems(access) {
@@ -801,12 +925,24 @@ export default {
               </div>
             </section>
 
-            <section id="contacto" class="landing-reveal scroll-mt-24 bg-white px-4 py-14 sm:px-8">
+            <section id="ayuda" class="landing-reveal scroll-mt-24 border-t border-slate-200 bg-gradient-to-b from-slate-50 to-white px-4 py-14 sm:px-8">
               <div class="mx-auto max-w-5xl">
-                <h2 class="text-2xl font-black text-slate-900 sm:text-3xl">Contacto y enlaces</h2>
-                <div id="landing-botones" class="mt-6 flex flex-wrap gap-3"></div>
-                <p class="mt-8 text-sm text-slate-500">
-                  <a href="/politicas" data-link class="font-semibold text-blue-700 hover:underline">Politicas de privacidad</a>
+                <p class="text-[10px] font-black uppercase tracking-widest text-cyan-700">Ayuda</p>
+                <h2 class="mt-1 text-2xl font-black text-slate-900 sm:text-3xl">Ayuda y contacto</h2>
+                <p id="landing-ayuda-intro" class="mt-3 max-w-2xl text-sm leading-relaxed text-slate-600"></p>
+                <div class="landing-help-grid mt-8">
+                  <div class="landing-help-contact">
+                    <h3 class="landing-help-heading">Contáctanos</h3>
+                    <div id="landing-help-contact-cards" class="landing-help-cards"></div>
+                    <div id="landing-botones" class="landing-help-actions"></div>
+                  </div>
+                  <div class="landing-help-faq">
+                    <h3 class="landing-help-heading">Preguntas frecuentes</h3>
+                    <div id="landing-faq-list" class="landing-faq-list"></div>
+                  </div>
+                </div>
+                <p class="mt-10 text-sm text-slate-500">
+                  <a href="/politicas" data-link class="font-semibold text-cyan-700 hover:underline">Políticas de privacidad</a>
                 </p>
               </div>
             </section>
@@ -835,6 +971,10 @@ export default {
         botonesJson: row.botonesJson != null && row.botonesJson !== '' ? row.botonesJson : d.botonesJson
       };
     };
+
+    if (window.location.hash === '#contacto') {
+      history.replaceState(null, '', `${window.location.pathname}${window.location.search}#ayuda`);
+    }
 
     let landing = defaultLanding();
     try {
@@ -999,6 +1139,15 @@ export default {
       } else if (useAquaPublic) {
         globalMapViewer = mountAquamapLandingMap(mapStageRoot, landing.mapaDistribucionJson, {
           onSelectElement: (el) => {
+            if (
+              el &&
+              (el.type === 'area' || el.type === 'parking') &&
+              /estacionamiento|parking|patio/i.test(String(el.name || ''))
+            ) {
+              window.location.hash = 'estacionamiento';
+              document.getElementById('estacionamiento')?.scrollIntoView({ behavior: 'smooth' });
+              return;
+            }
             setMapInfo(el ? pseudoItemFromAquamapElement(el) : null);
           }
         });
@@ -1115,8 +1264,20 @@ export default {
     if (ht) ht.textContent = heroFromLanding.title;
     if (hs) hs.textContent = heroFromLanding.subtitle;
 
+    const landingContent = splitBotonesJson(landing.botonesJson);
+    const publicBotones = filterPublicBotones(parseBotones(landing.botonesJson));
+    const ayudaIntro = document.getElementById('landing-ayuda-intro');
+    if (ayudaIntro) ayudaIntro.textContent = landingContent.ayuda.intro;
+    const helpCards = document.getElementById('landing-help-contact-cards');
+    if (helpCards) {
+      helpCards.innerHTML = renderContactCards(
+        buildContactCards(landing, publicBotones, today)
+      );
+    }
     const botWrap = document.getElementById('landing-botones');
-    if (botWrap) botWrap.innerHTML = renderBotones(filterPublicBotones(parseBotones(landing.botonesJson)));
+    if (botWrap) botWrap.innerHTML = renderBotones(publicBotones);
+    const faqList = document.getElementById('landing-faq-list');
+    if (faqList) faqList.innerHTML = renderFaqList(landingContent.ayuda.faq);
 
     const serviciosEl = document.getElementById('landing-servicios');
     const serviciosPrevBtn = document.getElementById('landing-servicios-prev');

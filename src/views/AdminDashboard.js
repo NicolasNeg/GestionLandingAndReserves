@@ -85,6 +85,7 @@ import {
 } from '../lib/discountRulesAdmin.js';
 import heroImageUrl from '../assets/hero.png';
 import { splitBotonesJson, mergeBotonesJson } from '../lib/landingBotonesHero.js';
+import { DEFAULT_LANDING_AYUDA, normalizeLandingAyuda } from '../lib/landingAyuda.js';
 import { resendTicketEmail } from '../lib/ticketEmail.js';
 import { downloadTicketPdfBestEffort } from '../lib/ticketPdf.js';
 import { copyTicketCode } from '../lib/ticketShare.js';
@@ -279,6 +280,43 @@ function collectBotonesFromDom() {
     }
   });
   return out;
+}
+
+function renderFaqRows(faq) {
+  const items = faq?.length ? faq : [{ q: '', a: '' }];
+  return items
+    .map((item, idx) => {
+      const q = String(item.q ?? '').replace(/"/g, '&quot;');
+      const a = String(item.a ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+      return `
+      <div data-faq-fila="${idx}" class="grid gap-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
+        <label class="text-xs font-semibold text-slate-600">Pregunta
+          <input data-faq-q type="text" value="${q}" class="mt-1 w-full rounded border p-2 text-sm" placeholder="Ej. ¿Cómo compro tickets?" />
+        </label>
+        <label class="text-xs font-semibold text-slate-600">Respuesta
+          <textarea data-faq-a rows="2" class="mt-1 w-full rounded border p-2 text-sm" placeholder="Respuesta breve para el visitante">${a}</textarea>
+        </label>
+        <div class="flex justify-end">
+          <button type="button" data-faq-remove class="text-sm text-rose-600 hover:underline">Quitar</button>
+        </div>
+      </div>`;
+    })
+    .join('');
+}
+
+function collectAyudaFromDom() {
+  const intro =
+    document.getElementById('lp-ayuda-intro')?.value?.trim() || DEFAULT_LANDING_AYUDA.intro;
+  const faq = [];
+  document.querySelectorAll('[data-faq-fila]').forEach((fila) => {
+    const q = fila.querySelector('[data-faq-q]')?.value?.trim() || '';
+    const a = fila.querySelector('[data-faq-a]')?.value?.trim() || '';
+    if (q && a) faq.push({ q, a });
+  });
+  return normalizeLandingAyuda({ intro, faq });
 }
 
 const AdminDashboard = {
@@ -584,39 +622,8 @@ const AdminDashboard = {
                   </div>
                 </div>` : ''}
 
-                ${canParking ? `<div id="admin-panel-parking" class="hidden space-y-5">
-                  <div class="parking-hero">
-                    <div>
-                      <p class="text-xs font-black uppercase tracking-widest text-cyan-300">Tiempo real</p>
-                      <h2 class="mt-1 text-2xl font-black text-white">Mapa operativo de estacionamiento</h2>
-                      <p class="mt-2 max-w-3xl text-sm text-slate-300">Operación en vivo: mueve unidades, placas y estado. Para <strong>diseñar el plano</strong> (ubicar cajones P-01, P-02…) usa <button type="button" id="parking-goto-sitio-editor" class="font-bold text-cyan-200 underline">Sitio → Editor del mapa → Estacionamiento</button>.</p>
-                    </div>
-                    <span class="rounded-full border border-emerald-400/30 bg-emerald-400/10 px-3 py-1 text-xs font-black text-emerald-200">parking.manage</span>
-                  </div>
-                  <div id="parking-counters" class="grid gap-3 sm:grid-cols-3 xl:grid-cols-7"></div>
-                  <div class="grid gap-4 xl:grid-cols-[minmax(0,1fr)_390px]">
-                    <section class="parking-operational-card">
-                      <div class="flex flex-wrap items-center justify-between gap-3">
-                        <div>
-                          <h3 class="text-sm font-black uppercase tracking-wide text-slate-900">Plano del patio</h3>
-                          <p id="parking-drag-hint" class="text-xs text-slate-500">Arrastra una unidad para actualizar su ubicacion.</p>
-                        </div>
-                        <div class="flex flex-wrap items-center gap-2">
-                          <input id="parking-new-id" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold" placeholder="ID spot (ej. P-01)" />
-                          <button id="btn-parking-add" class="rounded-lg bg-emerald-600 px-3 py-2 text-sm font-black text-white hover:bg-emerald-700">Agregar spot</button>
-                        </div>
-                      </div>
-                      <div id="parking-editor-map" class="parking-operational-map relative h-[520px] overflow-hidden"></div>
-                    </section>
-                    <section class="parking-list-card">
-                      <div class="mb-3 flex items-center justify-between gap-2">
-                        <h3 class="text-lg font-black text-slate-900">Spots y estado</h3>
-                        <span class="rounded-full bg-slate-100 px-2 py-1 text-[11px] font-black text-slate-500">Realtime</span>
-                      </div>
-                      <input id="parking-filter" placeholder="Buscar spot, placa o modelo..." class="mb-3 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800" />
-                      <div id="parking-spots-list" class="space-y-2 text-sm text-slate-600">Cargando...</div>
-                    </section>
-                  </div>
+                                ${canParking ? `<div id="admin-panel-parking" class="hidden">
+                  <div id="parking-worker-root" class="parking-worker-host min-h-[min(72vh,720px)] overflow-hidden rounded-2xl border border-slate-700 shadow-xl"></div>
                 </div>` : ''}
 
                 ${canInventoryView ? `<div id="admin-panel-inventario" class="hidden space-y-6">
@@ -1462,6 +1469,16 @@ const AdminDashboard = {
 
                     <div id="sitio-tab-extras" class="sitio-tab-panel hidden space-y-6">
                     <div class="rounded-xl border border-gray-200 bg-white p-6 shadow-sm space-y-4">
+                        <h2 class="font-bold text-lg">Ayuda y preguntas frecuentes</h2>
+                        <p class="text-sm text-slate-600">Texto introductorio y FAQ de la sección Ayuda en la landing.</p>
+                        <label class="block text-xs font-semibold text-slate-600">Introducción
+                          <textarea id="lp-ayuda-intro" rows="2" class="mt-1 w-full rounded-lg border border-slate-300 p-2 text-sm" placeholder="¿Tienes dudas?..."></textarea>
+                        </label>
+                        <div id="lp-faq-rows" class="space-y-3"></div>
+                        <button type="button" id="btn-add-faq" class="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold hover:bg-slate-50">+ Pregunta</button>
+                    </div>
+
+                    <div class="rounded-xl border border-gray-200 bg-white p-6 shadow-sm space-y-4">
                         <h2 class="font-bold text-lg">Botones de contacto</h2>
                         <div class="flex flex-wrap gap-2">
                           <button type="button" id="btn-add-wa" class="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold hover:bg-slate-50">+ WhatsApp</button>
@@ -2047,6 +2064,26 @@ const AdminDashboard = {
           bumpLandingUiRef?.();
         };
       });
+    };
+
+    const wireFaqRemove = () => {
+      document.querySelectorAll('[data-faq-remove]').forEach((b) => {
+        b.onclick = () => {
+          b.closest('[data-faq-fila]')?.remove();
+          bumpLandingUiRef?.();
+        };
+      });
+    };
+
+    const setAyudaUi = (jsonStr) => {
+      const { ayuda } = splitBotonesJson(jsonStr);
+      const introEl = document.getElementById('lp-ayuda-intro');
+      if (introEl) introEl.value = ayuda.intro;
+      const faqWrap = document.getElementById('lp-faq-rows');
+      if (faqWrap) {
+        faqWrap.innerHTML = renderFaqRows(ayuda.faq);
+        wireFaqRemove();
+      }
     };
 
     const setBotonesUi = (jsonStr) => {
@@ -2675,6 +2712,7 @@ const AdminDashboard = {
       setVal('lp-hero-kicker', splitHeroLoad.hero.kicker);
       setVal('lp-hero-title', splitHeroLoad.hero.title);
       setVal('lp-hero-subtitle', splitHeroLoad.hero.subtitle);
+      setAyudaUi(landing.botonesJson);
 
       try {
         const tres = await listTicketTypesAdmin();
@@ -2702,7 +2740,7 @@ const AdminDashboard = {
       };
       bumpLandingUiRef = bumpLandingUi;
 
-      ['lp-descripcion', 'lp-ocupacion', 'lp-estacionamiento', 'lp-abierto', 'lp-satelite', 'lp-maps', 'lp-maps-address'].forEach((id) => {
+      ['lp-descripcion', 'lp-ocupacion', 'lp-estacionamiento', 'lp-abierto', 'lp-satelite', 'lp-maps', 'lp-maps-address', 'lp-ayuda-intro'].forEach((id) => {
         document.getElementById(id)?.addEventListener('input', bumpLandingUi);
         document.getElementById(id)?.addEventListener('change', bumpLandingUi);
       });
@@ -3843,6 +3881,15 @@ const AdminDashboard = {
       });
       syncMapViewTabs();
 
+      document.getElementById('btn-add-faq')?.addEventListener('click', () => {
+        const wrap = document.getElementById('lp-faq-rows');
+        if (!wrap) return;
+        wrap.insertAdjacentHTML('beforeend', renderFaqRows([{ q: '', a: '' }]));
+        wireFaqRemove();
+        bumpLandingUi();
+      });
+      document.getElementById('lp-faq-rows')?.addEventListener('input', () => bumpLandingUi());
+
       document.getElementById('btn-add-wa')?.addEventListener('click', () => {
         const wrap = document.getElementById('lp-botones-rows');
         if (!wrap) return;
@@ -4134,7 +4181,7 @@ const AdminDashboard = {
           title: document.getElementById('lp-hero-title')?.value ?? '',
           subtitle: document.getElementById('lp-hero-subtitle')?.value ?? ''
         };
-        landing.botonesJson = mergeBotonesJson(heroMerge, collectBotonesFromDom());
+        landing.botonesJson = mergeBotonesJson(heroMerge, collectBotonesFromDom(), collectAyudaFromDom());
         const botonesJson = landing.botonesJson;
         const payload = {
           id: LANDING_PAGE_ID,
@@ -4247,6 +4294,7 @@ const AdminDashboard = {
         setVal('lp-hero-subtitle', sb.hero.subtitle);
         const abOpen = document.getElementById('lp-abierto');
         if (abOpen) abOpen.checked = landing.abiertoAhora;
+        setAyudaUi(landing.botonesJson);
         setBotonesUi(landing.botonesJson);
         const sel = document.getElementById('map-context-select');
         mapContext = sel?.value || mapContext;
@@ -4311,249 +4359,17 @@ const AdminDashboard = {
     };
 
     let parkingReady = false;
-    let parkingUnsub = null;
+    let parkingWorkerUnmount = null;
     const initParkingPanel = async () => {
       if (parkingReady) return;
+      const host = document.getElementById('parking-worker-root');
+      if (!host) return;
       parkingReady = true;
-      const mapEl = document.getElementById('parking-editor-map');
-      const listEl = document.getElementById('parking-spots-list');
-      const addBtn = document.getElementById('btn-parking-add');
-      const idInput = document.getElementById('parking-new-id');
-      const countersEl = document.getElementById('parking-counters');
-      const filterInput = document.getElementById('parking-filter');
-      const dragHint = document.getElementById('parking-drag-hint');
-      if (!mapEl || !listEl) return;
-      const canDragParking = access.can('parking.manage') || access.can('admin.panel') || access.isProgramador === true;
-      if (!canDragParking) {
-        if (dragHint) dragHint.textContent = 'Modo solo lectura: no tienes permisos para mover unidades.';
-        if (addBtn) addBtn.setAttribute('disabled', 'true');
-        if (idInput) idInput.setAttribute('disabled', 'true');
+      if (parkingWorkerUnmount) {
+        parkingWorkerUnmount.destroy();
+        parkingWorkerUnmount = null;
       }
-
-      let current = [];
-      let parkingMapJson = DEFAULT_MAPA_JSON;
-      let parkingFilter = '';
-      try {
-        const res = await getLandingPage({ id: LANDING_PAGE_ID });
-        const landing = mergeLandingRow(res.data?.landingPage);
-        parkingMapJson = landing.mapaEstacionamientoJson || landing.mapaDistribucionJson || DEFAULT_MAPA_JSON;
-      } catch (error) {
-        console.warn('Mapa de estacionamiento no disponible:', error);
-      }
-
-      const parkingStateMeta = (spot = {}) => {
-        const state = ['libre', 'reservado', 'ocupado', 'sucio', 'mantenimiento', 'taller'].includes(spot.estado)
-          ? spot.estado
-          : 'ocupado';
-        const labels = {
-          libre: 'Libre',
-          reservado: 'Reservado',
-          ocupado: 'Ocupado',
-          sucio: 'Sucio',
-          mantenimiento: 'Mantenimiento',
-          taller: 'Taller'
-        };
-        return { state, label: labels[state] || 'Ocupado' };
-      };
-
-      const renderCounters = () => {
-        if (!countersEl) return;
-        const total = current.length;
-        const libres = current.filter((s) => s.estado === 'libre').length;
-        const ocupados = current.filter((s) => s.estado === 'ocupado').length;
-        const reservados = current.filter((s) => s.estado === 'reservado').length;
-        const mantenimiento = current.filter((s) => s.estado === 'mantenimiento' || s.estado === 'sucio').length;
-        const patio = current.filter((s) => (s.ubicacion || 'patio') === 'patio').length;
-        const taller = current.filter((s) => s.estado === 'taller' || s.ubicacion === 'taller').length;
-        const cards = [
-          ['Totales', total, 'total'],
-          ['Libres/listos', libres, 'free'],
-          ['Ocupados', ocupados, 'busy'],
-          ['Reservados', reservados, 'reserved'],
-          ['Mantenimiento', mantenimiento, 'maintenance'],
-          ['En patio', patio, 'yard'],
-          ['En taller', taller, 'shop']
-        ];
-        countersEl.innerHTML = cards
-          .map(([label, value, tone]) => `
-            <article class="parking-counter-card is-${tone}">
-              <p class="text-[11px] font-black uppercase tracking-wide text-slate-500">${label}</p>
-              <p class="mt-1 text-2xl font-black">${value}</p>
-            </article>
-          `)
-          .join('');
-      };
-
-      const render = () => {
-        renderCounters();
-        const visible = current.filter((s) => {
-          if (!parkingFilter) return true;
-          const needle = parkingFilter.toLowerCase();
-          return (
-            String(s.id || '').toLowerCase().includes(needle) ||
-            String(s.placas || '').toLowerCase().includes(needle) ||
-            String(s.modelo || '').toLowerCase().includes(needle) ||
-            String(s.reservadoPor || '').toLowerCase().includes(needle)
-          );
-        });
-        mapEl.innerHTML = `
-          <canvas id="parking-editor-canvas" width="1000" height="620" class="absolute inset-0 h-full w-full"></canvas>
-          <div class="parking-map-label left-4 top-4">Plano operativo</div>
-          <div class="parking-map-label right-4 top-4">Entrada / Salida</div>
-          <div class="parking-map-zone bottom-4 left-4">Patio</div>
-          <div class="parking-map-zone bottom-4 right-4">Taller</div>
-          <div class="parking-map-legend">
-            <span><i class="state-libre"></i>Libre</span>
-            <span><i class="state-reservado"></i>Reservado</span>
-            <span><i class="state-ocupado"></i>Ocupado</span>
-            <span><i class="state-mantenimiento"></i>Mantenimiento</span>
-          </div>
-          ${visible
-          .map((s) => {
-            const x = Math.max(0, Math.min(95, Number(s.x || 0)));
-            const y = Math.max(0, Math.min(90, Number(s.y || 0)));
-            const meta = parkingStateMeta(s);
-            const vehicle = s.placas || s.modelo
-              ? `<span class="parking-chip-vehicle">${escapeHtml(s.placas || s.modelo)}</span>`
-              : '<span class="parking-chip-vehicle is-empty">Sin unidad</span>';
-            return `<button type="button" data-park-node="${escapeHtml(s.id)}" class="parking-vehicle-chip state-${meta.state} ${canDragParking ? '' : 'cursor-default'}" style="left:${x}%;top:${y}%">
-              <span class="parking-chip-id">${escapeHtml(s.id)}</span>
-              <span class="parking-chip-state">${meta.label}</span>
-              ${vehicle}
-            </button>`;
-          })
-          .join('')}
-        `;
-        const bgCanvas = document.getElementById('parking-editor-canvas');
-        if (bgCanvas) {
-          drawDistribucionCanvas(bgCanvas, parkingMapJson, { view: 'estacionamiento', showItemIds: false, showKindBadge: false });
-          bgCanvas.style.width = '100%';
-          bgCanvas.style.height = '100%';
-        }
-
-        listEl.innerHTML = visible.length
-          ? visible
-          .map((s) => {
-            const meta = parkingStateMeta(s);
-            const vehicleLabel = s.placas || s.modelo || 'Sin unidad';
-            return `
-            <div class="parking-spot-row">
-              <div class="flex items-center justify-between gap-2">
-                <div class="min-w-0">
-                  <div class="flex items-center gap-2">
-                    <span class="parking-state-dot state-${meta.state}"></span>
-                    <span class="font-black text-slate-900">${escapeHtml(s.id)}</span>
-                  </div>
-                  <p class="truncate text-xs text-slate-500">${escapeHtml(vehicleLabel)} · ${escapeHtml(s.ubicacion || 'patio')}</p>
-                </div>
-                <span class="parking-state-badge state-${meta.state}">${meta.label}</span>
-              </div>
-              <div class="parking-spot-grid mt-3">
-                <select data-park-status="${escapeHtml(s.id)}" class="rounded-lg border border-slate-300 p-2 text-xs font-semibold" ${canDragParking ? '' : 'disabled'}>
-                  <option value="libre" ${s.estado === 'libre' ? 'selected' : ''}>Libre</option>
-                  <option value="reservado" ${s.estado === 'reservado' ? 'selected' : ''}>Reservado</option>
-                  <option value="ocupado" ${s.estado === 'ocupado' ? 'selected' : ''}>Ocupado</option>
-                  <option value="sucio" ${s.estado === 'sucio' ? 'selected' : ''}>Sucio</option>
-                  <option value="mantenimiento" ${s.estado === 'mantenimiento' ? 'selected' : ''}>Mantenimiento</option>
-                  <option value="taller" ${s.estado === 'taller' ? 'selected' : ''}>Taller</option>
-                </select>
-                <input data-park-placas="${escapeHtml(s.id)}" class="rounded-lg border border-slate-300 p-2 text-xs" placeholder="Placas" value="${escapeHtml(s.placas || '')}" ${canDragParking ? '' : 'disabled'} />
-                <input data-park-modelo="${escapeHtml(s.id)}" class="rounded-lg border border-slate-300 p-2 text-xs" placeholder="Modelo" value="${escapeHtml(s.modelo || '')}" ${canDragParking ? '' : 'disabled'} />
-                <input data-park-resby="${escapeHtml(s.id)}" class="rounded-lg border border-slate-300 p-2 text-xs" placeholder="Reservado por" value="${escapeHtml(s.reservadoPor || '')}" ${canDragParking ? '' : 'disabled'} />
-                <select data-park-ubicacion="${escapeHtml(s.id)}" class="rounded-lg border border-slate-300 p-2 text-xs font-semibold" ${canDragParking ? '' : 'disabled'}>
-                  <option value="patio" ${(s.ubicacion || 'patio') === 'patio' ? 'selected' : ''}>Patio</option>
-                  <option value="taller" ${s.ubicacion === 'taller' ? 'selected' : ''}>Taller</option>
-                  <option value="entrada" ${s.ubicacion === 'entrada' ? 'selected' : ''}>Entrada</option>
-                </select>
-                <div class="flex gap-1">
-                  <button data-park-save="${escapeHtml(s.id)}" class="rounded-lg bg-slate-900 px-3 py-2 text-xs font-black text-white hover:bg-slate-700" ${canDragParking ? '' : 'disabled'}>Guardar</button>
-                  <button data-park-del="${escapeHtml(s.id)}" class="rounded-lg bg-rose-600 px-3 py-2 text-xs font-black text-white hover:bg-rose-700" ${canDragParking ? '' : 'disabled'}>Eliminar</button>
-                </div>
-              </div>
-            </div>
-          `;
-          })
-          .join('')
-          : '<div class="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-3 text-xs font-semibold text-slate-500">Sin resultados para el filtro actual.</div>';
-
-        document.querySelectorAll('[data-park-save]').forEach((btn) => {
-          btn.addEventListener('click', async () => {
-            if (!canDragParking) return;
-            const id = btn.getAttribute('data-park-save');
-            const estado = document.querySelector(`[data-park-status="${id}"]`)?.value || 'libre';
-            const placas = document.querySelector(`[data-park-placas="${id}"]`)?.value || '';
-            const modelo = document.querySelector(`[data-park-modelo="${id}"]`)?.value || '';
-            const reservadoPor = document.querySelector(`[data-park-resby="${id}"]`)?.value || '';
-            const ubicacion = document.querySelector(`[data-park-ubicacion="${id}"]`)?.value || 'patio';
-            await updateParkingSpot(id, { estado, placas, modelo, reservadoPor, ubicacion });
-            await publishAppUpdate('parking', `Spot ${id} actualizado`);
-          });
-        });
-        document.querySelectorAll('[data-park-del]').forEach((btn) => {
-          btn.addEventListener('click', async () => {
-            if (!canDragParking) return;
-            const id = btn.getAttribute('data-park-del');
-            await removeParkingSpot(id);
-            await publishAppUpdate('parking', `Spot ${id} eliminado`);
-          });
-        });
-
-        document.querySelectorAll('[data-park-node]').forEach((node) => {
-          node.addEventListener('mousedown', (ev) => {
-            if (!canDragParking) return;
-            ev.preventDefault();
-            const id = node.getAttribute('data-park-node');
-            const rect = mapEl.getBoundingClientRect();
-            const onMove = (mev) => {
-              const nx = ((mev.clientX - rect.left) / rect.width) * 100;
-              const ny = ((mev.clientY - rect.top) / rect.height) * 100;
-              node.classList.add('is-dragging');
-              node.style.left = `${Math.max(0, Math.min(95, nx))}%`;
-              node.style.top = `${Math.max(0, Math.min(90, ny))}%`;
-            };
-            const onUp = async (uev) => {
-              const nx = ((uev.clientX - rect.left) / rect.width) * 100;
-              const ny = ((uev.clientY - rect.top) / rect.height) * 100;
-              document.removeEventListener('mousemove', onMove);
-              document.removeEventListener('mouseup', onUp);
-              node.classList.remove('is-dragging');
-              await updateParkingSpot(id, { x: Math.max(0, Math.min(95, nx)), y: Math.max(0, Math.min(90, ny)) });
-              await publishAppUpdate('parking', `Spot ${id} movido`);
-            };
-            document.addEventListener('mousemove', onMove);
-            document.addEventListener('mouseup', onUp);
-          });
-        });
-      };
-
-      parkingUnsub = subscribeParkingSpots(
-        (spots) => {
-          current = spots;
-          render();
-        },
-        (error) => {
-          if (error?.code === 'permission-denied') {
-            listEl.innerHTML =
-              '<span class="text-amber-700">Sin permiso de lectura de estacionamiento. Revisa tu rol y políticas RLS en Supabase.</span>';
-            return;
-          }
-          console.warn('Estacionamiento:', error);
-          listEl.innerHTML = '<span class="text-rose-600">No se pudo cargar estacionamiento.</span>';
-        }
-      );
-
-      addBtn?.addEventListener('click', async () => {
-        if (!canDragParking) return;
-        const id = (idInput?.value || '').trim().toUpperCase();
-        if (!id) return;
-        await upsertParkingSpot({ id, x: 10, y: 10, estado: 'libre' });
-        await publishAppUpdate('parking', `Spot ${id} creado`);
-        idInput.value = '';
-      });
-      filterInput?.addEventListener('input', () => {
-        parkingFilter = String(filterInput.value || '').trim();
-        render();
-      });
+      parkingWorkerUnmount = mountParkingWorkerApp(host, {});
     };
 
     let inventarioReady = false;

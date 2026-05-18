@@ -114,7 +114,7 @@ const OperacionDashboard = {
           label: 'Parking',
           icon: 'parking',
           tone: 'bg-emerald-600 text-white',
-          onClick: () => navigateTo('/operacion/parking')
+          onClick: () => navigateTo('/admin/dashboard?section=parking')
         });
       }
       if (access.can('sales.physical')) {

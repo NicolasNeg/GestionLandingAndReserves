@@ -1978,6 +1978,22 @@
     display: none !important;
   }
 
+  .parking-worker-host {
+    display: flex;
+    flex-direction: column;
+    min-height: min(72vh, 720px);
+    height: min(78vh, 800px);
+    background: #121329;
+  }
+
+  @media (max-width: 767px) {
+    .parking-worker-host {
+      min-height: min(68vh, 640px);
+      height: min(72vh, 700px);
+      border-radius: 0;
+    }
+  }
+
   .mapa-tool-strip {
     align-items: center;
   }
@@ -2791,6 +2807,185 @@
 
   .exec-dash-act-link:hover {
     text-decoration: underline;
+  }
+
+  .landing-help-grid {
+    display: grid;
+    gap: 2rem;
+  }
+
+  @media (min-width: 900px) {
+    .landing-help-grid {
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
+      align-items: start;
+    }
+  }
+
+  .landing-help-heading {
+    font-size: 0.72rem;
+    font-weight: 900;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: rgb(51 65 85);
+  }
+
+  .landing-help-cards {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    margin-top: 1rem;
+  }
+
+  .landing-help-card {
+    display: flex;
+    gap: 0.85rem;
+    align-items: flex-start;
+    padding: 0.95rem 1rem;
+    border-radius: 1rem;
+    border: 1px solid rgb(226 232 240);
+    background: white;
+    box-shadow: 0 1px 2px rgb(15 23 42 / 0.04);
+    transition: border-color 150ms ease, box-shadow 150ms ease, transform 150ms ease;
+    text-decoration: none;
+    color: inherit;
+  }
+
+  .landing-help-card:hover {
+    border-color: rgb(34 211 238 / 0.45);
+    box-shadow: 0 8px 24px rgb(15 23 42 / 0.08);
+    transform: translateY(-1px);
+  }
+
+  .landing-help-card-icon {
+    flex-shrink: 0;
+    display: grid;
+    place-items: center;
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: 0.85rem;
+    background: rgb(236 254 255);
+    color: rgb(14 116 144);
+  }
+
+  .landing-help-card-body {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+  }
+
+  .landing-help-card-title {
+    font-size: 0.92rem;
+    font-weight: 800;
+    color: rgb(15 23 42);
+  }
+
+  .landing-help-card-text {
+    font-size: 0.82rem;
+    font-weight: 600;
+    line-height: 1.45;
+    color: rgb(71 85 105);
+  }
+
+  .landing-help-card-cta {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    margin-top: 0.35rem;
+    font-size: 0.72rem;
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: rgb(13 148 136);
+  }
+
+  .landing-help-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.55rem;
+    margin-top: 1rem;
+  }
+
+  .landing-help-action {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 2.65rem;
+    padding: 0.55rem 1rem;
+    border-radius: 0.85rem;
+    font-size: 0.82rem;
+    font-weight: 800;
+    text-decoration: none;
+    color: white;
+    background: rgb(15 23 42);
+    transition: transform 150ms ease, filter 150ms ease;
+  }
+
+  .landing-help-action:hover {
+    transform: translateY(-1px);
+    filter: brightness(1.08);
+  }
+
+  .landing-help-action--wa {
+    background: rgb(22 163 74);
+  }
+
+  .landing-help-action--mail {
+    background: rgb(14 116 144);
+  }
+
+  .landing-faq-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.55rem;
+    margin-top: 1rem;
+  }
+
+  .landing-faq-item {
+    border-radius: 1rem;
+    border: 1px solid rgb(226 232 240);
+    background: white;
+    overflow: hidden;
+  }
+
+  .landing-faq-item[open] {
+    border-color: rgb(34 211 238 / 0.45);
+    box-shadow: 0 6px 20px rgb(15 23 42 / 0.06);
+  }
+
+  .landing-faq-question {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.95rem 1rem;
+    cursor: pointer;
+    list-style: none;
+    font-size: 0.9rem;
+    font-weight: 800;
+    color: rgb(15 23 42);
+  }
+
+  .landing-faq-question::-webkit-details-marker {
+    display: none;
+  }
+
+  .landing-faq-chevron {
+    flex-shrink: 0;
+    color: rgb(100 116 139);
+    transition: transform 180ms ease;
+  }
+
+  .landing-faq-item[open] .landing-faq-chevron {
+    transform: rotate(180deg);
+  }
+
+  .landing-faq-answer {
+    padding: 0 1rem 1rem;
+    font-size: 0.84rem;
+    line-height: 1.55;
+    font-weight: 600;
+    color: rgb(71 85 105);
   }
 
   .admin-shell.admin-shell--map-focus .admin-sidebar {
