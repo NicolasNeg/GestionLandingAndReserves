@@ -1,0 +1,249 @@
+/* Vista pública del patio (landing) — mismo diseño que sandbox, solo lectura */
+
+.parking-bjx-public {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 100% 35%, rgba(86, 55, 156, 0.42), transparent 34%),
+    linear-gradient(180deg, #4b5873 0, #48546d 18%, #222941 18%, #121329 100%);
+  color: #f6f7ff;
+  font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+.parking-bjx-public__bar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(18, 20, 42, 0.92);
+}
+
+.parking-bjx-public__chip {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.parking-bjx-public__chip strong {
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.parking-bjx-public__chip span {
+  font-size: 11px;
+  font-weight: 800;
+  color: #7affc5;
+}
+
+.parking-bjx-public__metrics {
+  display: flex;
+  align-items: stretch;
+  gap: 16px;
+}
+
+.parking-bjx-public__metrics span {
+  display: grid;
+  place-items: center;
+  text-align: center;
+  min-width: 44px;
+}
+
+.parking-bjx-public__metrics strong {
+  font-size: 20px;
+  line-height: 1;
+  font-weight: 900;
+}
+
+.parking-bjx-public__metrics small {
+  margin-top: 4px;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #969fbd;
+}
+
+.parking-bjx-public__viewport {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  cursor: grab;
+  border-top: 1px solid rgba(255, 255, 255, 0.03);
+}
+
+.parking-bjx-public__viewport:active {
+  cursor: grabbing;
+}
+
+.parking-bjx-public__viewport::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.parking-bjx-public__viewport::-webkit-scrollbar-thumb {
+  border-radius: 99px;
+  background: rgba(114, 123, 155, 0.82);
+}
+
+.parking-bjx-public__stage {
+  position: relative;
+  margin: 12px 0 0 12px;
+  border-radius: 22px 0 0 0;
+  transform-origin: 0 0;
+  background:
+    radial-gradient(circle, rgba(115, 133, 164, 0.32) 1px, transparent 1.5px) 0 0 / 18px 18px,
+    linear-gradient(90deg, rgba(31, 40, 58, 0.88), rgba(35, 43, 65, 0.9));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.parking-bjx-slot,
+.parking-bjx-area {
+  position: absolute;
+  box-sizing: border-box;
+}
+
+.parking-bjx-slot {
+  border: 1px solid rgba(137, 152, 181, 0.22);
+  border-radius: 6px;
+  background: rgba(33, 43, 62, 0.52);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+
+.parking-bjx-slot::before {
+  content: attr(data-label);
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 4px;
+  text-align: center;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  color: rgba(183, 193, 217, 0.72);
+  pointer-events: none;
+}
+
+.parking-bjx-slot__state {
+  position: absolute;
+  left: 50%;
+  bottom: 8px;
+  transform: translateX(-50%);
+  max-width: calc(100% - 8px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border-radius: 999px;
+  padding: 3px 7px;
+  font-size: 8px;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  pointer-events: none;
+}
+
+.parking-bjx-slot.state-libre {
+  background: rgba(33, 43, 62, 0.52);
+}
+
+.parking-bjx-slot.state-ocupado {
+  border-color: rgba(255, 88, 116, 0.45);
+  background:
+    repeating-linear-gradient(
+      -45deg,
+      rgba(255, 88, 116, 0.22) 0 6px,
+      rgba(45, 52, 72, 0.75) 6px 12px
+    );
+}
+
+.parking-bjx-slot.state-ocupado .parking-bjx-slot__state {
+  background: rgba(255, 88, 116, 0.28);
+  color: #ffc4cf;
+}
+
+.parking-bjx-slot.state-reservado {
+  border-color: rgba(255, 212, 38, 0.5);
+  background: rgba(255, 212, 38, 0.14);
+}
+
+.parking-bjx-slot.state-reservado .parking-bjx-slot__state {
+  background: rgba(255, 212, 38, 0.22);
+  color: #ffe9a3;
+}
+
+.parking-bjx-slot.state-mantenimiento,
+.parking-bjx-slot.state-sucio {
+  border-color: rgba(142, 153, 181, 0.45);
+  background: rgba(71, 85, 105, 0.45);
+}
+
+.parking-bjx-slot.state-mantenimiento .parking-bjx-slot__state,
+.parking-bjx-slot.state-sucio .parking-bjx-slot__state {
+  background: rgba(142, 153, 181, 0.25);
+  color: #d5dceb;
+}
+
+.parking-bjx-slot.state-taller {
+  border-color: rgba(90, 88, 255, 0.5);
+  background: rgba(90, 88, 255, 0.16);
+}
+
+.parking-bjx-slot.state-taller .parking-bjx-slot__state {
+  background: rgba(90, 88, 255, 0.28);
+  color: #c9c8ff;
+}
+
+.parking-bjx-area {
+  border: 1px dashed rgba(137, 152, 181, 0.28);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.parking-bjx-area::before {
+  content: attr(data-label);
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(183, 193, 217, 0.55);
+  pointer-events: none;
+}
+
+.parking-bjx-slot.is-workshop {
+  border-style: dashed;
+  border-color: rgba(90, 88, 255, 0.35);
+}
+
+.parking-public-host {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+@media (max-width: 640px) {
+  .parking-bjx-public__bar {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .parking-bjx-public__metrics {
+    width: 100%;
+    justify-content: space-between;
+  }
+}

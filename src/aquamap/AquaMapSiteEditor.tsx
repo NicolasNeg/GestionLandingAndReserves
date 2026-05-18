@@ -525,9 +525,9 @@ export const AquaMapSiteEditor = forwardRef<AquaMapSiteEditorHandle, Props>(func
   return (
     <div
       data-aquamap-editor-root
-      className="relative flex h-full min-h-[min(56vh,520px)] w-full overflow-hidden bg-[#262626]"
+      className="relative flex h-full max-h-full min-h-0 w-full overflow-hidden bg-[#262626]"
     >
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col p-2 pr-1">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden p-2 pr-1">
         {yardVariant === 'parking' && !previewMode ? (
           <AquaMapParkingChrome
             spotDraft={parkingSpotDraft}

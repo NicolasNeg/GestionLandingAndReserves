@@ -17,7 +17,6 @@ import { icon } from '../lib/icons.js';
 import heroImageUrl from '../assets/hero.png';
 import { addToCart } from '../lib/cart.js';
 import { showAlert } from '../lib/appDialog.js';
-import { subscribeParkingSpots } from '../lib/parkingRealtime.js';
 import { parseScheduleConfig, scheduleDays } from '../lib/schedule.js';
 import { splitBotonesJson, filterPublicBotones } from '../lib/landingBotonesHero.js';
 import { computeRouteToMapItem } from '../lib/mapEngine/mapPathfinding.js';
@@ -25,6 +24,7 @@ import { buildPublicMapFilterChips } from '../lib/mapEngine/mapPublicFilters.js'
 import { mountPublicParkMap } from '../react/publicParkMapMount.tsx';
 import { isAquamapSiteJson } from '../aquamap/siteEnvelope.ts';
 import { mountAquamapLandingMap } from '../react/aquaMapLandingMount.tsx';
+import { mountParkingBjxPublicPreview } from '../react/parkingPublicMount.tsx';
 import { googleMapsEmbedUrl, googleMapsOpenUrl } from '../lib/googleMapsEmbed.js';
 
 const LANDING_PAGE_ID = 'main';
@@ -161,8 +161,11 @@ function renderMapLegend() {
 
 function renderParkingLegend() {
   const items = [
-    { label: 'Libre', fill: 'rgba(34,197,94,0.35)', stroke: '#15803d' },
-    { label: 'Ocupado', fill: 'rgba(71,85,105,0.55)', stroke: '#64748b' }
+    { label: 'Libre', fill: 'rgba(33,43,62,0.9)', stroke: 'rgba(137,152,181,0.5)' },
+    { label: 'Ocupado', fill: 'rgba(255,88,116,0.35)', stroke: '#ff5874' },
+    { label: 'Reservado', fill: 'rgba(255,212,38,0.25)', stroke: '#ffd426' },
+    { label: 'Mantenimiento', fill: 'rgba(71,85,105,0.55)', stroke: '#64748b' },
+    { label: 'Taller', fill: 'rgba(90,88,255,0.28)', stroke: '#5a58ff' }
   ];
   return items
     .map(
@@ -214,10 +217,14 @@ function formatPhoneDisplay(digits) {
 }
 
 function renderBotones(botones) {
-  if (!botones.length) {
+  const extra = (botones || []).filter((btn) => {
+    const type = (btn.type || '').toLowerCase();
+    return type !== 'whatsapp' && type !== 'mail';
+  });
+  if (!extra.length) {
     return '';
   }
-  return botones
+  return extra
     .map((btn) => {
       const label = escapeHtml(btn.label || 'Enlace');
       const href = buildButtonHref(btn);
@@ -253,7 +260,7 @@ function renderFaqList(faq) {
     <details class="landing-faq-item" ${i === 0 ? 'open' : ''}>
       <summary class="landing-faq-question">
         <span>${escapeHtml(item.q)}</span>
-        ${icon('chevronDown', 'landing-faq-chevron')}
+        ${icon('chevronDown', 'landing-faq-chevron h-4 w-4')}
       </summary>
       <div class="landing-faq-answer">
         <p>${escapeHtml(item.a)}</p>
@@ -905,15 +912,15 @@ export default {
             <section id="estacionamiento" class="landing-reveal scroll-mt-24 border-t border-slate-200 bg-slate-50 px-4 py-14 sm:px-8">
               <div class="mx-auto max-w-5xl">
                 <h2 class="text-2xl font-black text-slate-900 sm:text-3xl">Estacionamiento en tiempo real</h2>
-                <p class="mt-2 text-sm text-slate-500">Visualiza spots libres, reservados y ocupados.</p>
+                <p class="mt-2 text-sm text-slate-500">Consulta la disponibilidad del patio en vivo. Solo cajones y estado (libre, ocupado, reservado); sin datos de vehículos.</p>
                 <div class="public-parking-card mt-5">
                   <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
-                    <div class="text-sm font-bold text-slate-700" id="parking-summary">Cargando spots...</div>
+                    <div class="text-sm font-bold text-slate-700" id="parking-summary">Cargando patio...</div>
                     <span class="rounded-full bg-emerald-50 px-3 py-1 text-[11px] font-black uppercase tracking-wide text-emerald-700">Solo lectura</span>
                   </div>
                   <div class="mb-2 flex flex-wrap gap-2">${renderParkingLegend()}</div>
-                  <div class="public-parking-map relative h-[380px] overflow-hidden sm:h-[420px]">
-                    <div id="landing-parking-map-host" class="absolute inset-0 h-full w-full cursor-grab"></div>
+                  <div class="public-parking-map public-parking-map--bjx relative h-[400px] overflow-hidden sm:h-[460px]">
+                    <div id="landing-parking-map-host" class="parking-public-host"></div>
                     <div class="map-floating-toolbar map-floating-toolbar--parking absolute bottom-3 right-3 top-auto z-10 sm:bottom-auto sm:right-3 sm:top-3">
                       <button type="button" id="landing-parking-zoom-out" class="map-icon-btn" title="Alejar" aria-label="Alejar mapa">−</button>
                       <button type="button" id="landing-parking-center" class="map-reset-btn" title="Centrar mapa" aria-label="Centrar mapa">${icon('compass', 'h-3.5 w-3.5')}</button>
@@ -1200,19 +1207,10 @@ export default {
 
     const parkingMapHost = document.getElementById('landing-parking-map-host');
     let landingParkingViewer = null;
-    const parkingViewerOptions = {
-      view: 'estacionamiento',
-      showItemIds: false,
-      showKindBadge: false,
-      viewerUi: true,
-      viewerSelectionStyle: 'simple',
-      parkingById: {},
-      fitPaddingScale: 0.9
-    };
-    const formatParkingSummary = (spots) => {
-      const libres = spots.filter((s) => s.estado === 'libre').length;
-      const ocupados = spots.filter((s) => s.estado !== 'libre').length;
-      return `Libres: ${libres} · Ocupados: ${ocupados}`;
+    const formatParkingMetrics = (m) => {
+      const parts = [`Libres: ${m.libre}`, `Ocupados: ${m.ocupado}`];
+      if (m.reservado > 0) parts.push(`Reservados: ${m.reservado}`);
+      return parts.join(' · ');
     };
 
     const mapEditWrap = document.getElementById('landing-mapa-edit-wrap');
@@ -1275,7 +1273,11 @@ export default {
       );
     }
     const botWrap = document.getElementById('landing-botones');
-    if (botWrap) botWrap.innerHTML = renderBotones(publicBotones);
+    if (botWrap) {
+      const extraBotonesHtml = renderBotones(publicBotones);
+      botWrap.innerHTML = extraBotonesHtml;
+      botWrap.classList.toggle('hidden', !extraBotonesHtml);
+    }
     const faqList = document.getElementById('landing-faq-list');
     if (faqList) faqList.innerHTML = renderFaqList(landingContent.ayuda.faq);
 
@@ -1471,34 +1473,11 @@ export default {
 
     const parkingSummary = document.getElementById('parking-summary');
     if (parkingMapHost && parkingSummary) {
-      const parkingJson = landing.mapaEstacionamientoJson || landing.mapaDistribucionJson || DEFAULT_MAPA_JSON;
-      const useAquamapParking = isAquamapSiteJson(parkingJson);
-      const syncParkingIndex = (spots) => {
-        const next = {};
-        spots.forEach((s) => {
-          if (s?.id) next[s.id] = s;
-        });
-        parkingViewerOptions.parkingById = next;
-        landingParkingViewer?.redraw();
-      };
-      const onParkingSpotsChange = (spots) => {
-        parkingSummary.textContent = formatParkingSummary(spots);
-        if (!useAquamapParking) syncParkingIndex(spots);
-      };
-      if (useAquamapParking) {
-        landingParkingViewer = mountAquamapLandingMap(parkingMapHost, parkingJson, {
-          onSelectElement: () => {},
-          enableParkingRealtime: true,
-          onParkingSpotsChange
-        });
-      } else {
-        const parkingMapCanvas = document.createElement('canvas');
-        parkingMapCanvas.width = 800;
-        parkingMapCanvas.height = 440;
-        parkingMapCanvas.className = 'absolute inset-0 h-full w-full cursor-grab';
-        parkingMapHost.appendChild(parkingMapCanvas);
-        landingParkingViewer = createMapViewer(parkingMapCanvas, parkingJson, parkingViewerOptions);
-        subscribeParkingSpots(onParkingSpotsChange, (error) => {
+      landingParkingViewer = mountParkingBjxPublicPreview(parkingMapHost, {
+        onMetrics: (m) => {
+          parkingSummary.textContent = formatParkingMetrics(m);
+        },
+        onError: (error) => {
           if (error?.code === 'permission-denied') {
             parkingSummary.textContent =
               'Estacionamiento: sin permisos de lectura (revisa RLS de parking_spots).';
@@ -1506,8 +1485,8 @@ export default {
           }
           console.warn('Parking realtime:', error);
           parkingSummary.textContent = 'No fue posible cargar estacionamiento en tiempo real.';
-        });
-      }
+        }
+      });
       document.getElementById('landing-parking-zoom-in')?.addEventListener('click', () => landingParkingViewer?.zoomIn());
       document.getElementById('landing-parking-zoom-out')?.addEventListener('click', () => landingParkingViewer?.zoomOut());
       document.getElementById('landing-parking-reset')?.addEventListener('click', () => landingParkingViewer?.reset());

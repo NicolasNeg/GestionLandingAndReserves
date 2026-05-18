@@ -104,19 +104,20 @@ export function AquaMapSidebar({
 
   return (
     <aside
-      className={`flex h-full w-[min(22%,300px)] min-w-[240px] flex-shrink-0 flex-col border-l shadow-[inset_1px_0_0_0_rgba(255,255,255,0.03)] ${
+      className={`flex h-full max-h-full min-h-0 w-[min(22%,300px)] min-w-[240px] flex-shrink-0 flex-col overflow-hidden border-l shadow-[inset_1px_0_0_0_rgba(255,255,255,0.03)] ${
         editorSkin === 'parking'
           ? 'border-l-amber-900/40 bg-[#2c261c] text-[#f5f5f4]'
           : 'border-l-[#1a1a1a] bg-[#323232] text-[#e5e5e5]'
       }`}
     >
-      <SidebarHeader editorSkin={editorSkin} layerLabel={layerLabel} layerHint={layerHint} />
+      <div className="aquamap-sidebar-scroll min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain">
+        <SidebarHeader editorSkin={editorSkin} layerLabel={layerLabel} layerHint={layerHint} />
 
-      <section className="flex-shrink-0 border-b border-[#1f1f1f] px-3 py-2.5">
-        <h2 className="mb-2 font-mono text-[9px] font-semibold uppercase tracking-wider text-[#737373]">
+        <section className="border-b border-[#1f1f1f] px-3 py-2">
+        <h2 className="mb-1.5 font-mono text-[9px] font-semibold uppercase tracking-wider text-[#737373]">
           Tamaño del lienzo
         </h2>
-        <div className="grid grid-cols-2 gap-2">
+        <div className="grid grid-cols-2 gap-1.5">
           <label className="flex flex-col gap-0.5 font-mono text-[9px] text-[#737373]">
             Ancho
             <input
@@ -144,23 +145,23 @@ export function AquaMapSidebar({
         </div>
       </section>
 
-      {!hideQuickAdd ? (
-        <section className="flex-shrink-0 border-b border-[#1f1f1f] px-3 py-2.5">
-          <h2 className="mb-2 font-mono text-[9px] font-semibold uppercase tracking-wider text-[#737373]">
-            Añadir al mapa
-          </h2>
-          <AddToolsGrid addButtons={addButtons} onAdd={onAdd} disabled={addDisabled} />
-        </section>
-      ) : null}
+        {!hideQuickAdd ? (
+          <section className="border-b border-[#1f1f1f] px-3 py-2">
+            <h2 className="mb-1.5 font-mono text-[9px] font-semibold uppercase tracking-wider text-[#737373]">
+              Añadir al mapa
+            </h2>
+            <AddToolsGrid addButtons={addButtons} onAdd={onAdd} disabled={addDisabled} />
+          </section>
+        ) : null}
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
+        <div className="px-3 py-2 pb-4">
         {selected ? (
           <section>
-            <h2 className="mb-3 font-mono text-[9px] font-semibold uppercase tracking-wider text-[#737373]">
+            <h2 className="mb-2 font-mono text-[9px] font-semibold uppercase tracking-wider text-[#737373]">
               Capa activa
             </h2>
 
-            <label className="mb-3 flex flex-col gap-1 text-[12px]">
+            <label className="mb-2 flex flex-col gap-1 text-[12px]">
               <span className="font-mono text-[9px] text-[#737373]">Elemento</span>
               <select
                 className="rounded border border-[#1f1f1f] bg-[#1e1e1e] px-2 py-1.5 text-[#e5e5e5] outline-none focus:border-[#5eead4]/60"
@@ -175,12 +176,8 @@ export function AquaMapSidebar({
               </select>
             </label>
 
-            <p className="mb-2 font-mono text-[9px] leading-relaxed text-[#737373]">
-              Arrastra en el mapa, clic derecho para acciones o usa las esquinas azules.
-            </p>
-
             {onDuplicateSelected || onDeleteSelected ? (
-              <div className="mb-3 grid grid-cols-2 gap-1.5">
+              <div className="mb-2 grid grid-cols-2 gap-1.5">
                 {onDuplicateSelected ? (
                   <button
                     type="button"
@@ -204,7 +201,7 @@ export function AquaMapSidebar({
               </div>
             ) : null}
 
-            <div className="flex flex-col gap-2.5 text-[12px]">
+            <div className="flex flex-col gap-2 text-[12px]">
               <label className="flex flex-col gap-1">
                 <span className="font-mono text-[9px] text-[#737373]">Nombre</span>
                 <input
@@ -235,16 +232,16 @@ export function AquaMapSidebar({
               <label className="flex flex-col gap-1">
                 <span className="font-mono text-[9px] text-[#737373]">Descripción pública</span>
                 <textarea
-                  rows={3}
+                  rows={2}
                   className="resize-y rounded border border-[#1f1f1f] bg-[#1e1e1e] px-2 py-1.5 text-[12px] text-[#e5e5e5] outline-none focus:border-[#5eead4]/60"
                   value={selected.description}
                   onChange={(e) => onUpdateSelected({ description: e.target.value })}
                 />
               </label>
 
-              <div className="rounded border border-[#2a2a2a] bg-[#262626] p-2.5">
+              <div className="rounded border border-[#2a2a2a] bg-[#262626] p-2">
                 <SizePresetHeader onApplyPresetSize={onApplyPresetSize} preset={preset} />
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-2 gap-1.5">
                   <label className="flex flex-col gap-0.5 font-mono text-[9px] text-[#737373]">
                     Ancho
                     <input
@@ -268,28 +265,6 @@ export function AquaMapSidebar({
                     />
                   </label>
                 </div>
-                <label className="mt-2 flex flex-col gap-1">
-                  <span className="font-mono text-[9px] text-[#737373]">Ancho (deslizador)</span>
-                  <input
-                    type="range"
-                    min={24}
-                    max={maxW}
-                    value={Math.round(selected.width)}
-                    onChange={(e) => onUpdateSelected({ width: Number(e.target.value) })}
-                    className="accent-[#5eead4]"
-                  />
-                </label>
-                <label className="flex flex-col gap-1">
-                  <span className="font-mono text-[9px] text-[#737373]">Alto (deslizador)</span>
-                  <input
-                    type="range"
-                    min={24}
-                    max={maxH}
-                    value={Math.round(selected.height)}
-                    onChange={(e) => onUpdateSelected({ height: Number(e.target.value) })}
-                    className="accent-[#5eead4]"
-                  />
-                </label>
               </div>
 
               {!(editorSkin === 'parking' && selected.type === 'parking') ? (
@@ -358,6 +333,7 @@ export function AquaMapSidebar({
               : 'Selecciona un elemento en el mapa o añade uno con las herramientas de arriba.'}
           </p>
         )}
+        </div>
       </div>
 
       <div className="flex-shrink-0 border-t border-[#1f1f1f] bg-[#3c3c3c] p-2.5">
@@ -406,14 +382,14 @@ function SidebarHeader({
   return (
     <div className="flex-shrink-0 border-b border-[#1f1f1f] bg-[#3c3c3c] px-3 py-2.5">
       <div className="flex items-start justify-between gap-2">
-        <div>
+        <div class="min-w-0">
           <p className={`font-mono text-[9px] font-semibold uppercase tracking-[0.18em] ${accent}`}>
             Capa · {layerLabel}
           </p>
-          <h1 className="text-[13px] font-semibold tracking-tight text-[#f5f5f5]">{title}</h1>
-          <p className="mt-1 text-[10px] leading-snug text-[#737373]">{layerHint}</p>
+          <h1 className="text-[12px] font-semibold tracking-tight text-[#f5f5f5]">{title}</h1>
+          <p className="mt-0.5 line-clamp-2 text-[9px] leading-snug text-[#737373]">{layerHint}</p>
         </div>
-        <Settings className="mt-0.5 h-4 w-4 shrink-0 text-[#737373]" strokeWidth={1.5} aria-hidden />
+        <Settings className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#737373]" strokeWidth={1.5} aria-hidden />
       </div>
     </div>
   );
@@ -437,20 +413,20 @@ function AddToolsGrid({
   }
 
   return (
-    <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
+    <div className="grid grid-cols-3 gap-1">
       {addButtons.map(({ type, label, Icon }) => (
         <button
           key={type}
           type="button"
           disabled={disabled}
           onClick={() => onAdd(type)}
-          className={`aquamap-pressable flex flex-col items-center gap-1 rounded border px-1.5 py-2.5 text-[10px] font-medium ${
+          className={`aquamap-pressable flex flex-col items-center gap-0.5 rounded border px-1 py-1.5 text-[9px] font-medium ${
             disabled
               ? 'cursor-not-allowed border-[#333] bg-[#252525] text-[#525252]'
               : 'border-[#1f1f1f] bg-[#2a2a2a] text-[#d4d4d4] hover:border-[#525252] hover:bg-[#333]'
           }`}
         >
-          <Icon className="h-4 w-4 text-[#5eead4]" strokeWidth={1.75} />
+          <Icon className="h-3.5 w-3.5 text-[#5eead4]" strokeWidth={1.75} />
           {label}
         </button>
       ))}

@@ -85,3 +85,21 @@
 .aquamap-pressable:active {
   transform: scale(0.96);
 }
+
+.aquamap-sidebar-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(114, 123, 155, 0.75) transparent;
+}
+
+.aquamap-sidebar-scroll::-webkit-scrollbar {
+  width: 7px;
+}
+
+.aquamap-sidebar-scroll::-webkit-scrollbar-thumb {
+  border-radius: 99px;
+  background: rgba(114, 123, 155, 0.75);
+}
+
+.aquamap-sidebar-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
