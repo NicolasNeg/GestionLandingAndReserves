@@ -834,6 +834,12 @@ export default {
                   <div id="landing-map-filters" class="public-map-filters flex flex-wrap gap-2 border-b border-slate-100 bg-white/95 px-4 py-2"></div>
                   <div class="public-map-stage relative h-[420px] overflow-hidden sm:h-[540px]">
                     <div id="landing-aqua-map-root" class="absolute inset-0"></div>
+                    <div id="landing-parking-hub-prompt" class="landing-parking-hub-prompt hidden absolute inset-x-3 bottom-3 z-20 max-w-md rounded-2xl border border-sky-200 bg-white/95 p-4 shadow-xl backdrop-blur sm:left-auto sm:right-14 sm:bottom-4">
+                      <p class="text-[10px] font-black uppercase tracking-widest text-sky-700">Estacionamiento</p>
+                      <p class="mt-1 text-sm font-bold text-slate-900">Vista del patio</p>
+                      <p class="mt-0.5 text-xs text-slate-600">Consulta cajones libres y ocupados en tiempo real.</p>
+                      <a href="#estacionamiento" class="mt-3 inline-flex w-full items-center justify-center rounded-xl bg-sky-600 px-4 py-2.5 text-sm font-bold text-white shadow-md hover:bg-sky-700">Abrir estacionamiento</a>
+                    </div>
                     <div id="landing-map-tooltip" class="map-tooltip hidden"></div>
                     <div class="absolute left-3 top-3 z-10 hidden rounded-full border border-white/25 bg-slate-950/70 px-3 py-1.5 text-xs font-black uppercase tracking-wide text-white shadow-lg backdrop-blur sm:block">
                       ${icon('map', 'h-3.5 w-3.5 inline-block')} Arrastra para explorar
@@ -1146,15 +1152,17 @@ export default {
       } else if (useAquaPublic) {
         globalMapViewer = mountAquamapLandingMap(mapStageRoot, landing.mapaDistribucionJson, {
           onSelectElement: (el) => {
-            if (
+            const parkingHub = document.getElementById('landing-parking-hub-prompt');
+            const isParkingArea =
               el &&
               (el.type === 'area' || el.type === 'parking') &&
-              /estacionamiento|parking|patio/i.test(String(el.name || ''))
-            ) {
-              window.location.hash = 'estacionamiento';
-              document.getElementById('estacionamiento')?.scrollIntoView({ behavior: 'smooth' });
+              /estacionamiento|parking|patio/i.test(String(el.name || ''));
+            if (isParkingArea) {
+              parkingHub?.classList.remove('hidden');
+              setMapInfo(null);
               return;
             }
+            parkingHub?.classList.add('hidden');
             setMapInfo(el ? pseudoItemFromAquamapElement(el) : null);
           }
         });

@@ -351,6 +351,37 @@
   gap: 8px;
 }
 
+.tool-actions--stack {
+  grid-template-columns: 1fr;
+}
+
+.tool-link--admin {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+  text-align: center;
+}
+
+.unit .unit-id {
+  display: block;
+  max-width: 100%;
+  padding: 0 4px;
+  font-size: 11px;
+  line-height: 1.1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.unit .unit-plates {
+  display: block;
+  margin-top: 2px;
+  font-size: 8px;
+  font-weight: 700;
+  opacity: 0.85;
+}
+
 /* Yard / Mapa */
 .yard-wrap {
   position: absolute;

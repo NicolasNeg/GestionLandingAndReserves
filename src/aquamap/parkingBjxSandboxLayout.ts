@@ -87,17 +87,88 @@ export const SANDBOX_STATUSES = [
 export type SandboxStatus = (typeof SANDBOX_STATUSES)[number];
 
 export type BjxUnit = {
-  id: string;
+  /** Identificador interno / MVA */
+  identificador: string;
   slot: string;
-  status: SandboxStatus | string;
-  fuel: string;
-  place: string;
   model: string;
   plates: string;
-  notes: string;
+  titular: string;
   color: string;
-  savedAt?: string;
+  place: string;
 };
+
+export const UNIT_COLOR_OPTIONS = [
+  { id: 'green', label: 'Verde' },
+  { id: 'blue', label: 'Azul' },
+  { id: 'cyan', label: 'Cian' },
+  { id: 'purple', label: 'Morado' },
+  { id: 'orange', label: 'Naranja' },
+  { id: 'gray', label: 'Gris' }
+] as const;
+
+export function parseUbicacionMeta(ubicacion?: string): { zone: string; color: string } {
+  const raw = String(ubicacion || 'patio');
+  const [zone, color] = raw.split('|');
+  const valid = UNIT_COLOR_OPTIONS.some((c) => c.id === color);
+  return { zone: zone || 'patio', color: valid ? color : 'green' };
+}
+
+export function encodeUbicacionMeta(slot: string, color: string): string {
+  const zone = layerForSlot(slot);
+  const valid = UNIT_COLOR_OPTIONS.some((c) => c.id === color);
+  return `${zone}|${valid ? color : 'green'}`;
+}
+
+export function spotHasVehicle(spot?: {
+  estado?: string;
+  placas?: string;
+  modelo?: string;
+  tipoVehiculo?: string;
+} | null): boolean {
+  if (!spot) return false;
+  if (spot.tipoVehiculo?.trim() || spot.placas?.trim() || spot.modelo?.trim()) return true;
+  return String(spot.estado || '').toLowerCase() === 'ocupado';
+}
+
+export function unitFromParkingSpot(spot: {
+  id: string;
+  placas?: string;
+  modelo?: string;
+  tipoVehiculo?: string;
+  reservadoPor?: string;
+  ubicacion?: string;
+}): BjxUnit {
+  const slot = spot.id;
+  const meta = parseUbicacionMeta(spot.ubicacion);
+  const identificador = String(spot.tipoVehiculo || spot.placas || slot).trim();
+  return {
+    identificador,
+    slot,
+    model: spot.modelo || '',
+    plates: spot.placas || '',
+    titular: spot.reservadoPor || '',
+    color: meta.color,
+    place: placeForSlot(slot)
+  };
+}
+
+export function parkingCajonSlots(): string[] {
+  return allInteractiveSlotLabels().filter((s) => layerForSlot(s) === 'patio');
+}
+
+export function limboSlots(): string[] {
+  return allInteractiveSlotLabels().filter((s) => layerForSlot(s) === 'limbo');
+}
+
+export function firstFreeSlot(
+  units: Record<string, BjxUnit>,
+  preferLimbo: boolean
+): string {
+  const pool = preferLimbo ? limboSlots() : parkingCajonSlots();
+  const free = pool.find((s) => !units[s]);
+  if (free) return free;
+  return allInteractiveSlotLabels().find((s) => !units[s]) || '';
+}
 
 export type HistoryItem = {
   action: string;
