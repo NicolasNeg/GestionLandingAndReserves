@@ -55,6 +55,7 @@ import {
 } from '../lib/distribucionMapa.js';
 import { mountAquaMapSiteEditor } from '../react/aquaMapSiteMount.tsx';
 import { mountParkingWorkerApp } from '../react/parkingWorkerMount.tsx';
+import { mountParkingLayoutEditorApp } from '../react/parkingLayoutEditorMount.tsx';
 import {
   ensureAquamapEnvelopeFromSiteJson,
   isAquamapSiteJson,
@@ -622,8 +623,23 @@ const AdminDashboard = {
                   </div>
                 </div>` : ''}
 
-                                ${canParking ? `<div id="admin-panel-parking" class="hidden flex min-h-0 flex-1 flex-col">
-                  <div id="parking-worker-root" class="parking-worker-host min-h-0 flex-1 overflow-hidden"></div>
+                                ${canParking ? `<div id="admin-panel-parking" class="admin-panel-parking hidden flex min-h-0 flex-1 flex-col">
+                  <header class="parking-admin-head flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 py-3 shadow-sm">
+                    <div>
+                      <h2 class="text-lg font-black text-slate-900">Estacionamiento</h2>
+                      <p class="text-xs font-medium text-slate-500">Operación en vivo y diseño de cajones</p>
+                    </div>
+                    <nav class="parking-admin-tabs inline-flex rounded-xl border border-slate-200 bg-slate-50 p-1" role="tablist" aria-label="Secciones de estacionamiento">
+                      <button type="button" role="tab" data-parking-tab="operacion" class="parking-admin-tab is-active rounded-lg px-4 py-2 text-xs font-black text-slate-800" aria-selected="true">Operación</button>
+                      <button type="button" role="tab" data-parking-tab="plano" class="parking-admin-tab rounded-lg px-4 py-2 text-xs font-black text-slate-500" aria-selected="false">Configurar cajones</button>
+                    </nav>
+                  </header>
+                  <div id="parking-tab-operacion" class="flex min-h-0 flex-1 flex-col" role="tabpanel">
+                    <div id="parking-worker-root" class="parking-worker-host min-h-0 flex-1 overflow-hidden"></div>
+                  </div>
+                  <div id="parking-tab-plano" class="hidden min-h-0 flex-1 flex-col" role="tabpanel" hidden>
+                    <div id="parking-layout-editor-host" class="min-h-0 flex-1 overflow-hidden"></div>
+                  </div>
                 </div>` : ''}
 
                 ${canInventoryView ? `<div id="admin-panel-inventario" class="hidden space-y-6">
@@ -1676,7 +1692,7 @@ const AdminDashboard = {
       if (showLandingQuick) {
         links.push({ href: '/admin/dashboard?section=sitio', label: 'Editar landing', icon: 'palette' });
         links.push({
-          href: '/admin/dashboard?section=sitio&mapfocus=1',
+          href: '/admin/dashboard?section=sitio&mapview=estacionamiento&mapfocus=1',
           label: 'Editar mapa',
           icon: 'map'
         });
@@ -2053,6 +2069,8 @@ const AdminDashboard = {
     const adminUrlParams = new URLSearchParams(window.location.search);
     const requestedInitialSection = adminUrlParams.get('section') || 'tickets';
     const mapEditorFocus = adminUrlParams.get('mapfocus') === '1';
+    const mapViewParam = adminUrlParams.get('mapview') || '';
+    const parkingTabParam = adminUrlParams.get('parkingtab') || '';
 
     let mapEditor = null;
     let sitioReady = false;
@@ -4351,6 +4369,13 @@ const AdminDashboard = {
             const btn = document.getElementById('mapa-focus-toggle');
             if (btn) btn.innerHTML = `${icon('eye', 'h-4 w-4')} Salir enfoque`;
           }
+          if (mapViewParam === 'estacionamiento') {
+            const mapContextSelect = document.getElementById('map-context-select');
+            if (mapContextSelect) {
+              mapContextSelect.value = 'estacionamiento';
+              mapContextSelect.dispatchEvent(new Event('change'));
+            }
+          }
           document.querySelector('.mapa-editor-shell')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
         });
       }
@@ -4360,17 +4385,51 @@ const AdminDashboard = {
     };
 
     let parkingReady = false;
+    let parkingTabsWired = false;
     let parkingWorkerUnmount = null;
+    let parkingLayoutUnmount = null;
+
+    const switchParkingAdminTab = (tab) => {
+      const operacion = document.getElementById('parking-tab-operacion');
+      const plano = document.getElementById('parking-tab-plano');
+      const isOperacion = tab !== 'plano';
+      operacion?.classList.toggle('hidden', !isOperacion);
+      plano?.classList.toggle('hidden', isOperacion);
+      if (plano) plano.hidden = isOperacion;
+      document.querySelectorAll('[data-parking-tab]').forEach((btn) => {
+        const on = btn.getAttribute('data-parking-tab') === (isOperacion ? 'operacion' : 'plano');
+        btn.classList.toggle('is-active', on);
+        btn.classList.toggle('text-slate-800', on);
+        btn.classList.toggle('text-slate-500', !on);
+        btn.setAttribute('aria-selected', on ? 'true' : 'false');
+      });
+      if (!isOperacion) {
+        const layoutHost = document.getElementById('parking-layout-editor-host');
+        if (layoutHost && !parkingLayoutUnmount) {
+          parkingLayoutUnmount = mountParkingLayoutEditorApp(layoutHost);
+        }
+      }
+    };
+
     const initParkingPanel = async () => {
       if (parkingReady) return;
       const host = document.getElementById('parking-worker-root');
       if (!host) return;
       parkingReady = true;
+      if (!parkingTabsWired) {
+        parkingTabsWired = true;
+        document.querySelectorAll('[data-parking-tab]').forEach((btn) => {
+          btn.addEventListener('click', () => {
+            switchParkingAdminTab(btn.getAttribute('data-parking-tab') || 'operacion');
+          });
+        });
+      }
       if (parkingWorkerUnmount) {
         parkingWorkerUnmount.destroy();
         parkingWorkerUnmount = null;
       }
       parkingWorkerUnmount = mountParkingWorkerApp(host, {});
+      switchParkingAdminTab(parkingTabParam === 'plano' ? 'plano' : 'operacion');
     };
 
     let inventarioReady = false;

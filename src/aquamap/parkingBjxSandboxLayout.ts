@@ -14,6 +14,47 @@ export type SlotDef = {
 export const YARD_STAGE_W = 1840;
 export const YARD_STAGE_H = 930;
 
+/** Tamaño por defecto de un cajón en el lienzo operativo (% → px). */
+export const DEFAULT_SLOT_W = 92;
+export const DEFAULT_SLOT_H = 132;
+
+export type ParkingSpotCoords = {
+  id: string;
+  x?: number;
+  y?: number;
+};
+
+/** Convierte fila de parking_spots (x/y en %) a posición en el patio operativo. */
+export function slotDefFromParkingSpot(spot: ParkingSpotCoords): SlotDef {
+  const w = DEFAULT_SLOT_W;
+  const h = DEFAULT_SLOT_H;
+  const cx = (Number(spot.x ?? 20) / 100) * YARD_STAGE_W;
+  const cy = (Number(spot.y ?? 20) / 100) * YARD_STAGE_H;
+  return {
+    label: spot.id,
+    left: Math.max(8, Math.round(cx - w / 2)),
+    top: Math.max(8, Math.round(cy - h / 2)),
+    w,
+    h
+  };
+}
+
+/** Solo cajones definidos en la base (sin layout sandbox BJX). */
+export function slotsFromParkingSpots(
+  parkingById: Record<string, ParkingSpotCoords>
+): SlotDef[] {
+  return Object.values(parkingById)
+    .filter((s) => s?.id)
+    .sort((a, b) => String(a.id).localeCompare(String(b.id), 'es'))
+    .map(slotDefFromParkingSpot);
+}
+
+export function slotLabelsFromParking(
+  parkingById: Record<string, ParkingSpotCoords>
+): string[] {
+  return slotsFromParkingSpots(parkingById).map((s) => s.label);
+}
+
 export const BJX_SLOTS: SlotDef[] = [
   { label: 'L-1', left: 34, top: 32, w: 92, h: 132 },
   { label: 'L-2', left: 138, top: 32, w: 92, h: 132 },
@@ -152,22 +193,23 @@ export function unitFromParkingSpot(spot: {
   };
 }
 
-export function parkingCajonSlots(): string[] {
-  return allInteractiveSlotLabels().filter((s) => layerForSlot(s) === 'patio');
+export function parkingCajonSlots(parkingById: Record<string, ParkingSpotCoords> = {}): string[] {
+  return slotLabelsFromParking(parkingById).filter((s) => layerForSlot(s) === 'patio');
 }
 
-export function limboSlots(): string[] {
-  return allInteractiveSlotLabels().filter((s) => layerForSlot(s) === 'limbo');
+export function limboSlots(parkingById: Record<string, ParkingSpotCoords> = {}): string[] {
+  return slotLabelsFromParking(parkingById).filter((s) => layerForSlot(s) === 'limbo');
 }
 
 export function firstFreeSlot(
   units: Record<string, BjxUnit>,
+  parkingById: Record<string, ParkingSpotCoords>,
   preferLimbo: boolean
 ): string {
-  const pool = preferLimbo ? limboSlots() : parkingCajonSlots();
+  const pool = preferLimbo ? limboSlots(parkingById) : parkingCajonSlots(parkingById);
   const free = pool.find((s) => !units[s]);
   if (free) return free;
-  return allInteractiveSlotLabels().find((s) => !units[s]) || '';
+  return slotLabelsFromParking(parkingById).find((s) => !units[s]) || '';
 }
 
 export type HistoryItem = {

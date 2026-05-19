@@ -3,21 +3,17 @@ import { upsertParkingSpot } from '../lib/parkingRealtime.js';
 import { showConfirm } from '../lib/appDialog.js';
 import './parkingBjxSandbox.css';
 import {
-  allInteractiveSlotLabels,
-  BJX_SLOTS,
   encodeUbicacionMeta,
   limboSlots,
   nowLabel,
-  parkingCajonSlots,
   placeForSlot,
+  slotLabelsFromParking,
+  slotsFromParkingSpots,
   spotHasVehicle,
   type BjxUnit,
   type HistoryItem,
-  type SlotDef,
   unitFromParkingSpot,
-  UNIT_COLOR_OPTIONS,
-  YARD_STAGE_H,
-  YARD_STAGE_W
+  UNIT_COLOR_OPTIONS
 } from './parkingBjxSandboxLayout';
 import type { ParkingSpotLive } from './parkingSpotsSync';
 
@@ -82,8 +78,10 @@ export function ParkingBjxSandbox({
   const [filterQuery, setFilterQuery] = useState('');
   const toastTimer = useRef(0);
 
-  const cajones = useMemo(() => parkingCajonSlots(), []);
+  const allSlots = useMemo(() => slotsFromParkingSpots(parkingById), [parkingById]);
+  const slotLabels = useMemo(() => allSlots.map((s) => s.label), [allSlots]);
   const selectedUnit = selectedSlot ? units[selectedSlot] : undefined;
+  const hasConfiguredSlots = allSlots.length > 0;
 
   const showToast = useCallback((msg: string) => {
     setToast(msg);
@@ -97,10 +95,10 @@ export function ParkingBjxSandbox({
 
   const metrics = useMemo(() => {
     const vehiculos = Object.keys(units).length;
-    const ocupados = cajones.filter((s) => units[s]).length;
-    const libres = cajones.length - ocupados;
-    return { vehiculos, libres, ocupados, cajonesTotal: cajones.length };
-  }, [cajones, units]);
+    const ocupados = slotLabels.filter((s) => units[s]).length;
+    const libres = Math.max(0, slotLabels.length - ocupados);
+    return { vehiculos, libres, ocupados, cajonesTotal: slotLabels.length };
+  }, [slotLabels, units]);
 
   const persistUnit = useCallback(
     async (slot: string, unit: Partial<BjxUnit>) => {
@@ -318,25 +316,6 @@ export function ParkingBjxSandbox({
     return () => document.removeEventListener('keydown', onKey);
   }, []);
 
-  const allSlots = useMemo(() => {
-    const labels = new Set(BJX_SLOTS.map((s) => s.label));
-    const extras: SlotDef[] = [];
-    for (const id of Object.keys(parkingById)) {
-      if (labels.has(id)) continue;
-      const spot = parkingById[id];
-      const cx = (Number(spot?.x ?? 20) / 100) * YARD_STAGE_W;
-      const cy = (Number(spot?.y ?? 20) / 100) * YARD_STAGE_H;
-      extras.push({
-        label: id,
-        left: Math.max(8, Math.round(cx - 46)),
-        top: Math.max(8, Math.round(cy - 66)),
-        w: 92,
-        h: 132
-      });
-    }
-    return [...BJX_SLOTS, ...extras];
-  }, [parkingById]);
-
   const isNewVehicle = Boolean(vehicleDialog && !units[vehicleDialog.slot]);
 
   return (
@@ -376,6 +355,24 @@ export function ParkingBjxSandbox({
       </header>
 
       <main className="yard-wrap" aria-label="Mapa del patio">
+        {!hasConfiguredSlots ? (
+          <div className="parking-empty-yard" role="status">
+            <p className="parking-empty-yard__title">Sin cajones configurados</p>
+            <p className="parking-empty-yard__text">
+              Diseña los cajones en la pestaña <strong>Configurar cajones</strong>. Solo aparecen los
+              lugares guardados en la base de datos.
+            </p>
+            {canEditMapLayout ? (
+              <a
+                href="/admin/dashboard?section=parking&parkingtab=plano"
+                className="parking-empty-yard__cta"
+                data-link
+              >
+                Ir a configurar cajones
+              </a>
+            ) : null}
+          </div>
+        ) : null}
         <div className="yard-viewport" id="yardViewport">
           <section
             className="yard-stage"
@@ -494,17 +491,17 @@ export function ParkingBjxSandbox({
             </button>
             {canEditMapLayout ? (
               <a
-                href="/admin/dashboard?section=sitio&mapfocus=1"
+                href="/admin/dashboard?section=parking&parkingtab=plano"
                 className="tool-link tool-link--admin"
                 data-link
-                title="Editor del plano (solo administración)"
+                title="Diseño de cajones (solo administración)"
               >
-                Editar plano del mapa
+                Configurar cajones
               </a>
             ) : null}
           </div>
         </section>
-        {limboSlots().length ? (
+        {limboSlots(parkingById).length ? (
           <section className="tool-card">
             <p className="text-[10px] leading-relaxed text-[#8e99b5]">
               Los cajones <strong className="text-[#b7c1d9]">L-*</strong> son limbo temporal.
@@ -540,7 +537,7 @@ export function ParkingBjxSandbox({
       {vehicleDialog ? (
         <VehicleDialog
           draft={vehicleDialog}
-          slotOptions={allInteractiveSlotLabels()}
+          slotOptions={slotLabelsFromParking(parkingById)}
           isNew={isNewVehicle}
           onChange={setVehicleDialog}
           onClose={() => setVehicleDialog(null)}

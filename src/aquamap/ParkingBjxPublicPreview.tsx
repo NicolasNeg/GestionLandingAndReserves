@@ -9,7 +9,7 @@ import {
 } from 'react';
 import { subscribeParkingSpots } from '../lib/parkingRealtime.js';
 import {
-  BJX_SLOTS,
+  slotsFromParkingSpots,
   YARD_STAGE_H,
   YARD_STAGE_W,
   type SlotDef
@@ -46,22 +46,7 @@ type Props = {
 };
 
 function buildAllSlots(parkingById: Record<string, ParkingSpotLive>): SlotDef[] {
-  const labels = new Set(BJX_SLOTS.map((s) => s.label));
-  const extras: SlotDef[] = [];
-  for (const id of Object.keys(parkingById)) {
-    if (labels.has(id)) continue;
-    const spot = parkingById[id];
-    const cx = (Number(spot?.x ?? 20) / 100) * YARD_STAGE_W;
-    const cy = (Number(spot?.y ?? 20) / 100) * YARD_STAGE_H;
-    extras.push({
-      label: id,
-      left: Math.max(8, Math.round(cx - 46)),
-      top: Math.max(8, Math.round(cy - 66)),
-      w: 92,
-      h: 132
-    });
-  }
-  return [...BJX_SLOTS, ...extras];
+  return slotsFromParkingSpots(parkingById);
 }
 
 function computeMetrics(

@@ -1,0 +1,164 @@
+.parking-layout-editor {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+  background: #0f172a;
+  color: #e2e8f0;
+}
+
+.parking-layout-editor--loading {
+  align-items: center;
+  justify-content: center;
+  padding: 3rem;
+  font-size: 0.875rem;
+  color: #94a3b8;
+}
+
+.parking-layout-editor__bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+  background: linear-gradient(180deg, #1e293b 0%, #0f172a 100%);
+}
+
+.parking-layout-editor__eyebrow {
+  margin: 0;
+  font-size: 0.625rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #38bdf8;
+}
+
+.parking-layout-editor__title {
+  margin: 0.15rem 0 0;
+  font-size: 1.25rem;
+  font-weight: 900;
+  color: #f8fafc;
+}
+
+.parking-layout-editor__hint {
+  margin: 0.35rem 0 0;
+  max-width: 42rem;
+  font-size: 0.75rem;
+  line-height: 1.45;
+  color: #94a3b8;
+}
+
+.parking-layout-editor__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.parking-layout-editor__count {
+  font-size: 0.6875rem;
+  font-weight: 700;
+  color: #94a3b8;
+  padding: 0.35rem 0.65rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.parking-layout-editor__save {
+  border: 0;
+  border-radius: 0.75rem;
+  padding: 0.55rem 1rem;
+  font-size: 0.8125rem;
+  font-weight: 800;
+  color: #fff;
+  background: #0284c7;
+  cursor: pointer;
+}
+
+.parking-layout-editor__save:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.parking-layout-editor__link {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #7dd3fc;
+  text-decoration: none;
+  padding: 0.5rem 0.75rem;
+}
+
+.parking-layout-editor__error {
+  margin: 0;
+  padding: 0.5rem 1.25rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #fecaca;
+  background: rgba(127, 29, 29, 0.35);
+}
+
+.parking-layout-editor__status {
+  margin: 0;
+  padding: 0.5rem 1.25rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #bbf7d0;
+  background: rgba(22, 101, 52, 0.25);
+}
+
+.parking-layout-editor__canvas {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+}
+
+.parking-layout-editor__canvas .aquamap-editor-root {
+  height: 100%;
+  min-height: 480px;
+}
+
+.parking-empty-yard {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  padding: 2rem;
+  text-align: center;
+  background: rgba(18, 19, 41, 0.92);
+  backdrop-filter: blur(6px);
+}
+
+.parking-empty-yard__title {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 900;
+  color: #f6f7ff;
+}
+
+.parking-empty-yard__text {
+  margin: 0;
+  max-width: 22rem;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: #8e99b5;
+}
+
+.parking-empty-yard__cta {
+  margin-top: 0.5rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.6rem 1.1rem;
+  border-radius: 0.75rem;
+  font-size: 0.8125rem;
+  font-weight: 800;
+  color: #fff;
+  text-decoration: none;
+  background: #0284c7;
+}

@@ -2016,6 +2016,22 @@
     min-height: 0;
   }
 
+  .admin-panel-parking .parking-admin-head {
+    z-index: 20;
+  }
+
+  .admin-panel-parking .parking-admin-tab.is-active {
+    background: #fff;
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.12);
+    color: #0f172a;
+  }
+
+  .admin-panel-parking #parking-tab-plano:not(.hidden) {
+    display: flex;
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+
   .mapa-tool-strip {
     align-items: center;
   }
